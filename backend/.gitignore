@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# 环境变量
+.env
+
+# 日志
+logs/
+*.log
+
+# 上传文件
+uploads/
+videos/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 数据库
+*.db
+*.sqlite
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 其他
+.DS_Store
+Thumbs.db

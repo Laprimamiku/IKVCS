@@ -1,0 +1,79 @@
+# ============================================
+# IKVCS 项目 Git 忽略文件
+# ============================================
+
+# ============================================
+# Python 后端
+# ============================================
+
+# 虚拟环境
+backend/venv/
+backend/.venv/
+backend/env/
+
+# Python 缓存
+backend/**/__pycache__/
+backend/**/*.py[cod]
+backend/**/*.so
+
+# 环境变量（敏感信息）
+backend/.env
+
+# 日志文件
+backend/logs/*.log
+
+# 上传文件（用户数据）
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/videos/*
+!backend/videos/.gitkeep
+
+# 数据库文件
+backend/*.db
+backend/*.sqlite*
+
+# 测试覆盖率
+backend/.coverage
+backend/htmlcov/
+backend/.pytest_cache/
+
+# ============================================
+# Node.js 前端
+# ============================================
+
+# 依赖目录
+frontend/node_modules/
+
+# 构建输出
+frontend/dist/
+frontend/build/
+
+# 环境变量
+frontend/.env.local
+frontend/.env.*.local
+
+# 日志文件
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# ============================================
+# IDE 和系统文件
+# ============================================
+
+# VSCode
+.vscode/
+
+# Kiro
+.kiro/
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 临时文件
+*.tmp
+*.bak
+*.swp
+*~
