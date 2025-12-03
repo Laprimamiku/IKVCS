@@ -2,7 +2,7 @@
 FastAPI 依赖注入工具
 类似 Spring 的 @Autowired 依赖注入
 """
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
@@ -15,6 +15,22 @@ from app.core.config import settings
 # HTTP Bearer 认证方案
 # 类似 Spring Security 的 BearerTokenAuthenticationFilter
 security = HTTPBearer()
+
+
+def get_token_from_request(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
+    """
+    从请求头获取 JWT 令牌
+    
+    这是一个辅助函数，用于在需要访问令牌本身的地方使用
+    例如：logout 时需要将令牌加入黑名单
+    
+    使用方式：
+    @router.post("/logout")
+    def logout(token: str = Depends(get_token_from_request)):
+        # 将 token 加入黑名单
+        pass
+    """
+    return credentials.credentials
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -30,15 +46,61 @@ def get_current_user(
     def get_me(current_user = Depends(get_current_user)):
         return current_user
     
-    注意：这个函数会在任务 2 中完善实现
+    流程：
+    1. 从请求头获取 JWT 令牌
+    2. 验证令牌签名和过期时间
+    3. 检查 Redis 黑名单（登出的令牌）
+    4. 从数据库查询用户
+    5. 返回用户对象
+    
+    为什么这样写：
+        这是一个依赖注入函数，会在每个需要认证的路由中自动执行
+        如果认证失败，会抛出 401 异常，阻止访问
     """
-    # TODO: 在任务 2 中实现 JWT 验证逻辑
-    # 1. 从 credentials.credentials 获取 token
-    # 2. 验证 token 签名和过期时间
-    # 3. 检查 Redis 黑名单
-    # 4. 从数据库查询用户
-    # 5. 返回用户对象
-    pass
+    from app.models.user import User
+    from app.core.security import decode_access_token
+    
+    # 1. 获取 JWT 令牌
+    token = credentials.credentials
+    
+    # 2. 解码令牌
+    payload = decode_access_token(token)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无效的认证令牌",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # 3. 检查 Redis 黑名单（登出的令牌）
+    redis_client = get_redis()
+    if redis_client.sismember("jwt_blacklist", token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="令牌已失效，请重新登录",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # 4. 从令牌中获取用户名
+    username: str = payload.get("sub")
+    if username is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无效的认证令牌",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # 5. 从数据库查询用户
+    user = db.query(User).filter(User.username == username).first()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户不存在",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    return user
+
 
 def get_current_active_user(
     current_user = Depends(get_current_user)
@@ -52,12 +114,18 @@ def get_current_active_user(
     @router.get("/videos")
     def get_videos(current_user = Depends(get_current_active_user)):
         return videos
+    
+    为什么需要这个函数：
+        有些接口需要检查用户是否被封禁
+        被封禁的用户（status=0）不能访问这些接口
     """
-    # TODO: 在任务 2 中实现封禁检查
-    # if current_user.status == 0:
-    #     raise HTTPException(status_code=403, detail="用户已被封禁")
-    # return current_user
-    pass
+    if current_user.status == 0:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="用户已被封禁，无法访问"
+        )
+    return current_user
+
 
 def get_current_admin(
     current_user = Depends(get_current_active_user)
@@ -71,9 +139,14 @@ def get_current_admin(
     @router.get("/admin/users")
     def get_all_users(admin = Depends(get_current_admin)):
         return users
+    
+    为什么需要这个函数：
+        管理后台的接口只能管理员访问
+        普通用户（role='user'）会被拒绝
     """
-    # TODO: 在任务 2 中实现管理员权限检查
-    # if current_user.role != "admin":
-    #     raise HTTPException(status_code=403, detail="需要管理员权限")
-    # return current_user
-    pass
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="需要管理员权限"
+        )
+    return current_user

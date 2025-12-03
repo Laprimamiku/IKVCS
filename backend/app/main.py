@@ -62,28 +62,32 @@ async def startup_event():
     创建所有数据库表（如果不存在）
     相当于 Spring Boot 的 @PostConstruct
     """
-    logger.info("🚀 应用启动中...")
-    logger.info(f"📝 环境：{settings.APP_ENV}")
-    logger.info(f"🔧 调试模式：{settings.DEBUG}")
+    logger.info("应用启动中...")
+    logger.info(f"环境：{settings.APP_ENV}")
+    logger.info(f"调试模式：{settings.DEBUG}")
     
     # 创建数据库表
     try:
         Base.metadata.create_all(bind=engine)
-        logger.info("✅ 数据库表创建成功")
+        logger.info("数据库表创建成功")
     except Exception as e:
-        logger.error(f"❌ 数据库表创建失败：{e}")
+        logger.error(f"数据库表创建失败：{e}")
     
-    logger.info("✅ 应用启动完成")
+    logger.info("应用启动完成")
 
 # 关闭事件
 @app.on_event("shutdown")
 async def shutdown_event():
     """应用关闭时执行"""
-    logger.info("👋 应用关闭中...")
+    logger.info("应用关闭中...")
 
-# TODO: 注册路由
-# from app.api import auth, users, videos, upload, interactions, danmaku, websocket, admin
-# app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
+# 注册路由
+# 类比 Spring Boot：相当于在 Application.java 中配置 Controller 扫描路径
+from app.api import auth
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
+
+# TODO: 后续任务会注册更多路由
+# from app.api import users, videos, upload, interactions, danmaku, websocket, admin
 # app.include_router(users.router, prefix="/api/v1/users", tags=["用户"])
 # app.include_router(videos.router, prefix="/api/v1/videos", tags=["视频"])
 # app.include_router(upload.router, prefix="/api/v1/upload", tags=["上传"])
