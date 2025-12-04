@@ -12,7 +12,7 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
 import App from './App.vue'
 import router from './router'
-import './style.css'
+import './assets/styles/bilibili-theme.css'
 
 // 创建 Vue 应用实例
 const app = createApp(App)

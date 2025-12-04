@@ -5,6 +5,7 @@
  * 相当于 Java 的 Service 接口调用
  */
 import request from '@/utils/request'
+import { getCurrentUser as getUserInfo } from './user'
 
 /**
  * 用户注册
@@ -71,10 +72,9 @@ export function logout() {
  * 
  * 类比 Java：
  *   userService.getCurrentUser()
+ * 
+ * 注意：此函数已移至 user.js，这里保留是为了向后兼容
  */
 export function getCurrentUser() {
-  return request({
-    url: '/users/me',
-    method: 'get'
-  })
+  return getUserInfo()
 }

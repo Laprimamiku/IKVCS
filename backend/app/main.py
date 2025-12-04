@@ -9,6 +9,7 @@ from logging.handlers import RotatingFileHandler
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.database import engine, Base
@@ -81,14 +82,18 @@ async def shutdown_event():
     """应用关闭时执行"""
     logger.info("应用关闭中...")
 
+# 配置静态文件服务（用于访问上传的文件）
+os.makedirs("uploads/avatars", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 # 注册路由
 # 类比 Spring Boot：相当于在 Application.java 中配置 Controller 扫描路径
-from app.api import auth
+from app.api import auth, users
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
+app.include_router(users.router, prefix="/api/v1/users", tags=["用户"])
 
 # TODO: 后续任务会注册更多路由
-# from app.api import users, videos, upload, interactions, danmaku, websocket, admin
-# app.include_router(users.router, prefix="/api/v1/users", tags=["用户"])
+# from app.api import videos, upload, interactions, danmaku, websocket, admin
 # app.include_router(videos.router, prefix="/api/v1/videos", tags=["视频"])
 # app.include_router(upload.router, prefix="/api/v1/upload", tags=["上传"])
 # app.include_router(interactions.router, prefix="/api/v1", tags=["互动"])

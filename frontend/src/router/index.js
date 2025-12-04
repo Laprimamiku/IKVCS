@@ -15,17 +15,11 @@ const routes = [
     meta: { title: '首页' }
   },
   {
-    path: '/login',
-    name: 'Login',
-    component: () => import('../views/auth/Login.vue'),
-    meta: { title: '登录' }
-  },
-  {
-    path: '/register',
-    name: 'Register',
-    component: () => import('../views/auth/Register.vue'),
-    meta: { title: '注册' }
-  },
+    path: '/profile',
+    name: 'Profile',
+    component: () => import('../views/user/Profile.vue'),
+    meta: { title: '个人中心', requiresAuth: true }
+  }
   // TODO: 后续添加更多路由
   // {
   //   path: '/videos/:id',
@@ -42,7 +36,6 @@ const router = createRouter({
 })
 
 // 路由守卫（导航前执行）
-// 相当于 Spring Security 的权限检查
 router.beforeEach((to, from, next) => {
   // 设置页面标题
   document.title = to.meta.title ? `${to.meta.title} - IKVCS` : 'IKVCS'
@@ -51,8 +44,8 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAuth) {
     const token = localStorage.getItem('access_token')
     if (!token) {
-      // 未登录，跳转到登录页
-      next({ name: 'Login', query: { redirect: to.fullPath } })
+      // 未登录，跳转到首页（会显示登录弹窗）
+      next({ name: 'Home' })
       return
     }
   }

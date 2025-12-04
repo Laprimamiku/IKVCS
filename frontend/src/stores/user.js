@@ -29,7 +29,21 @@ export const useUserStore = defineStore('user', {
     nickname: (state) => state.userInfo?.nickname || '游客',
     
     // 用户头像
-    avatar: (state) => state.userInfo?.avatar || 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
+    avatar: (state) => {
+      if (!state.userInfo?.avatar) {
+        return 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
+      }
+      
+      const avatarUrl = state.userInfo.avatar
+      
+      // 如果已经是完整 URL，直接返回
+      if (avatarUrl.startsWith('http')) {
+        return avatarUrl
+      }
+      
+      // 否则拼接完整 URL（注意：静态文件不在 /api/v1 路径下）
+      return `http://localhost:8000${avatarUrl}`
+    }
   },
   
   // 方法（相当于 Java 的方法）
@@ -161,6 +175,21 @@ export const useUserStore = defineStore('user', {
           this.userInfo = null
           localStorage.removeItem('access_token')
         }
+      }
+    },
+    
+    /**
+     * 更新用户信息
+     * 
+     * @param {Object} data - 更新数据
+     * 
+     * 使用场景：
+     *   用户在个人中心修改信息后
+     *   更新本地状态
+     */
+    updateUserInfo(data) {
+      if (this.userInfo) {
+        Object.assign(this.userInfo, data)
       }
     }
   }
