@@ -38,8 +38,20 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     为什么这样写：
         bcrypt 是单向加密，不能解密
         只能通过 verify 方法比对明文和哈希是否匹配
+    
+    容易踩坑点：
+        如果 hashed_password 不是有效的 bcrypt 哈希（如明文密码），
+        pwd_context.verify() 会抛出异常，导致 500 错误
+        所以需要捕获异常并返回 False
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception as e:
+        # 如果密码哈希格式无效（如明文密码），返回 False
+        # 这样可以避免 500 错误，返回友好的 401 错误
+        import logging
+        logging.error(f"密码验证失败：{e}")
+        return False
 
 
 def get_password_hash(password: str) -> str:
