@@ -4,15 +4,17 @@
 这个文件导出所有数据模型，方便其他模块导入
 
 使用方式：
-from app.models import User, Video, Category
+from app.models import User, Video, Category, UploadSession
 """
 
 from app.models.user import User
 from app.models.video import Video, Category
+from app.models.upload import UploadSession
 
 # 导出所有模型（方便导入）
 __all__ = [
     "User",
     "Video",
     "Category",
+    "UploadSession",
 ]

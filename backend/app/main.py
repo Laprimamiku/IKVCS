@@ -88,15 +88,15 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # 注册路由
 # 类比 Spring Boot：相当于在 Application.java 中配置 Controller 扫描路径
-from app.api import auth, users, categories
+from app.api import auth, users, categories, upload
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["用户"])
 app.include_router(categories.router, prefix="/api/v1/categories", tags=["分类"])
+app.include_router(upload.router, prefix="/api/v1/upload", tags=["上传"])
 
 # TODO: 后续任务会注册更多路由
-# from app.api import videos, upload, interactions, danmaku, websocket, admin
+# from app.api import videos, interactions, danmaku, websocket, admin
 # app.include_router(videos.router, prefix="/api/v1/videos", tags=["视频"])
-# app.include_router(upload.router, prefix="/api/v1/upload", tags=["上传"])
 # app.include_router(interactions.router, prefix="/api/v1", tags=["互动"])
 # app.include_router(danmaku.router, prefix="/api/v1", tags=["弹幕"])
 # app.include_router(websocket.router, prefix="/api/v1/ws", tags=["WebSocket"])
