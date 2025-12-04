@@ -82,9 +82,8 @@ async def shutdown_event():
     """应用关闭时执行"""
     logger.info("应用关闭中...")
 
-# 配置静态文件服务
-# 用于访问上传的文件（头像、视频封面等）
-# 类比 Spring Boot：相当于配置 ResourceHandler
+# 配置静态文件服务（用于访问上传的文件）
+os.makedirs("uploads/avatars", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # 注册路由
