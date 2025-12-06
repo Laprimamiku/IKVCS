@@ -1,39 +1,50 @@
-# Python
+# ============================================
+# Python 后端 - 只提交源代码
+# ============================================
+
+# Python 虚拟环境（可重新创建）
+venv/
+.venv/
+env/
+ENV/
+.Python
+
+# Python 编译文件（自动生成）
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
-venv/
-env/
-ENV/
+*.pyc
 
-# 环境变量
+# 环境变量（敏感信息，不提交）
 .env
 
-# 日志
-logs/
-*.log
+# 日志文件（运行时生成）
+logs/*.log
 
-# 上传文件
-uploads/
-videos/
+# 用户上传文件（用户数据，不提交）
+uploads/*
+!uploads/.gitkeep
+!uploads/avatars/.gitkeep
+!uploads/temp/.gitkeep
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+# 视频文件（用户数据，不提交）
+videos/*
+!videos/.gitkeep
+!videos/hls/.gitkeep
 
-# 数据库
+# 数据库文件（本地数据，不提交）
 *.db
 *.sqlite
+*.sqlite3
 
-# 测试
+# 测试覆盖率报告（自动生成）
 .pytest_cache/
 .coverage
 htmlcov/
+.tox/
 
-# 其他
-.DS_Store
-Thumbs.db
+# 分发和打包（自动生成）
+dist/
+build/
+*.egg-info/

@@ -1,5 +1,21 @@
-# Logs
-logs
+# ============================================
+# Node.js 前端 - 只提交源代码
+# ============================================
+
+# 依赖目录（可通过 npm install 重新安装）
+node_modules/
+
+# 构建输出（自动生成）
+dist/
+dist-ssr/
+build/
+
+# 环境变量（敏感信息，不提交）
+.env.local
+.env.*.local
+
+# 日志文件（运行时生成）
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,16 +23,16 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# 缓存文件（自动生成）
+.cache/
+.parcel-cache/
+.vite/
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
+# 测试覆盖率（自动生成）
+coverage/
+.nyc_output/
+
+# 编辑器临时文件
 *.suo
 *.ntvs*
 *.njsproj

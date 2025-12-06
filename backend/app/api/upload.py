@@ -204,8 +204,9 @@ async def finish_upload(
         finish_data.cover_url
     )
     
-    # TODO: 任务 6 会实现转码服务
-    # background_tasks.add_task(transcode_video, video.id)
+    # 触发后台转码任务（需求 3.6, 4.2）
+    from app.services.transcode_service import TranscodeService
+    background_tasks.add_task(TranscodeService.transcode_video, video.id)
     
     return UploadFinishResponse(
         video_id=video.id,
