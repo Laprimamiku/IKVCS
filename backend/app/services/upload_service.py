@@ -93,6 +93,25 @@ class UploadService:
                 
                 # 3. 断点续传：返回已上传分片列表
                 logger.info(f"断点续传：文件 {upload_data.file_hash} 未完成上传")
+                
+                # 确保 Redis BitMap 存在（可能已过期或被删除）
+                try:
+                    redis_client = get_redis()
+                    redis_key = f"upload:{upload_data.file_hash}"
+                    # 检查 BitMap 是否存在
+                    if not redis_client.exists(redis_key):
+                        logger.info(f"断点续传：BitMap 不存在，重新初始化：{redis_key}")
+                        # 初始化 BitMap：设置第一个 bit 为 0（未上传）
+                        redis_client.setbit(redis_key, 0, 0)
+                        # 设置过期时间：7 天
+                        redis_client.expire(redis_key, 7 * 24 * 3600)
+                        logger.info(f"断点续传：BitMap 重新初始化成功：{redis_key}")
+                    else:
+                        logger.info(f"断点续传：BitMap 已存在：{redis_key}")
+                except Exception as e:
+                    logger.error(f"断点续传：Redis BitMap 初始化失败：{e}", exc_info=True)
+                    # Redis 失败不影响断点续传
+                
                 uploaded_chunks = UploadService._get_uploaded_chunks_from_redis(
                     upload_data.file_hash,
                     existing_session.total_chunks
@@ -122,12 +141,21 @@ class UploadService:
             try:
                 redis_client = get_redis()
                 redis_key = f"upload:{upload_data.file_hash}"
+                # 初始化 BitMap：设置第一个 bit 为 0（未上传）
+                # 这样会创建 BitMap key，否则只设置 expire 不会创建 key
+                result = redis_client.setbit(redis_key, 0, 0)
+                logger.debug(f"Redis SETBIT 结果：{result}, key: {redis_key}")
                 # 设置过期时间：7 天
-                redis_client.expire(redis_key, 7 * 24 * 3600)
-                logger.info(f"Redis BitMap 初始化成功：{redis_key}")
+                expire_result = redis_client.expire(redis_key, 7 * 24 * 3600)
+                logger.debug(f"Redis EXPIRE 结果：{expire_result}, key: {redis_key}")
+                # 验证 key 是否存在
+                exists = redis_client.exists(redis_key)
+                logger.info(f"Redis BitMap 初始化成功：{redis_key}, exists={exists}")
+                if not exists:
+                    logger.warning(f"Redis BitMap 初始化后 key 不存在，可能 Redis 连接失败")
             except Exception as e:
-                logger.error(f"Redis 初始化失败：{e}")
-                # Redis 失败不影响上传会话创建
+                logger.error(f"Redis 初始化失败：{e}", exc_info=True)
+                # Redis 失败不影响上传会话创建，但记录详细错误
             
             logger.info(f"初始化上传完成：{upload_data.file_hash}")
             return new_session, [], False
