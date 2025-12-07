@@ -19,6 +19,12 @@ const routes = [
     name: 'Profile',
     component: () => import('../views/user/Profile.vue'),
     meta: { title: '个人中心', requiresAuth: true }
+  },
+  {
+    path: '/upload',
+    name: 'VideoUpload',
+    component: () => import('../views/VideoUpload.vue'),
+    meta: { title: '上传视频', requiresAuth: true }
   }
   // TODO: 后续添加更多路由
   // {
