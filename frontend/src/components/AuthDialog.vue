@@ -307,13 +307,13 @@ const handleRegister = async () => {
 .auth-dialog :deep(.el-dialog__header) {
   text-align: center;
   padding: 24px 24px 16px;
-  border-bottom: 1px solid var(--bili-border-1);
+  border-bottom: 1px solid var(--border-light);
 }
 
 .auth-dialog :deep(.el-dialog__title) {
   font-size: 20px;
   font-weight: bold;
-  color: var(--bili-text-1);
+  color: var(--text-primary);
 }
 
 .auth-dialog :deep(.el-dialog__body) {
@@ -329,20 +329,21 @@ const handleRegister = async () => {
   height: 44px;
   font-size: 16px;
   font-weight: 600;
-  background: var(--bili-pink);
+  background: #00a1d6;
   border: none;
   border-radius: 22px;
+  color: #ffffff;
 }
 
 .auth-btn:hover {
-  background: var(--bili-pink-hover);
+  background: #00b5e5;
 }
 
 .auth-switch {
   text-align: center;
   margin-top: 16px;
   font-size: 14px;
-  color: var(--bili-text-2);
+  color: var(--text-regular);
 }
 
 .auth-switch .el-link {

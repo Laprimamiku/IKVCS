@@ -73,6 +73,15 @@
         <!-- 右侧用户区 -->
         <div class="user-actions">
           <template v-if="userStore.isLoggedIn">
+            <el-button 
+              type="primary" 
+              size="small" 
+              class="upload-btn"
+              @click="router.push('/upload')"
+            >
+              <el-icon><Upload /></el-icon>
+              上传视频
+            </el-button>
             <el-dropdown trigger="click" @command="handleCommand">
               <div class="user-info">
                 <el-avatar :src="userStore.avatar" :size="32" />
@@ -92,8 +101,23 @@
             </el-dropdown>
           </template>
           <template v-else>
-            <el-button type="primary" size="small" @click="showAuthDialog('login')">登录</el-button>
-            <el-button size="small" @click="showAuthDialog('register')">注册</el-button>
+            <el-button 
+              type="primary" 
+              size="small" 
+              class="auth-button login-btn"
+              @click="showAuthDialog('login')"
+            >
+              登录
+            </el-button>
+            <el-button 
+              type="primary" 
+              plain
+              size="small" 
+              class="auth-button register-btn"
+              @click="showAuthDialog('register')"
+            >
+              注册
+            </el-button>
           </template>
         </div>
       </div>
@@ -154,7 +178,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
-  Search, User, ArrowDown, SwitchButton,
+  Search, User, ArrowDown, SwitchButton, Upload,
   Star, Film, Reading, Monitor, Headset, TrophyBase
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
@@ -699,6 +723,50 @@ const handleCommand = async (command) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 登录注册按钮样式 */
+.auth-button {
+  font-weight: 500;
+  border-radius: var(--radius-base);
+  transition: all var(--transition-fast);
+}
+
+.login-btn {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: var(--text-white);
+}
+
+.login-btn:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.register-btn {
+  background: transparent;
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.register-btn:hover {
+  background: var(--primary-light);
+  border-color: var(--primary-hover);
+  color: var(--primary-hover);
+}
+
+/* 上传按钮样式 */
+.upload-btn {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: var(--text-white);
+  font-weight: 500;
+  margin-right: var(--spacing-base);
+}
+
+.upload-btn:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
 }
 
 /* ==================== 分类导航 ==================== */
