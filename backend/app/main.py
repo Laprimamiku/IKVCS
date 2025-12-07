@@ -10,6 +10,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from app.api import videos
 
 from app.core.config import settings
 from app.core.database import engine, Base
@@ -118,3 +119,5 @@ async def health_check():
         "status": "healthy",
         "environment": settings.APP_ENV
     }
+    
+app.include_router(videos.router, prefix="/api/v1/videos", tags=["videos"])

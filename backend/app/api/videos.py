@@ -181,3 +181,172 @@ async def test_transcode(
         video_id=video_id,
         status="transcoding"
     )
+
+from app.schemas.video import (
+    VideoListRequest, 
+    VideoListResponse, 
+    VideoListItemResponse,
+    VideoDetailResponse,
+    UploaderBriefResponse,
+    CategoryBriefResponse
+)
+from app.services.video_service import VideoService
+from math import ceil
+
+
+@router.get("", response_model=VideoListResponse)
+async def get_video_list(
+    page: int = 1,
+    page_size: int = 20,
+    category_id: Optional[int] = None,
+    keyword: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    获取视频列表
+    
+    功能：
+    - 分页展示已发布的视频
+    - 支持按分类筛选
+    - 支持关键词搜索（标题和描述）
+    
+    查询参数：
+    - page: 页码（从1开始，默认1）
+    - page_size: 每页数量（默认20，最大100）
+    - category_id: 分类ID（可选）
+    - keyword: 搜索关键词（可选）
+    
+    返回：
+    - items: 视频列表
+    - total: 总数
+    - page: 当前页
+    - page_size: 每页数量
+    - total_pages: 总页数
+    
+    需求：5.1, 5.2, 5.3
+    """
+    # 参数验证
+    if page < 1:
+        page = 1
+    if page_size < 1:
+        page_size = 20
+    if page_size > 100:
+        page_size = 100
+    
+    # 查询视频列表
+    videos, total = VideoService.get_video_list(
+        db=db,
+        page=page,
+        page_size=page_size,
+        category_id=category_id,
+        keyword=keyword
+    )
+    
+    # 计算总页数
+    total_pages = ceil(total / page_size) if total > 0 else 0
+    
+    # 构建响应
+    items = []
+    for video in videos:
+        # 获取上传者信息
+        uploader = db.query(User).filter(User.id == video.uploader_id).first()
+        # 获取分类信息
+        from app.models.video import Category
+        category = db.query(Category).filter(Category.id == video.category_id).first()
+        
+        items.append(VideoListItemResponse(
+            id=video.id,
+            title=video.title,
+            description=video.description,
+            cover_url=video.cover_url,
+            duration=video.duration,
+            view_count=VideoService.get_merged_view_count(db, video.id),  # 合并 Redis 和 MySQL 的播放量
+            like_count=video.like_count,
+            collect_count=video.collect_count,
+            uploader=UploaderBriefResponse(
+                id=uploader.id,
+                username=uploader.username,
+                nickname=uploader.nickname,
+                avatar=uploader.avatar
+            ),
+            category=CategoryBriefResponse(
+                id=category.id,
+                name=category.name
+            ),
+            created_at=video.created_at
+        ))
+    
+    return VideoListResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages
+    )
+
+
+@router.get("/{video_id}", response_model=VideoDetailResponse)
+async def get_video_detail(
+    video_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取视频详情
+    
+    功能：
+    - 获取视频完整信息
+    - 包含播放地址（m3u8）
+    - 自动增加播放量
+    
+    路径参数：
+    - video_id: 视频ID
+    
+    返回：
+    - 视频完整信息
+    
+    需求：5.4, 5.5
+    """
+    # 获取视频详情
+    video = VideoService.get_video_detail(db, video_id)
+    
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"视频不存在或未发布"
+        )
+    
+    # 增加播放量（异步，不影响响应速度）
+    VideoService.increment_view_count(db, video_id)
+    
+    # 获取上传者信息
+    uploader = db.query(User).filter(User.id == video.uploader_id).first()
+    
+    # 获取分类信息
+    from app.models.video import Category
+    category = db.query(Category).filter(Category.id == video.category_id).first()
+    
+    # 构建响应
+    return VideoDetailResponse(
+        id=video.id,
+        title=video.title,
+        description=video.description,
+        cover_url=video.cover_url,
+        video_url=video.video_url,
+        subtitle_url=video.subtitle_url,
+        duration=video.duration,
+        status=video.status,
+        view_count=VideoService.get_merged_view_count(db, video.id),  # 合并 Redis 和 MySQL 的播放量
+        like_count=video.like_count,
+        collect_count=video.collect_count,
+        uploader=UploaderBriefResponse(
+            id=uploader.id,
+            username=uploader.username,
+            nickname=uploader.nickname,
+            avatar=uploader.avatar
+        ),
+        category=CategoryBriefResponse(
+            id=category.id,
+            name=category.name
+        ),
+        created_at=video.created_at
+    )
