@@ -462,9 +462,7 @@ const handleBannerClick = (banner) => {
 
 // 视频相关方法
 const handleVideoClick = (video) => {
-  console.log("点击视频:", video);
-  // TODO: 跳转到视频详情页
-  // router.push(`/videos/${video.id}`)
+  router.push(`/videos/${video.id}`);
 };
 
 const handleWatchLater = (video) => {
