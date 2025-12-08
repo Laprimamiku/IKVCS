@@ -14,7 +14,8 @@ import { ElMessage } from 'element-plus'
 // 创建 axios 实例
 const request = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1',
-  timeout: 10000, // 请求超时时间（10秒）
+  // 上传/转码触发请求可能超过 10s，提升到 120s 以避免误报超时
+  timeout: 120000,
   headers: {
     'Content-Type': 'application/json'
   }
@@ -45,8 +46,17 @@ request.interceptors.response.use(
   response => {
     console.log('📥 收到响应:', response.config.url, response.status)
     
-    // 直接返回 data 部分（简化使用）
-    return response.data
+    const payload = response.data
+
+    // 如果后端已经返回 success 字段，保持原样；否则包装为统一结构
+    if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'success')) {
+      return payload
+    }
+
+    return {
+      success: true,
+      data: payload
+    }
   },
   error => {
     console.error('❌ 响应错误:', error)

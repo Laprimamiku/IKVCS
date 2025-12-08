@@ -11,7 +11,9 @@
     
 需求：5.1-5.5
 """
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, status
+import os
+import uuid
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -350,3 +352,107 @@ async def get_video_detail(
         ),
         created_at=video.created_at
     )
+
+
+@router.post("/{video_id}/view")
+async def increase_view_count(
+    video_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    增加视频播放量（公开接口）
+
+    需求：5.5
+    """
+    success = VideoService.increment_view_count(db, video_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"视频 {video_id} 不存在"
+        )
+
+    return {
+        "success": True,
+        "message": "播放量已记录",
+        "view_count": VideoService.get_merged_view_count(db, video_id)
+    }
+
+
+def _save_upload_file(target_dir: str, filename: str, upload_file: UploadFile) -> str:
+    """保存上传文件并返回相对 URL"""
+    os.makedirs(target_dir, exist_ok=True)
+    file_path = os.path.join(target_dir, filename)
+    with open(file_path, "wb") as f:
+        f.write(upload_file.file.read())
+    # StaticFiles 挂载在 /uploads
+    return f"/{file_path.replace(os.path.sep, '/')}"
+
+
+@router.post("/{video_id}/cover")
+async def upload_video_cover(
+    video_id: int,
+    cover: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    上传视频封面
+
+    需求：19.4
+    """
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="视频不存在")
+
+    if video.uploader_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权修改该视频")
+
+    ext = os.path.splitext(cover.filename or "")[1].lower()
+    if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="封面格式不支持，仅支持 JPG/PNG/WEBP"
+        )
+
+    filename = f"{video_id}_cover_{uuid.uuid4().hex}{ext}"
+    relative_url = _save_upload_file("uploads/covers", filename, cover)
+
+    video.cover_url = relative_url
+    db.commit()
+
+    return {"success": True, "cover_url": relative_url}
+
+
+@router.post("/{video_id}/subtitle")
+async def upload_video_subtitle(
+    video_id: int,
+    subtitle: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    上传字幕文件（SRT/VTT/JSON/ASS）
+
+    需求：19.1, 19.2
+    """
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="视频不存在")
+
+    if video.uploader_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权修改该视频")
+
+    ext = os.path.splitext(subtitle.filename or "")[1].lower()
+    if ext not in [".srt", ".vtt", ".json", ".ass"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="字幕格式不支持，仅支持 SRT、VTT、JSON、ASS"
+        )
+
+    filename = f"{video_id}_subtitle_{uuid.uuid4().hex}{ext}"
+    relative_url = _save_upload_file("uploads/subtitles", filename, subtitle)
+
+    video.subtitle_url = relative_url
+    db.commit()
+
+    return {"success": True, "subtitle_url": relative_url}

@@ -158,6 +158,18 @@ const route = useRoute();
 const router = useRouter();
 const userStore = useUserStore();
 
+// 静态资源基址（用于拼接 m3u8、字幕等相对路径）
+const resolveFileUrl = (path) => {
+  if (!path) return "";
+  if (path.startsWith("http")) return path;
+  const base =
+    import.meta.env.VITE_FILE_BASE_URL ||
+    (import.meta.env.VITE_API_BASE_URL
+      ? import.meta.env.VITE_API_BASE_URL.replace(/\/api\/v1$/, "")
+      : window.location.origin);
+  return `${base}${path}`;
+};
+
 // 视频播放器
 const videoRef = ref(null);
 let hls = null;
@@ -261,7 +273,17 @@ const loadVideoDetail = async () => {
     const response = await getVideoDetail(videoId);
 
     if (response.success) {
-      videoData.value = response.data;
+      const detail = {
+        ...response.data,
+        video_url: resolveFileUrl(response.data.video_url),
+        subtitle_url: resolveFileUrl(response.data.subtitle_url),
+      };
+      videoData.value = detail;
+
+      // 如果视频还在转码中（status=0），则轮询等待转码完成
+      if (detail.status === 0 || !detail.video_url) {
+        await waitForTranscoding(videoId);
+      }
 
       // 初始化播放器
       setTimeout(() => {
@@ -280,6 +302,41 @@ const loadVideoDetail = async () => {
   } finally {
     loading.value = false;
   }
+};
+
+/**
+ * 等待视频转码完成
+ * 轮询检查视频状态，直到转码完成
+ */
+const waitForTranscoding = async (videoId) => {
+  let attempts = 0;
+  const maxAttempts = 120; // 最多等待 2 分钟（每次间隔 1 秒）
+  const pollInterval = 1000; // 1 秒检查一次
+
+  while (attempts < maxAttempts) {
+    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    attempts++;
+
+    try {
+      const response = await getVideoDetail(videoId);
+      if (response.success && response.data.video_url) {
+        const detail = {
+          ...response.data,
+          video_url: resolveFileUrl(response.data.video_url),
+          subtitle_url: resolveFileUrl(response.data.subtitle_url),
+        };
+        videoData.value = detail;
+        ElMessage.success("视频转码完成，可以播放");
+        return;
+      }
+    } catch (error) {
+      // 继续轮询
+      console.warn(`轮询检查转码状态失败（第 ${attempts} 次）:`, error);
+    }
+  }
+
+  // 等待超时
+  ElMessage.warning("视频转码仍在进行中，请稍后刷新页面重试");
 };
 
 /**

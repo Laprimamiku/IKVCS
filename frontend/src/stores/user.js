@@ -68,9 +68,15 @@ export const useUserStore = defineStore('user', {
         // 1. 调用登录 API
         const res = await loginApi({ username, password })
         
+        // 兼容响应包装：可能是 {access_token,...} 或 {success:true,data:{access_token,...}}
+        const token = res.access_token || res?.data?.access_token
+        if (!token) {
+          throw new Error('未获取到登录令牌')
+        }
+
         // 2. 保存令牌
-        this.token = res.access_token
-        localStorage.setItem('access_token', res.access_token)
+        this.token = token
+        localStorage.setItem('access_token', token)
         
         // 3. 获取用户信息
         await this.fetchUserInfo()
@@ -121,8 +127,9 @@ export const useUserStore = defineStore('user', {
     async fetchUserInfo() {
       try {
         const res = await getCurrentUser()
-        this.userInfo = res
-        return res
+        const user = res?.data || res
+        this.userInfo = user
+        return user
       } catch (error) {
         console.error('获取用户信息失败:', error)
         // 如果获取失败，清空令牌（可能令牌已过期）

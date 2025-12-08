@@ -83,9 +83,11 @@ async def shutdown_event():
     """应用关闭时执行"""
     logger.info("应用关闭中...")
 
-# 配置静态文件服务（用于访问上传的文件）
+# 配置静态文件服务（用于访问上传的文件与转码输出）
 os.makedirs("uploads/avatars", exist_ok=True)
+os.makedirs("videos/hls", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/videos", StaticFiles(directory="videos"), name="videos")
 
 # 注册路由
 # 类比 Spring Boot：相当于在 Application.java 中配置 Controller 扫描路径

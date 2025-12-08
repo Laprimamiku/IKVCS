@@ -162,6 +162,18 @@ const router = useRouter();
 const route = useRoute();
 const userStore = useUserStore();
 
+// 静态资源基址（用于拼接封面、头像等相对路径）
+const resolveFileUrl = (path) => {
+  if (!path) return "";
+  if (path.startsWith("http")) return path;
+  const base =
+    import.meta.env.VITE_FILE_BASE_URL ||
+    (import.meta.env.VITE_API_BASE_URL
+      ? import.meta.env.VITE_API_BASE_URL.replace(/\/api\/v1$/, "")
+      : window.location.origin);
+  return `${base}${path}`;
+};
+
 // 搜索相关
 const searchKeyword = ref("");
 const currentKeyword = ref("");
@@ -231,9 +243,20 @@ watch(
 const loadCategories = async () => {
   try {
     const response = await getCategories();
-    categories.value = response.data || [];
+
+    // 处理两种响应格式：
+    // 1. 被拦截器包装后的格式：{ success: true, data: [...] }
+    // 2. 直接返回数组的格式：[...]
+    if (response && response.data && Array.isArray(response.data)) {
+      categories.value = response.data;
+    } else if (Array.isArray(response)) {
+      categories.value = response;
+    } else {
+      categories.value = [];
+    }
   } catch (error) {
     console.error("加载分类失败:", error);
+    categories.value = [];
   }
 };
 
@@ -267,7 +290,7 @@ const loadVideos = async (append = false) => {
       const newVideos = (response.data.items || []).map((video) => ({
         id: video.id,
         title: video.title,
-        cover: video.cover_url,
+        cover: resolveFileUrl(video.cover_url),
         duration: formatDuration(video.duration),
         views: video.view_count,
         likes: video.like_count || 0,
@@ -275,7 +298,7 @@ const loadVideos = async (append = false) => {
         author: {
           name:
             video.uploader?.nickname || video.uploader?.username || "未知用户",
-          avatar: video.uploader?.avatar || "",
+          avatar: resolveFileUrl(video.uploader?.avatar || ""),
           verified: false,
           verifiedType: "personal",
         },

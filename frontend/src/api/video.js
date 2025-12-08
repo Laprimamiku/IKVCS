@@ -74,3 +74,41 @@ export function incrementViewCount(videoId) {
     method: 'post'
   })
 }
+
+/**
+ * 上传封面
+ * @param {number} videoId
+ * @param {File} file
+ */
+export function uploadVideoCover(videoId, file) {
+  const formData = new FormData()
+  formData.append('cover', file)
+
+  return request({
+    url: `/videos/${videoId}/cover`,
+    method: 'post',
+    data: formData,
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
+}
+
+/**
+ * 上传字幕
+ * @param {number} videoId
+ * @param {File} file
+ */
+export function uploadVideoSubtitle(videoId, file) {
+  const formData = new FormData()
+  formData.append('subtitle', file)
+
+  return request({
+    url: `/videos/${videoId}/subtitle`,
+    method: 'post',
+    data: formData,
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
+}
