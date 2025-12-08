@@ -12,14 +12,21 @@
 需求：5.1-5.5
 """
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, status
+from fastapi import UploadFile, File
 from sqlalchemy.orm import Session
 from typing import Optional
+
+import os
+import uuid
+import logging
+logger = logging.getLogger(__name__)
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.models.video import Video
 from pydantic import BaseModel
+from pathlib import Path
 
 router = APIRouter()
 
@@ -188,8 +195,11 @@ from app.schemas.video import (
     VideoListItemResponse,
     VideoDetailResponse,
     UploaderBriefResponse,
-    CategoryBriefResponse
+    CategoryBriefResponse,
+    SubtitleUploadResponse,
+    CoverUploadResponse
 )
+
 from app.services.video_service import VideoService
 from math import ceil
 
@@ -350,3 +360,182 @@ async def get_video_detail(
         ),
         created_at=video.created_at
     )
+
+@router.post("/{video_id}/subtitle", response_model=SubtitleUploadResponse)
+async def upload_subtitle(
+    video_id: int,
+    subtitle: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    上传字幕文件
+    
+    功能：
+    - 为视频上传字幕文件
+    - 支持 SRT、VTT、JSON、ASS 格式
+    - 更新视频的 subtitle_url 字段
+    
+    路径参数：
+    - video_id: 视频ID
+    
+    请求体：
+    - subtitle: 字幕文件（multipart/form-data）
+    
+    返回：
+    - message: 提示信息
+    - subtitle_url: 字幕文件URL
+    - video_id: 视频ID
+    
+    需求：19.1, 19.2, 19.3
+    """
+    # 1. 检查视频是否存在且属于当前用户
+    video = db.query(Video).filter(Video.id == video_id).first()
+    
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="视频不存在"
+        )
+    
+    # 只有视频上传者可以上传字幕
+    if video.uploader_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="只有视频上传者可以上传字幕"
+        )
+    
+    # 2. 验证文件格式（只支持 SRT 和 VTT）
+    file_extension = subtitle.filename.split('.')[-1].lower()
+    if file_extension not in ['srt', 'vtt', 'json', 'ass']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="字幕格式不支持，仅支持 SRT、VTT、JSON、ASS 格式"
+        )
+    
+    # 3. 创建字幕存储目录
+    subtitle_dir = Path("uploads/subtitles")
+    subtitle_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 4. 生成唯一文件名（避免冲突）
+    unique_filename = f"{video_id}_subtitle_{uuid.uuid4().hex[:8]}.{file_extension}"
+    subtitle_path = subtitle_dir / unique_filename
+    
+    # 5. 保存字幕文件
+    try:
+        content = await subtitle.read()
+        with open(subtitle_path, "wb") as f:
+            f.write(content)
+    except Exception as e:
+        logger.error(f"保存字幕文件失败：{e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="字幕文件保存失败"
+        )
+    
+    # 6. 更新视频的 subtitle_url 字段
+    subtitle_url = f"/uploads/subtitles/{unique_filename}"
+    video.subtitle_url = subtitle_url
+    db.commit()
+    
+    logger.info(f"视频 {video_id} 字幕上传成功：{subtitle_url}")
+    
+    return SubtitleUploadResponse(
+        message="字幕上传成功",
+        subtitle_url=subtitle_url,
+        video_id=video_id
+    )
+
+
+@router.post("/{video_id}/cover", response_model=CoverUploadResponse)
+async def upload_cover(
+    video_id: int,
+    cover: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    上传封面图片
+    
+    功能：
+    - 为视频上传封面图片
+    - 支持 JPG、PNG、WEBP 格式
+    - 更新视频的 cover_url 字段
+    
+    路径参数：
+    - video_id: 视频ID
+    
+    请求体：
+    - cover: 封面图片文件（multipart/form-data）
+    
+    返回：
+    - message: 提示信息
+    - cover_url: 封面图片URL
+    - video_id: 视频ID
+    
+    需求：任务9补充需求
+    """
+    # 1. 检查视频是否存在且属于当前用户
+    video = db.query(Video).filter(Video.id == video_id).first()
+    
+    if not video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="视频不存在"
+        )
+    
+    # 只有视频上传者可以上传封面
+    if video.uploader_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="只有视频上传者可以上传封面"
+        )
+    
+    # 2. 验证文件格式（只支持 JPG、PNG、WEBP）
+    file_extension = cover.filename.split('.')[-1].lower()
+    if file_extension not in ['jpg', 'jpeg', 'png', 'webp']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="封面格式不支持，仅支持 JPG、PNG、WEBP 格式"
+        )
+    
+    # 3. 验证文件大小（限制为 5MB）
+    content = await cover.read()
+    if len(content) > 5 * 1024 * 1024:  # 5MB
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="封面文件过大，最大支持 5MB"
+        )
+    
+    # 4. 创建封面存储目录
+    cover_dir = Path("uploads/covers")
+    cover_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 5. 生成唯一文件名（避免冲突）
+    unique_filename = f"{video_id}_cover_{uuid.uuid4().hex[:8]}.{file_extension}"
+    cover_path = cover_dir / unique_filename
+    
+    # 6. 保存封面文件
+    try:
+        with open(cover_path, "wb") as f:
+            f.write(content)
+    except Exception as e:
+        logger.error(f"保存封面文件失败：{e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="封面文件保存失败"
+        )
+    
+    # 7. 更新视频的 cover_url 字段
+    cover_url = f"/uploads/covers/{unique_filename}"
+    video.cover_url = cover_url
+    db.commit()
+    
+    logger.info(f"视频 {video_id} 封面上传成功：{cover_url}")
+    
+    return CoverUploadResponse(
+        message="封面上传成功",
+        cover_url=cover_url,
+        video_id=video_id
+    )    
+

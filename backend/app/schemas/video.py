@@ -116,3 +116,39 @@ class VideoDetailResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+        
+
+# ==================== 字幕和封面上传相关 ====================
+
+class SubtitleUploadResponse(BaseModel):
+    """字幕上传响应"""
+    message: str
+    subtitle_url: str
+    video_id: int
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "字幕上传成功",
+                "subtitle_url": "/uploads/subtitles/1_subtitle.srt",
+                "video_id": 1
+            }
+        }
+
+
+class CoverUploadResponse(BaseModel):
+    """封面上传响应"""
+    message: str
+    cover_url: str
+    video_id: int
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "封面上传成功",
+                "cover_url": "/uploads/covers/1_cover.jpg",
+                "video_id": 1
+            }
+        }
+
