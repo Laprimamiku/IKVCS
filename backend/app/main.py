@@ -119,5 +119,3 @@ async def health_check():
         "status": "healthy",
         "environment": settings.APP_ENV
     }
-    
-app.include_router(videos.router, prefix="/api/v1/videos", tags=["videos"])
