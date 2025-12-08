@@ -25,7 +25,14 @@ const routes = [
     name: 'VideoUpload',
     component: () => import('../views/VideoUpload.vue'),
     meta: { title: '上传视频', requiresAuth: true }
+  },
+  {
+    path: '/search',
+    name: 'Search',
+    component: () => import('../views/Search.vue'),
+    meta: { title: '搜索' }
   }
+
   // TODO: 后续添加更多路由
   // {
   //   path: '/videos/:id',

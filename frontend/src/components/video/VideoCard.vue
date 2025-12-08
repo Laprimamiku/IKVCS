@@ -32,7 +32,10 @@
         </span>
       </div>
       
-      <!-- 播放量和弹幕数（右上角） -->
+
+
+
+      <!-- 播放量、弹幕数和点赞数（右上角） -->
       <div class="video-stats">
         <span class="stat-item">
           <el-icon><View /></el-icon>
@@ -42,7 +45,12 @@
           <el-icon><ChatDotRound /></el-icon>
           <span>{{ formatNumber(video.danmaku) }}</span>
         </span>
+        <span class="stat-item">
+          <el-icon><Star /></el-icon>
+          <span>{{ formatNumber(video.likes) }}</span>
+        </span>
       </div>
+
       
       <!-- 悬停时显示的操作按钮 -->
       <div class="video-actions">
@@ -93,6 +101,8 @@
 
 <script setup>
 import { VideoPlay, View, ChatDotRound, Clock, CircleCheck } from '@element-plus/icons-vue'
+import { VideoPlay, View, ChatDotRound, Clock, CircleCheck, Star } from '@element-plus/icons-vue'
+
 
 const props = defineProps({
   video: {

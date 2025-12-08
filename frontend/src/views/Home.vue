@@ -6,17 +6,19 @@
         <!-- Logo -->
         <div class="logo" @click="router.push('/')">
           <svg class="logo-icon" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373Z"/>
+            <path
+              d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373Z"
+            />
           </svg>
           <span class="logo-text">IKVCS</span>
         </div>
 
         <!-- 搜索框 -->
         <div class="search-box">
-          <input 
+          <input
             v-model="searchKeyword"
-            type="text" 
-            class="search-input" 
+            type="text"
+            class="search-input"
             placeholder="搜索视频、UP主..."
             @keyup.enter="handleSearch"
             @focus="showSearchPanel = true"
@@ -25,7 +27,7 @@
           <button class="search-btn" @click="handleSearch">
             <el-icon><Search /></el-icon>
           </button>
-          
+
           <!-- 搜索下拉面板 -->
           <div v-show="showSearchPanel" class="search-dropdown">
             <!-- 搜索历史 -->
@@ -47,7 +49,7 @@
                 </span>
               </div>
             </div>
-            
+
             <!-- 热搜榜 -->
             <div class="search-section">
               <div class="section-header">
@@ -73,9 +75,9 @@
         <!-- 右侧用户区 -->
         <div class="user-actions">
           <template v-if="userStore.isLoggedIn">
-            <el-button 
-              type="primary" 
-              size="small" 
+            <el-button
+              type="primary"
+              size="small"
               class="upload-btn"
               @click="router.push('/upload')"
             >
@@ -101,18 +103,18 @@
             </el-dropdown>
           </template>
           <template v-else>
-            <el-button 
-              type="primary" 
-              size="small" 
+            <el-button
+              type="primary"
+              size="small"
               class="auth-button login-btn"
               @click="showAuthDialog('login')"
             >
               登录
             </el-button>
-            <el-button 
-              type="primary" 
+            <el-button
+              type="primary"
               plain
-              size="small" 
+              size="small"
               class="auth-button register-btn"
               @click="showAuthDialog('register')"
             >
@@ -123,12 +125,11 @@
       </div>
     </header>
 
-
     <!-- 分类导航 -->
     <nav class="category-nav">
       <div class="nav-wrapper">
-        <div 
-          v-for="cat in categories" 
+        <div
+          v-for="cat in categories"
           :key="cat.id"
           class="nav-item"
           :class="{ 'is-active': currentCategory === cat.id }"
@@ -144,16 +145,21 @@
     <main class="main-content">
       <div class="content-container">
         <!-- 轮播图 -->
-        <HomeBanner 
-          :banners="banners"
-          @click="handleBannerClick"
-        />
+        <HomeBanner :banners="banners" @click="handleBannerClick" />
 
         <!-- 视频区域 -->
         <div class="video-section">
-          <h2 class="section-title">推荐视频</h2>
+          <h2 class="section-title">
+            <template v-if="currentCategory">
+              {{
+                categories.find((c) => c.id === currentCategory)?.name ||
+                "推荐"
+              }}视频
+            </template>
+            <template v-else> 推荐视频 </template>
+          </h2>
           <VideoGrid
-            :videos="mockVideos"
+            :videos="videos"
             :loading="loading"
             :has-more="hasMore"
             @load-more="loadMoreVideos"
@@ -165,8 +171,8 @@
     </main>
 
     <!-- 登录注册弹窗 -->
-    <AuthDialog 
-      v-model="authDialogVisible" 
+    <AuthDialog
+      v-model="authDialogVisible"
       :mode="authMode"
       @success="handleAuthSuccess"
     />
@@ -174,331 +180,329 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
-  Search, User, ArrowDown, SwitchButton, Upload,
-  Star, Film, Reading, Monitor, Headset, TrophyBase
-} from '@element-plus/icons-vue'
-import { useUserStore } from '@/stores/user'
-import AuthDialog from '@/components/AuthDialog.vue'
-import HomeBanner from '@/components/home/HomeBanner.vue'
-import VideoGrid from '@/components/video/VideoGrid.vue'
+import { ref, reactive, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { ElMessage, ElMessageBox } from "element-plus";
+import {
+  Search,
+  User,
+  ArrowDown,
+  SwitchButton,
+  Upload,
+  Star,
+  Film,
+  Reading,
+  Monitor,
+  Headset,
+  TrophyBase,
+} from "@element-plus/icons-vue";
+import { useUserStore } from "@/stores/user";
+import AuthDialog from "@/components/AuthDialog.vue";
+import HomeBanner from "@/components/home/HomeBanner.vue";
+import VideoGrid from "@/components/video/VideoGrid.vue";
+import { getVideoList } from "@/api/video";
+import { getCategories } from "@/api/category";
 
-const router = useRouter()
-const userStore = useUserStore()
+const router = useRouter();
+const userStore = useUserStore();
 
 // 搜索相关
-const searchKeyword = ref('')
-const showSearchPanel = ref(false)
-const searchHistory = ref(['Vue 3 教程', 'Element Plus', '前端开发'])
+const searchKeyword = ref("");
+const showSearchPanel = ref(false);
+const searchHistory = ref(["Vue 3 教程", "Element Plus", "前端开发"]);
 const trendingSearches = ref([
-  'AI 技术解析',
-  'Vue 3 新特性',
-  '前端性能优化',
-  'TypeScript 入门',
-  'React vs Vue',
-  'Web3.0 趋势',
-  '微前端架构',
-  'Vite 构建工具',
-  'CSS 动画技巧',
-  'JavaScript 设计模式'
-])
+  "AI 技术解析",
+  "Vue 3 新特性",
+  "前端性能优化",
+  "TypeScript 入门",
+  "React vs Vue",
+  "Web3.0 趋势",
+  "微前端架构",
+  "Vite 构建工具",
+  "CSS 动画技巧",
+  "JavaScript 设计模式",
+]);
 
 // 分类相关
-const currentCategory = ref('all')
-const categories = reactive([
-  { id: 'all', name: '推荐', icon: Star },
-  { id: 'video', name: '视频', icon: Film },
-  { id: 'article', name: '专栏', icon: Reading },
-  { id: 'live', name: '直播', icon: Monitor },
-  { id: 'music', name: '音乐', icon: Headset },
-  { id: 'game', name: '游戏', icon: TrophyBase }
-])
+const currentCategory = ref(null);
+const categories = ref([]);
+
+// 加载分类列表
+const loadCategories = async () => {
+  try {
+    const response = await getCategories();
+    if (response.success) {
+      // 添加"推荐"选项
+      categories.value = [
+        { id: null, name: "推荐", icon: Star },
+        ...(response.data || []).map((cat) => ({
+          ...cat,
+          icon: Film, // 可以根据分类类型设置不同图标
+        })),
+      ];
+    }
+  } catch (error) {
+    console.error("加载分类失败:", error);
+    // 使用默认分类
+    categories.value = [
+      { id: null, name: "推荐", icon: Star },
+      { id: 1, name: "科技", icon: Monitor },
+      { id: 2, name: "教育", icon: Reading },
+      { id: 3, name: "娱乐", icon: Film },
+    ];
+  }
+};
 
 // 轮播图数据
 const banners = ref([
   {
     id: 1,
-    title: '精彩视频推荐',
-    description: '发现更多优质内容',
-    image: 'https://picsum.photos/1400/400?random=1',
-    link: '/video/1'
+    title: "精彩视频推荐",
+    description: "发现更多优质内容",
+    image: "https://picsum.photos/1400/400?random=1",
+    link: "/video/1",
   },
   {
     id: 2,
-    title: '热门番剧',
-    description: '追番必看',
-    image: 'https://picsum.photos/1400/400?random=2',
-    link: '/bangumi/1'
+    title: "热门番剧",
+    description: "追番必看",
+    image: "https://picsum.photos/1400/400?random=2",
+    link: "/bangumi/1",
   },
   {
     id: 3,
-    title: '音乐专区',
-    description: '聆听美妙旋律',
-    image: 'https://picsum.photos/1400/400?random=3',
-    link: '/music/1'
-  }
-])
+    title: "音乐专区",
+    description: "聆听美妙旋律",
+    image: "https://picsum.photos/1400/400?random=3",
+    link: "/music/1",
+  },
+]);
 
 // 视频数据
-const loading = ref(false)
-const hasMore = ref(true)
-const mockVideos = reactive([
-  { 
-    id: 1, 
-    title: '【科普】量子计算机的工作原理详解', 
-    duration: '12:34', 
-    cover: 'https://picsum.photos/400/250?random=1',
-    author: { 
-      name: 'UP主1', 
-      avatar: 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png',
-      verified: true,
-      verifiedType: 'personal'
-    }, 
-    views: 102000, 
-    danmaku: 1234,
-    tags: ['4K', '热门'],
-    publishTime: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
-  },
-  { 
-    id: 2, 
-    title: '【教程】Vue 3 从入门到精通完整教程', 
-    duration: '45:12', 
-    cover: 'https://picsum.photos/400/250?random=2',
-    author: { 
-      name: 'UP主2', 
-      avatar: 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png',
-      verified: false
-    }, 
-    views: 85000, 
-    danmaku: 892,
-    tags: ['最新'],
-    publishTime: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString()
-  },
-  { 
-    id: 3, 
-    title: '【科技】AI 如何改变我们的生活方式', 
-    duration: '23:45', 
-    cover: 'https://picsum.photos/400/250?random=3',
-    author: { 
-      name: 'UP主3', 
-      avatar: 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png',
-      verified: true,
-      verifiedType: 'enterprise'
-    }, 
-    views: 156000, 
-    danmaku: 2341,
-    tags: ['独家'],
-    publishTime: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-  },
-  { 
-    id: 4, 
-    title: '【编程】Python 数据分析实战项目', 
-    duration: '34:56', 
-    cover: 'https://picsum.photos/400/250?random=4',
-    author: { 
-      name: 'UP主4', 
-      avatar: 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png' 
-    }, 
-    views: 68000, 
-    danmaku: 567,
-    publishTime: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  { 
-    id: 5, 
-    title: '【知识】宇宙的起源与演化历程', 
-    duration: '28:30', 
-    cover: 'https://picsum.photos/400/250?random=5',
-    author: { 
-      name: 'UP主5', 
-      avatar: 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png' 
-    }, 
-    views: 123000, 
-    danmaku: 1567,
-    publishTime: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  { 
-    id: 6, 
-    title: '【技术】区块链技术原理详细讲解', 
-    duration: '19:45', 
-    cover: 'https://picsum.photos/400/250?random=6',
-    author: { 
-      name: 'UP主6', 
-      avatar: 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png' 
-    }, 
-    views: 91000, 
-    danmaku: 734,
-    publishTime: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  { 
-    id: 7, 
-    title: '【动画】精彩动画短片合集推荐', 
-    duration: '15:20', 
-    cover: 'https://picsum.photos/400/250?random=7',
-    author: { 
-      name: 'UP主7', 
-      avatar: 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png' 
-    }, 
-    views: 205000, 
-    danmaku: 3456,
-    publishTime: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  { 
-    id: 8, 
-    title: '【音乐】经典钢琴曲演奏欣赏', 
-    duration: '08:15', 
-    cover: 'https://picsum.photos/400/250?random=8',
-    author: { 
-      name: 'UP主8', 
-      avatar: 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png' 
-    }, 
-    views: 52000, 
-    danmaku: 234,
-    publishTime: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString()
+const loading = ref(false);
+const hasMore = ref(true);
+const currentPage = ref(1);
+const pageSize = ref(20);
+const videos = ref([]);
+
+// 格式化视频时长（秒 -> MM:SS 或 HH:MM:SS）
+const formatDuration = (seconds) => {
+  if (!seconds) return "00:00";
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  if (hours > 0) {
+    return `${hours.toString().padStart(2, "0")}:${minutes
+      .toString()
+      .padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   }
-])
+  return `${minutes.toString().padStart(2, "0")}:${secs
+    .toString()
+    .padStart(2, "0")}`;
+};
+
+// 加载视频列表
+const loadVideos = async (append = false) => {
+  if (loading.value) return;
+
+  loading.value = true;
+
+  try {
+    const params = {
+      page: currentPage.value,
+      page_size: pageSize.value,
+    };
+
+    // 添加分类筛选
+    if (currentCategory.value) {
+      params.category_id = currentCategory.value;
+    }
+
+    const response = await getVideoList(params);
+
+    if (response.success) {
+      const newVideos = (response.data.items || []).map((video) => ({
+        id: video.id,
+        title: video.title,
+        cover: video.cover_url,
+        duration: formatDuration(video.duration),
+        views: video.view_count,
+        likes: video.like_count || 0,
+        danmaku: video.danmaku_count || 0, // 从后端获取弹幕数
+        author: {
+          name:
+            video.uploader?.nickname || video.uploader?.username || "未知用户",
+          avatar: video.uploader?.avatar || "",
+          verified: false,
+          verifiedType: "personal",
+        },
+        tags: [],
+        publishTime: video.created_at,
+      }));
+
+      if (append) {
+        videos.value.push(...newVideos);
+      } else {
+        videos.value = newVideos;
+      }
+
+      hasMore.value = videos.value.length < (response.data.total || 0);
+    }
+  } catch (error) {
+    console.error("加载视频列表失败:", error);
+    ElMessage.error("加载视频列表失败");
+  } finally {
+    loading.value = false;
+  }
+};
+
+// 加载更多视频
+const loadMoreVideos = async () => {
+  if (!hasMore.value || loading.value) return;
+
+  currentPage.value++;
+  await loadVideos(true);
+};
+
+// 选择分类
+const selectCategory = (categoryId) => {
+  currentCategory.value = categoryId;
+  currentPage.value = 1;
+  loadVideos();
+};
 
 // 认证弹窗
-const authDialogVisible = ref(false)
-const authMode = ref('login')
+const authDialogVisible = ref(false);
+const authMode = ref("login");
 
 onMounted(async () => {
   if (userStore.token && !userStore.userInfo) {
     try {
-      await userStore.initUserInfo()
+      await userStore.initUserInfo();
     } catch (error) {
-      console.error('初始化用户信息失败:', error)
+      console.error("初始化用户信息失败:", error);
     }
   }
-})
+  // 加载分类列表
+  await loadCategories();
+
+  // 加载视频列表
+  await loadVideos();
+
+  // 加载搜索历史
+  const savedHistory = localStorage.getItem("searchHistory");
+  if (savedHistory) {
+    try {
+      searchHistory.value = JSON.parse(savedHistory);
+    } catch (error) {
+      console.error("加载搜索历史失败:", error);
+    }
+  }
+});
 
 // 搜索相关方法
 const handleSearch = () => {
   if (!searchKeyword.value.trim()) {
-    ElMessage.warning('请输入搜索关键词')
-    return
+    ElMessage.warning("请输入搜索关键词");
+    return;
   }
-  
+
   // 添加到搜索历史
   if (!searchHistory.value.includes(searchKeyword.value)) {
-    searchHistory.value.unshift(searchKeyword.value)
+    searchHistory.value.unshift(searchKeyword.value);
     if (searchHistory.value.length > 10) {
-      searchHistory.value.pop()
+      searchHistory.value.pop();
     }
+    // 保存到localStorage
+    localStorage.setItem("searchHistory", JSON.stringify(searchHistory.value));
   }
-  
-  console.log('搜索:', searchKeyword.value)
-  showSearchPanel.value = false
-}
+
+  // 跳转到搜索页面
+  router.push({
+    path: "/search",
+    query: {
+      keyword: searchKeyword.value,
+    },
+  });
+
+  showSearchPanel.value = false;
+};
 
 const handleSearchBlur = () => {
   // 延迟关闭，以便点击事件能够触发
   setTimeout(() => {
-    showSearchPanel.value = false
-  }, 200)
-}
+    showSearchPanel.value = false;
+  }, 200);
+};
 
 const selectHistory = (keyword) => {
-  searchKeyword.value = keyword
-  handleSearch()
-}
+  searchKeyword.value = keyword;
+  handleSearch();
+};
 
 const selectTrending = (keyword) => {
-  searchKeyword.value = keyword
-  handleSearch()
-}
+  searchKeyword.value = keyword;
+  handleSearch();
+};
 
 const clearHistory = () => {
-  searchHistory.value = []
-}
-
-// 分类相关方法
-const selectCategory = (categoryId) => {
-  currentCategory.value = categoryId
-  console.log('选择分类:', categoryId)
-}
+  searchHistory.value = [];
+  localStorage.removeItem("searchHistory");
+};
 
 // 轮播图相关方法
 const handleBannerClick = (banner) => {
-  console.log('点击轮播图:', banner)
+  console.log("点击轮播图:", banner);
   if (banner.link) {
-    router.push(banner.link)
+    router.push(banner.link);
   }
-}
+};
 
 // 视频相关方法
 const handleVideoClick = (video) => {
-  console.log('点击视频:', video)
-  // router.push(`/video/${video.id}`)
-}
+  console.log("点击视频:", video);
+  // TODO: 跳转到视频详情页
+  // router.push(`/videos/${video.id}`)
+};
 
 const handleWatchLater = (video) => {
-  console.log('稍后再看:', video)
-}
-
-const loadMoreVideos = async () => {
-  loading.value = true
-  
-  // 模拟加载更多
-  setTimeout(() => {
-    const newVideos = Array.from({ length: 8 }, (_, i) => ({
-      id: mockVideos.length + i + 1,
-      title: `新视频 ${mockVideos.length + i + 1}`,
-      duration: '10:00',
-      cover: `https://picsum.photos/400/250?random=${mockVideos.length + i + 1}`,
-      author: {
-        name: `UP主${mockVideos.length + i + 1}`,
-        avatar: 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
-      },
-      views: Math.floor(Math.random() * 100000),
-      danmaku: Math.floor(Math.random() * 1000),
-      publishTime: new Date().toISOString()
-    }))
-    
-    mockVideos.push(...newVideos)
-    loading.value = false
-    
-    // 模拟没有更多数据
-    if (mockVideos.length >= 40) {
-      hasMore.value = false
-    }
-  }, 1000)
-}
+  console.log("稍后再看:", video);
+  ElMessage.success(`已添加到稍后再看：${video.title}`);
+};
 
 // 认证相关方法
 const showAuthDialog = (mode) => {
-  authMode.value = mode
-  authDialogVisible.value = true
-}
+  authMode.value = mode;
+  authDialogVisible.value = true;
+};
 
 const handleAuthSuccess = () => {
-  console.log('登录注册成功')
-}
+  console.log("登录注册成功");
+};
 
 const handleCommand = async (command) => {
-  if (command === 'profile') {
-    router.push('/profile')
-  } else if (command === 'logout') {
+  if (command === "profile") {
+    router.push("/profile");
+  } else if (command === "logout") {
     try {
-      await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      })
-      await userStore.logout()
-      ElMessage.success('退出登录成功')
-      location.reload()
+      await ElMessageBox.confirm("确定要退出登录吗？", "提示", {
+        confirmButtonText: "确定",
+        cancelButtonText: "取消",
+        type: "warning",
+      });
+      await userStore.logout();
+      ElMessage.success("退出登录成功");
+      location.reload();
     } catch (error) {
-      if (error !== 'cancel') {
-        console.error('退出登录失败:', error)
+      if (error !== "cancel") {
+        console.error("退出登录失败:", error);
       }
     }
   }
-}
+};
 </script>
-
 
 <style scoped>
 .home-page {
@@ -548,7 +552,11 @@ const handleCommand = async (command) => {
 .logo-text {
   font-size: var(--font-size-xl);
   font-weight: bold;
-  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  background: linear-gradient(
+    135deg,
+    var(--primary-color),
+    var(--secondary-color)
+  );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -815,7 +823,7 @@ const handleCommand = async (command) => {
 }
 
 .nav-item.is-active::after {
-  content: '';
+  content: "";
   position: absolute;
   bottom: 0;
   left: 0;
@@ -854,20 +862,20 @@ const handleCommand = async (command) => {
     padding: 0 var(--spacing-md);
     gap: var(--spacing-md);
   }
-  
+
   .search-box {
     max-width: none;
   }
-  
+
   .user-name {
     display: none;
   }
-  
+
   .nav-wrapper {
     padding: 0 var(--spacing-md);
     gap: var(--spacing-lg);
   }
-  
+
   .content-container {
     padding: 0 var(--spacing-md);
   }
