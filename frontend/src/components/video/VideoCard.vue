@@ -4,9 +4,9 @@
     <div class="video-card__cover">
       <!-- 封面图片 -->
       <div class="cover-image">
-        <img 
-          v-if="video.cover" 
-          :src="video.cover" 
+        <img
+          v-if="video.cover"
+          :src="video.cover"
           :alt="video.title"
           loading="lazy"
         />
@@ -14,25 +14,25 @@
           <el-icon :size="48"><VideoPlay /></el-icon>
         </div>
       </div>
-      
+
       <!-- 视频时长 -->
       <span v-if="video.duration" class="video-duration">
         {{ video.duration }}
       </span>
-      
+
       <!-- 视频标签（左上角） -->
       <div v-if="video.tags && video.tags.length" class="video-tags">
-        <span 
-          v-for="tag in video.tags.slice(0, 2)" 
-          :key="tag" 
+        <span
+          v-for="tag in video.tags.slice(0, 2)"
+          :key="tag"
           class="tag"
           :class="`tag--${tag.toLowerCase()}`"
         >
           {{ tag }}
         </span>
       </div>
-      
-      <!-- 播放量和弹幕数（右上角） -->
+
+      <!-- 播放量、弹幕数和点赞数（右上角） -->
       <div class="video-stats">
         <span class="stat-item">
           <el-icon><View /></el-icon>
@@ -42,8 +42,12 @@
           <el-icon><ChatDotRound /></el-icon>
           <span>{{ formatNumber(video.danmaku) }}</span>
         </span>
+        <span class="stat-item">
+          <el-icon><Star /></el-icon>
+          <span>{{ formatNumber(video.likes) }}</span>
+        </span>
       </div>
-      
+
       <!-- 悬停时显示的操作按钮 -->
       <div class="video-actions">
         <button class="action-btn" @click.stop="handleWatchLater">
@@ -51,37 +55,39 @@
           <span>稍后再看</span>
         </button>
       </div>
-      
+
       <!-- 遮罩层 -->
       <div class="cover-overlay"></div>
     </div>
-    
+
     <!-- 视频信息区域 -->
     <div class="video-card__info">
       <!-- 视频标题 -->
       <h3 class="video-title" :title="video.title">
         {{ video.title }}
       </h3>
-      
+
       <!-- UP主信息 -->
       <div class="video-meta">
         <div class="uploader-info">
-          <el-avatar 
-            :src="video.author?.avatar" 
+          <el-avatar
+            :src="video.author?.avatar"
             :size="20"
             class="uploader-avatar"
           />
           <span class="uploader-name">{{ video.author?.name }}</span>
           <!-- 认证标识 -->
-          <el-icon 
-            v-if="video.author?.verified" 
+          <el-icon
+            v-if="video.author?.verified"
             class="verified-icon"
-            :title="video.author.verifiedType === 'personal' ? '个人认证' : '企业认证'"
+            :title="
+              video.author.verifiedType === 'personal' ? '个人认证' : '企业认证'
+            "
           >
             <CircleCheck />
           </el-icon>
         </div>
-        
+
         <!-- 发布时间 -->
         <span v-if="video.publishTime" class="publish-time">
           {{ formatTime(video.publishTime) }}
@@ -92,85 +98,92 @@
 </template>
 
 <script setup>
-import { VideoPlay, View, ChatDotRound, Clock, CircleCheck } from '@element-plus/icons-vue'
+import {
+  VideoPlay,
+  View,
+  ChatDotRound,
+  Clock,
+  CircleCheck,
+  Star,
+} from "@element-plus/icons-vue";
 
 const props = defineProps({
   video: {
     type: Object,
     required: true,
     default: () => ({
-      id: '',
-      title: '',
-      cover: '',
-      duration: '',
+      id: "",
+      title: "",
+      cover: "",
+      duration: "",
       views: 0,
       danmaku: 0,
       author: {
-        name: '',
-        avatar: '',
+        name: "",
+        avatar: "",
         verified: false,
-        verifiedType: 'personal' // 'personal' | 'enterprise'
+        verifiedType: "personal", // 'personal' | 'enterprise'
       },
       tags: [],
-      publishTime: ''
-    })
-  }
-})
+      publishTime: "",
+    }),
+  },
+});
 
-const emit = defineEmits(['click', 'watch-later'])
+const emit = defineEmits(["click", "watch-later"]);
 
 /**
  * 格式化数字（播放量、弹幕数）
  */
 const formatNumber = (num) => {
-  if (!num) return '0'
+  if (!num) return "0";
   if (num >= 100000000) {
-    return (num / 100000000).toFixed(1) + '亿'
+    return (num / 100000000).toFixed(1) + "亿";
   }
   if (num >= 10000) {
-    return (num / 10000).toFixed(1) + '万'
+    return (num / 10000).toFixed(1) + "万";
   }
-  return num.toString()
-}
+  return num.toString();
+};
 
 /**
  * 格式化时间
  */
 const formatTime = (time) => {
-  if (!time) return ''
-  const now = new Date()
-  const publishDate = new Date(time)
-  const diff = now - publishDate
-  
-  const minute = 60 * 1000
-  const hour = 60 * minute
-  const day = 24 * hour
-  const month = 30 * day
-  
+  if (!time) return "";
+  const now = new Date();
+  const publishDate = new Date(time);
+  const diff = now - publishDate;
+
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const month = 30 * day;
+
   if (diff < hour) {
-    return Math.floor(diff / minute) + '分钟前'
+    return Math.floor(diff / minute) + "分钟前";
   } else if (diff < day) {
-    return Math.floor(diff / hour) + '小时前'
+    return Math.floor(diff / hour) + "小时前";
   } else if (diff < month) {
-    return Math.floor(diff / day) + '天前'
+    return Math.floor(diff / day) + "天前";
   } else {
-    return publishDate.toLocaleDateString('zh-CN')
+    return publishDate.toLocaleDateString("zh-CN");
   }
-}
+};
 
 /**
  * 点击卡片
  */
 const handleClick = () => {
-  emit('click', props.video)
-}
+  emit("click", props.video);
+};
 
 /**
  * 稍后再看
  */
 const handleWatchLater = () => {
-  emit('watch-later', props.video)
-}
+  emit("watch-later", props.video);
+};
 </script>
 
 <style scoped>
@@ -399,7 +412,7 @@ const handleWatchLater = () => {
   color: var(--text-primary);
   line-height: 1.4;
   margin: 0;
-  
+
   /* 两行省略 */
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -407,7 +420,7 @@ const handleWatchLater = () => {
   overflow: hidden;
   text-overflow: ellipsis;
   word-break: break-word;
-  
+
   transition: color var(--transition-fast);
 }
 
@@ -467,11 +480,11 @@ const handleWatchLater = () => {
   .video-card__info {
     padding: 10px;
   }
-  
+
   .video-title {
     font-size: var(--font-size-sm);
   }
-  
+
   .video-actions {
     display: none;
   }

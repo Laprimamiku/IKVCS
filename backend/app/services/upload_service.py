@@ -88,8 +88,24 @@ class UploadService:
                 # 2. 秒传检测：如果已完成上传
                 if existing_session.is_completed and existing_session.video_id:
                     logger.info(f"秒传检测：文件 {upload_data.file_hash} 已存在")
-                    uploaded_chunks = list(range(existing_session.total_chunks))
-                    return existing_session, uploaded_chunks, True
+                    # 若数据库里的视频记录缺失或播放文件不存在，则视为需重新上传
+                    existing_video = db.query(Video).filter(Video.id == existing_session.video_id).first()
+                    video_path = None
+                    if existing_video and existing_video.video_url:
+                        video_path = existing_video.video_url.lstrip("/")
+                    file_exists = video_path and os.path.exists(video_path)
+                    if not existing_video or not file_exists:
+                        logger.warning(
+                            "秒传命中但视频实体缺失或文件不存在，重置会话以允许重新上传："
+                            f"video_id={existing_session.video_id}, path={video_path}"
+                        )
+                        existing_session.is_completed = False
+                        existing_session.video_id = None
+                        existing_session.uploaded_chunks = ""
+                        db.commit()
+                    else:
+                        uploaded_chunks = list(range(existing_session.total_chunks))
+                        return existing_session, uploaded_chunks, True
                 
                 # 3. 断点续传：返回已上传分片列表
                 logger.info(f"断点续传：文件 {upload_data.file_hash} 未完成上传")
@@ -204,10 +220,12 @@ class UploadService:
             )
         
         if session.is_completed:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="上传已完成，无法继续上传分片"
+            # 已完成的会话，直接返回已上传数量，避免前端误判为失败
+            uploaded_chunks = UploadService._get_uploaded_chunks_from_redis(
+                file_hash,
+                session.total_chunks
             )
+            return len(uploaded_chunks)
         
         # 2. 验证分片索引
         if chunk_index < 0 or chunk_index >= session.total_chunks:
@@ -300,19 +318,68 @@ class UploadService:
                 detail="无权操作此上传会话"
             )
         
-        if session.is_completed:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="上传已完成"
-            )
-        
         # 2. 验证所有分片已上传
         uploaded_chunks = UploadService._get_uploaded_chunks_from_redis(
             file_hash,
             session.total_chunks
         )
         
+        logger.info(f"Redis 中的分片数：{len(uploaded_chunks)}/{session.total_chunks}")
+
+        # 如果 Redis 读取不到，尝试使用数据库中的 uploaded_chunks 兜底
+        if (not uploaded_chunks) and session.uploaded_chunks:
+            try:
+                uploaded_chunks = [
+                    int(x) for x in session.uploaded_chunks.split(",") if x.strip()
+                ]
+                logger.info(f"从数据库恢复的分片数：{len(uploaded_chunks)}/{session.total_chunks}")
+            except Exception as e:
+                logger.error(f"解析数据库分片列表失败：{e}")
+                uploaded_chunks = []
+
+        # 如果会话已标记完成且有 video_id
+        # - 默认保持幂等：返回已有视频
+        # - 但如果用户此次填写的元信息（标题/描述/分类/封面）与原视频不一致，认为是“同文件二次发布”，复制一条新视频记录，避免覆盖旧数据
+        if session.is_completed and session.video_id:
+            existing_video = db.query(Video).filter(Video.id == session.video_id).first()
+            if existing_video:
+                meta_changed = (
+                    title != existing_video.title
+                    or (description or "") != (existing_video.description or "")
+                    or category_id != existing_video.category_id
+                    or cover_url  # 本次上传有封面，则视为需要新记录
+                )
+                if meta_changed:
+                    logger.info(
+                        "检测到同文件二次发布，复制新视频记录以避免覆盖旧数据："
+                        f"old_video_id={existing_video.id}"
+                    )
+                    # 不复用旧的转码产物，强制重新转码，避免历史残留导致卡顿
+                    new_video = Video(
+                        uploader_id=user_id,
+                        category_id=category_id,
+                        title=title,
+                        description=description,
+                        cover_url=cover_url,
+                        video_url=None,
+                        subtitle_url=None,
+                        status=0,   # 转码中
+                        duration=0,
+                    )
+                    db.add(new_video)
+                    db.commit()
+                    db.refresh(new_video)
+                    # 更新会话指向新视频，保证同一次 finish 幂等
+                    session.video_id = new_video.id
+                    session.is_completed = True
+                    db.commit()
+                    return new_video
+                logger.info(f"上传会话已完成，返回已有视频：video_id={session.video_id}")
+                return existing_video
+        
+        # 检查分片完整性
         if len(uploaded_chunks) != session.total_chunks:
+            logger.error(f"分片不完整：已上传 {len(uploaded_chunks)}/{session.total_chunks}，数据库中的分片：{session.uploaded_chunks}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"上传未完成：已上传 {len(uploaded_chunks)}/{session.total_chunks} 个分片"

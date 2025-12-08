@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from typing import Optional, Tuple, List
 import logging
+import os
 
 from app.models.video import Video
 from app.models.user import User
@@ -92,15 +93,22 @@ class VideoService:
             
         需求：5.4（视频详情展示）
         """
-        video = db.query(Video).filter(
-            Video.id == video_id,
-            Video.status == 2  # 只能查看已发布的视频
-        ).first()
+        video = db.query(Video).filter(Video.id == video_id).first()
         
         if video:
             logger.info(f"获取视频详情：video_id={video_id}, title={video.title}")
         else:
             logger.warning(f"视频不存在或未发布：video_id={video_id}")
+            return None
+
+        # 如果 video_url 为空但已有转码产物，自动补全并保证可播放状态
+        if not video.video_url:
+            maybe_path = f"videos/hls/{video_id}/master.m3u8"
+            if os.path.exists(maybe_path):
+                video.video_url = f"/{maybe_path}"
+                if video.status != 2:
+                    video.status = 2
+                db.commit()
         
         return video
     
