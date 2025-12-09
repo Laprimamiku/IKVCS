@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_current_active_user
+from app.core.response import success_response
 from app.models.user import User
 from app.schemas.user import UserResponse, UserUpdateRequest, MessageResponse
 
@@ -133,10 +134,10 @@ async def upload_avatar(
     db.commit()
     db.refresh(current_user)
     
-    return {
-        "avatar_url": avatar_url,
-        "message": "头像上传成功"
-    }
+    return success_response(
+        data={"avatar_url": avatar_url},
+        message="头像上传成功"
+    )
 
 
 @router.get("/{user_id}", response_model=UserResponse)

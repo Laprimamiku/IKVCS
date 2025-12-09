@@ -26,6 +26,17 @@ app.use(router)
 // 注册 Element Plus（UI 组件库）
 app.use(ElementPlus)
 
+// 注册 Element Plus（UI 组件库）
+app.use(ElementPlus, {
+  // 配置 Message 组件
+  message: {
+    max: 3,  // 最多同时显示 3 个提示
+    offset: 20,  // 距离顶部的偏移量（像素）
+  },
+  // 配置全局 z-index
+  zIndex: 2000,  // 降低 z-index，避免遮挡重要按钮
+})
+
 // 注册 Element Plus 图标
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component)

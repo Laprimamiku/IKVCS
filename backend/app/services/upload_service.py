@@ -385,10 +385,19 @@ class UploadService:
                 detail=f"上传未完成：已上传 {len(uploaded_chunks)}/{session.total_chunks} 个分片"
             )
         
-        # 3. 合并分片文件
+        # 3. 校验临时分片目录是否存在，避免直接 500
+        chunk_dir = os.path.join(UploadService.UPLOAD_TEMP_DIR, file_hash)
+        if not os.path.exists(chunk_dir):
+            logger.error(f"分片目录缺失，无法合并：{chunk_dir}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="分片临时目录不存在，请重新上传"
+            )
+
+        # 4. 合并分片文件
         final_file_path = UploadService._merge_chunks(file_hash, session.file_name)
         
-        # 4. 创建视频记录
+        # 5. 创建视频记录
         video = Video(
             uploader_id=user_id,
             category_id=category_id,
@@ -404,12 +413,12 @@ class UploadService:
         db.commit()
         db.refresh(video)
         
-        # 5. 标记上传会话为已完成
+        # 6. 标记上传会话为已完成
         session.is_completed = True
         session.video_id = video.id
         db.commit()
         
-        # 6. 清理 Redis
+        # 7. 清理 Redis
         try:
             redis_client = get_redis()
             redis_client.delete(f"upload:{file_hash}")
@@ -466,6 +475,8 @@ class UploadService:
         final_file_path = os.path.join(UploadService.VIDEO_STORAGE_DIR, f"{file_hash}_{file_name}")
         
         try:
+            if not os.path.exists(chunk_dir):
+                raise FileNotFoundError(f"分片目录不存在：{chunk_dir}")
             with open(final_file_path, "wb") as final_file:
                 chunk_index = 0
                 while True:

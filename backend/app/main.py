@@ -45,6 +45,77 @@ app = FastAPI(
     redoc_url="/redoc"  # ReDoc 地址
 )
 
+# ==================== 全局异常处理 ====================
+# 类比 Java：相当于 @ControllerAdvice + @ExceptionHandler
+
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
+from app.core.exceptions import AppException
+
+@app.exception_handler(AppException)
+async def app_exception_handler(request: Request, exc: AppException):
+    """
+    处理自定义应用异常
+    
+    类比 Java：
+        @ExceptionHandler(AppException.class)
+        public ResponseEntity<ErrorResponse> handleAppException(AppException e) {
+            return ResponseEntity.status(e.getStatusCode())
+                .body(new ErrorResponse(e.getMessage()));
+        }
+    """
+    logger.error(
+        f"应用异常: {exc.message} (状态码: {exc.status_code})",
+        extra={
+            "path": request.url.path,
+            "method": request.method,
+            "status_code": exc.status_code
+        }
+    )
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "message": exc.message,
+            "detail": exc.detail,
+            "status_code": exc.status_code
+        }
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """
+    处理所有未捕获的异常
+    
+    类比 Java：
+        @ExceptionHandler(Exception.class)
+        public ResponseEntity<ErrorResponse> handleGeneralException(Exception e) {
+            logger.error("未捕获的异常", e);
+            return ResponseEntity.status(500)
+                .body(new ErrorResponse("服务器内部错误"));
+        }
+    """
+    logger.error(
+        f"未捕获的异常: {str(exc)}",
+        exc_info=True,
+        extra={
+            "path": request.url.path,
+            "method": request.method
+        }
+    )
+    
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "success": False,
+            "message": "服务器内部错误",
+            "detail": "系统出现异常，请稍后重试或联系管理员",
+            "status_code": 500
+        }
+    )
+
 # CORS 配置（跨域资源共享）
 # 允许前端（Vue）访问后端 API
 app.add_middleware(

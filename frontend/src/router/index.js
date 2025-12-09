@@ -27,6 +27,12 @@ const routes = [
     meta: { title: "上传视频", requiresAuth: true },
   },
   {
+    path: "/video-center",
+    name: "VideoCenter",
+    component: () => import("../views/VideoCenter.vue"),
+    meta: { title: "视频中心", requiresAuth: true },
+  },
+  {
     path: "/search",
     name: "Search",
     component: () => import("../views/Search.vue"),

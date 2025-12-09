@@ -112,3 +112,55 @@ export function uploadVideoSubtitle(videoId, file) {
     }
   })
 }
+
+/**
+ * 获取我的视频列表
+ * 
+ * @param {Object} params - 查询参数
+ * @param {number} params.page - 页码（从1开始）
+ * @param {number} params.page_size - 每页数量
+ * @param {number} params.status - 视频状态（可选）
+ * @returns {Promise} 返回视频列表和分页信息
+ */
+export function getMyVideos(params) {
+  return request({
+    url: '/videos/my',
+    method: 'get',
+    params
+  })
+}
+
+/**
+ * 更新视频信息
+ * 
+ * @param {number} videoId - 视频ID
+ * @param {Object} data - 更新数据
+ * @param {string} data.title - 视频标题
+ * @param {string} data.description - 视频描述
+ * @param {number} data.category_id - 分类ID
+ * @returns {Promise} 返回更新后的视频信息
+ */
+export function updateVideo(videoId, data) {
+  return request({
+    url: `/videos/${videoId}`,
+    method: 'put',
+    data
+  })
+}
+
+/**
+ * 删除视频
+ * 
+ * @param {number} videoId - 视频ID
+ * @param {boolean} hardDelete - 是否硬删除（默认false，软删除）
+ * @returns {Promise}
+ */
+export function deleteVideo(videoId, hardDelete = false) {
+  return request({
+    url: `/videos/${videoId}`,
+    method: 'delete',
+    params: {
+      hard_delete: hardDelete
+    }
+  })
+}

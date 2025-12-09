@@ -31,6 +31,26 @@ class VideoListRequest(BaseModel):
     keyword: Optional[str] = Field(default=None, max_length=100, description="搜索关键词")
 
 
+class VideoUpdateRequest(BaseModel):
+    """
+    视频更新请求
+    
+    用于编辑视频信息
+    """
+    title: Optional[str] = Field(default=None, max_length=100, description="视频标题")
+    description: Optional[str] = Field(default=None, description="视频描述")
+    category_id: Optional[int] = Field(default=None, description="分类ID")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "title": "更新后的标题",
+                "description": "更新后的描述",
+                "category_id": 1
+            }
+        }
+
+
 # ==================== 响应模型 ====================
 
 class UploaderBriefResponse(BaseModel):
@@ -152,3 +172,50 @@ class CoverUploadResponse(BaseModel):
             }
         }
 
+
+# ==================== 视频状态和转码测试相关 ====================
+
+class VideoStatusResponse(BaseModel):
+    """视频状态响应"""
+    video_id: int
+    title: str
+    status: int
+    status_text: str
+    video_url: Optional[str]
+    duration: int
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "video_id": 1,
+                "title": "测试视频",
+                "status": 1,
+                "status_text": "审核中",
+                "video_url": "/videos/hls/1/master.m3u8",
+                "duration": 120,
+            }
+        }
+
+
+class TranscodeTestRequest(BaseModel):
+    """转码测试请求"""
+    video_id: int
+
+    class Config:
+        json_schema_extra = {"example": {"video_id": 1}}
+
+
+class TranscodeTestResponse(BaseModel):
+    """转码测试响应"""
+    message: str
+    video_id: int
+    status: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "转码任务已启动",
+                "video_id": 1,
+                "status": "transcoding"
+            }
+        }

@@ -48,11 +48,15 @@ request.interceptors.response.use(
     
     const payload = response.data
 
-    // 如果后端已经返回 success 字段，保持原样；否则包装为统一结构
+    // 后端已统一响应格式，直接返回
+    // 统一格式：{ success: boolean, data: any, message: string, status_code: number }
     if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'success')) {
       return payload
     }
 
+    // 兼容旧接口（如果还有未统一格式的接口）
+    // 这种情况应该逐步迁移到统一格式
+    console.warn('⚠️ 收到非统一格式的响应，请迁移到统一格式:', response.config.url)
     return {
       success: true,
       data: payload

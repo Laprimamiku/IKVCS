@@ -8,11 +8,17 @@
 """
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from fastapi import HTTPException, status
 from typing import List
 
 from app.models.video import Category, Video
 from app.schemas.category import CategoryCreateRequest
+from app.core.repository import BaseRepository
+from app.core.exceptions import ResourceNotFoundException, ValidationException
+
+
+class CategoryRepository(BaseRepository):
+    """分类 Repository，继承通用 CRUD 方法"""
+    model = Category
 
 
 class CategoryService:
@@ -43,12 +49,15 @@ class CategoryService:
         
         需求：6.1
         
-        为什么这样写：
-            - 按创建时间倒序排列（最新的在前面）
-            - 返回所有字段（前端需要完整信息）
+        使用 BaseRepository 的通用方法，减少重复代码
         """
-        categories = db.query(Category).order_by(Category.created_at.desc()).all()
-        return categories
+        # 使用 BaseRepository 的通用查询方法
+        return CategoryRepository.get_all(
+            db=db,
+            skip=0,
+            limit=1000,  # 分类数量通常不多，设置一个较大的限制
+            order_by="created_at.desc"
+        )
     
     @staticmethod
     def create_category(db: Session, category_data: CategoryCreateRequest) -> Category:
@@ -63,10 +72,7 @@ class CategoryService:
         3. 保存到数据库
         4. 返回分类对象
         
-        为什么这样写：
-            - 分类名称必须唯一（避免重复）
-            - 使用 HTTPException 返回友好的错误信息
-            - 使用 db.refresh() 获取自增 ID
+        使用 BaseRepository 的通用创建方法，减少重复代码
         """
         # 1. 检查分类名称是否已存在
         existing_category = db.query(Category).filter(
@@ -74,24 +80,18 @@ class CategoryService:
         ).first()
         
         if existing_category:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"分类名称 '{category_data.name}' 已存在"
+            raise ValidationException(
+                message=f"分类名称 '{category_data.name}' 已存在"
             )
         
-        # 2. 创建分类对象
-        new_category = Category(
-            name=category_data.name,
-            description=category_data.description
+        # 2. 使用 BaseRepository 的通用创建方法
+        return CategoryRepository.create(
+            db=db,
+            obj_data={
+                "name": category_data.name,
+                "description": category_data.description
+            }
         )
-        
-        # 3. 保存到数据库
-        db.add(new_category)
-        db.commit()
-        db.refresh(new_category)  # 刷新以获取自增 ID 和创建时间
-        
-        # 4. 返回分类对象
-        return new_category
     
     @staticmethod
     def delete_category(db: Session, category_id: int) -> None:
@@ -106,33 +106,25 @@ class CategoryService:
         3. 如果有视频，拒绝删除
         4. 如果没有视频，删除分类
         
-        为什么这样写：
-            - 删除保护：防止误删除有视频的分类
-            - 使用 count() 而不是 all()（性能更好）
-            - 使用 CASCADE 删除会导致视频丢失分类（不安全）
+        使用 BaseRepository 的通用方法进行基础操作，业务逻辑保留在 Service 层
         """
-        # 1. 检查分类是否存在
-        category = db.query(Category).filter(Category.id == category_id).first()
+        # 1. 检查分类是否存在（使用 BaseRepository）
+        category = CategoryRepository.get_by_id(db, category_id)
         if not category:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"分类 ID {category_id} 不存在"
-            )
+            raise ResourceNotFoundException(resource="分类", resource_id=category_id)
         
-        # 2. 检查分类下是否有视频
+        # 2. 检查分类下是否有视频（业务逻辑）
         video_count = db.query(func.count(Video.id)).filter(
             Video.category_id == category_id
         ).scalar()
         
         if video_count > 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"分类 '{category.name}' 下有 {video_count} 个视频，无法删除"
+            raise ValidationException(
+                message=f"分类 '{category.name}' 下有 {video_count} 个视频，无法删除"
             )
         
-        # 3. 删除分类
-        db.delete(category)
-        db.commit()
+        # 3. 使用 BaseRepository 的通用删除方法
+        CategoryRepository.delete(db, category_id)
     
     @staticmethod
     def get_category_by_id(db: Session, category_id: int) -> Category:
@@ -141,14 +133,9 @@ class CategoryService:
         
         辅助方法，用于其他服务调用
         
-        为什么需要这个方法：
-            - 创建视频时需要验证分类是否存在
-            - 统一的错误处理逻辑
+        使用 BaseRepository 的通用方法，减少重复代码
         """
-        category = db.query(Category).filter(Category.id == category_id).first()
+        category = CategoryRepository.get_by_id(db, category_id)
         if not category:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"分类 ID {category_id} 不存在"
-            )
+            raise ResourceNotFoundException(resource="分类", resource_id=category_id)
         return category

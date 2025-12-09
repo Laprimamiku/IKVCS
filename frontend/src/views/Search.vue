@@ -34,10 +34,10 @@
               type="primary"
               size="small"
               class="upload-btn"
-              @click="router.push('/upload')"
+              @click="router.push('/video-center')"
             >
               <el-icon><Upload /></el-icon>
-              上传视频
+              视频中心
             </el-button>
             <el-dropdown trigger="click" @command="handleCommand">
               <div class="user-info">

@@ -12,71 +12,33 @@
 import os
 import uuid
 import logging
-from math import ceil
 from typing import Optional
 
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.core.exceptions import ResourceNotFoundException, ForbiddenException, ValidationException
+from app.core.response import success_response
+from app.core.transaction import transaction
 from app.models.user import User
 from app.models.video import Video
 from app.schemas.video import (
     VideoListRequest,
     VideoListResponse,
-    VideoListItemResponse,
     VideoDetailResponse,
-    UploaderBriefResponse,
-    CategoryBriefResponse,
+    VideoUpdateRequest,
     SubtitleUploadResponse,
     CoverUploadResponse,
+    VideoStatusResponse,
+    TranscodeTestRequest,
+    TranscodeTestResponse,
 )
 from app.services.video_service import VideoService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-class VideoStatusResponse(BaseModel):
-    """视频状态响应"""
-    video_id: int
-    title: str
-    status: int
-    status_text: str
-    video_url: Optional[str]
-    duration: int
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "video_id": 1,
-                "title": "测试视频",
-                "status": 1,
-                "status_text": "审核中",
-                "video_url": "/videos/hls/1/master.m3u8",
-                "duration": 120,
-            }
-        }
-
-
-class TranscodeTestRequest(BaseModel):
-    """转码测试请求"""
-    video_id: int
-
-    class Config:
-        json_schema_extra = {"example": {"video_id": 1}}
-
-
-class TranscodeTestResponse(BaseModel):
-    """转码测试响应"""
-    message: str
-    video_id: int
-    status: str
-
-    class Config:
-        json_schema_extra = {"example": {"message": "转码任务已启动", "video_id": 1, "status": "transcoding"}}
 
 
 @router.get("/{video_id}/status", response_model=VideoStatusResponse)
@@ -88,7 +50,7 @@ async def get_video_status(
     """查询视频状态（开发测试用）"""
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"视频 {video_id} 不存在")
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
 
     status_map = {0: "转码中", 1: "审核中", 2: "已发布", 3: "已拒绝", -1: "转码失败"}
     return VideoStatusResponse(
@@ -111,13 +73,13 @@ async def test_transcode(
     """触发转码（开发调试用）"""
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"视频 {video_id} 不存在")
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
 
     from app.models.upload import UploadSession
 
     upload_session = db.query(UploadSession).filter(UploadSession.video_id == video_id).first()
     if not upload_session:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="没有对应的上传会话，无法转码")
+        raise ValidationException(message="没有对应的上传会话，无法转码")
 
     video.status = 0
     db.commit()
@@ -137,7 +99,12 @@ async def get_video_list(
     keyword: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    """获取视频列表（已发布）"""
+    """
+    获取视频列表（已发布）
+    
+    路由层只负责参数验证和调用 Service，所有业务逻辑在 Service 层
+    """
+    # 参数验证（也可以使用 Pydantic 的 Field 验证）
     if page < 1:
         page = 1
     if page_size < 1:
@@ -145,7 +112,8 @@ async def get_video_list(
     if page_size > 100:
         page_size = 100
 
-    videos, total = VideoService.get_video_list(
+    # 调用 Service 层获取响应（包含所有业务逻辑）
+    return VideoService.get_video_list_response(
         db=db,
         page=page,
         page_size=page_size,
@@ -153,41 +121,37 @@ async def get_video_list(
         keyword=keyword,
     )
 
-    total_pages = ceil(total / page_size) if total > 0 else 0
 
-    items = []
-    for video in videos:
-        uploader = db.query(User).filter(User.id == video.uploader_id).first()
-        from app.models.video import Category
-
-        category = db.query(Category).filter(Category.id == video.category_id).first()
-        items.append(
-            VideoListItemResponse(
-                id=video.id,
-                title=video.title,
-                description=video.description,
-                cover_url=video.cover_url,
-                duration=video.duration,
-                view_count=VideoService.get_merged_view_count(db, video.id),
-                like_count=video.like_count,
-                collect_count=video.collect_count,
-                uploader=UploaderBriefResponse(
-                    id=uploader.id,
-                    username=uploader.username,
-                    nickname=uploader.nickname,
-                    avatar=uploader.avatar,
-                ),
-                category=CategoryBriefResponse(id=category.id, name=category.name),
-                created_at=video.created_at,
-            )
-        )
-
-    return VideoListResponse(
-        items=items,
-        total=total,
+@router.get("/my", response_model=VideoListResponse)
+async def get_my_videos(
+    page: int = 1,
+    page_size: int = 20,
+    status: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    获取当前用户上传的视频列表
+    
+    路由层只负责参数验证和调用 Service，所有业务逻辑在 Service 层
+    
+    注意：此路由必须在 /{video_id} 之前定义，否则会被误匹配
+    """
+    # 参数验证
+    if page < 1:
+        page = 1
+    if page_size < 1:
+        page_size = 20
+    if page_size > 100:
+        page_size = 100
+    
+    # 调用 Service 层获取响应
+    return VideoService.get_user_video_list_response(
+        db=db,
+        user_id=current_user.id,
         page=page,
         page_size=page_size,
-        total_pages=total_pages,
+        status=status,
     )
 
 
@@ -196,39 +160,20 @@ async def get_video_detail(
     video_id: int,
     db: Session = Depends(get_db),
 ):
-    """获取视频详情并增加播放量"""
-    video = VideoService.get_video_detail(db, video_id)
-    if not video:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="视频不存在或未发布")
-
+    """
+    获取视频详情并增加播放量
+    
+    路由层只负责调用 Service，所有业务逻辑在 Service 层
+    """
+    # 增加播放量
     VideoService.increment_view_count(db, video_id)
-
-    uploader = db.query(User).filter(User.id == video.uploader_id).first()
-    from app.models.video import Category
-
-    category = db.query(Category).filter(Category.id == video.category_id).first()
-
-    return VideoDetailResponse(
-        id=video.id,
-        title=video.title,
-        description=video.description,
-        cover_url=video.cover_url,
-        video_url=video.video_url,
-        subtitle_url=video.subtitle_url,
-        duration=video.duration,
-        status=video.status,
-        view_count=VideoService.get_merged_view_count(db, video.id),
-        like_count=video.like_count,
-        collect_count=video.collect_count,
-        uploader=UploaderBriefResponse(
-            id=uploader.id,
-            username=uploader.username,
-            nickname=uploader.nickname,
-            avatar=uploader.avatar,
-        ),
-        category=CategoryBriefResponse(id=category.id, name=category.name),
-        created_at=video.created_at,
-    )
+    
+    # 获取视频详情响应（包含所有数据组装逻辑）
+    video_detail = VideoService.get_video_detail_response(db, video_id)
+    if not video_detail:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    
+    return video_detail
 
 
 @router.post("/{video_id}/view")
@@ -239,12 +184,13 @@ async def increase_view_count(
     """增加视频播放量（公开接口）"""
     success = VideoService.increment_view_count(db, video_id)
     if not success:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"视频 {video_id} 不存在")
-    return {
-        "success": True,
-        "message": "播放量已记录",
-        "view_count": VideoService.get_merged_view_count(db, video_id),
-    }
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    
+    view_count = VideoService.get_merged_view_count(db, video_id)
+    return success_response(
+        data={"view_count": view_count},
+        message="播放量已记录"
+    )
 
 
 def _save_upload_file(target_dir: str, filename: str, data: bytes) -> str:
@@ -266,24 +212,34 @@ async def upload_video_cover(
     """上传封面图片（JPG/PNG/WEBP，<=5MB，仅上传者可操作）"""
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="视频不存在")
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
     if video.uploader_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="只有视频上传者可以上传封面")
+        raise ForbiddenException("只有视频上传者可以上传封面")
 
     ext = os.path.splitext(cover.filename or "")[1].lower()
     if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="封面格式不支持，仅支持 JPG/PNG/WEBP")
+        raise ValidationException(message="封面格式不支持，仅支持 JPG/PNG/WEBP")
 
     content = await cover.read()
     if len(content) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="封面文件过大，最大 5MB")
+        raise ValidationException(message="封面文件过大，最大 5MB")
 
     cover_dir = "uploads/covers"
     unique_filename = f"{video_id}_cover_{uuid.uuid4().hex[:8]}{ext}"
     cover_url = _save_upload_file(cover_dir, unique_filename, content)
 
-    video.cover_url = cover_url
-    db.commit()
+    # 使用事务管理，确保数据一致性
+    try:
+        with transaction(db):
+            video.cover_url = cover_url
+            # 事务上下文管理器会自动提交或回滚
+    except Exception as e:
+        # 如果数据库更新失败，删除已保存的文件
+        file_path = os.path.join(cover_dir, unique_filename)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        logger.error(f"封面上传失败，已删除文件: {e}")
+        raise
 
     logger.info(f"视频 {video_id} 封面上传成功：{cover_url}")
     return CoverUploadResponse(message="封面上传成功", cover_url=cover_url, video_id=video_id)
@@ -299,22 +255,96 @@ async def upload_video_subtitle(
     """上传字幕文件（SRT/VTT/JSON/ASS，仅上传者可操作）"""
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="视频不存在")
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
     if video.uploader_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="只有视频上传者可以上传字幕")
+        raise ForbiddenException("只有视频上传者可以上传字幕")
 
     ext = os.path.splitext(subtitle.filename or "")[1].lower()
     if ext not in [".srt", ".vtt", ".json", ".ass"]:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="字幕格式不支持，仅支持 SRT/VTT/JSON/ASS")
+        raise ValidationException(message="字幕格式不支持，仅支持 SRT/VTT/JSON/ASS")
 
     content = await subtitle.read()
     subtitle_dir = "uploads/subtitles"
     unique_filename = f"{video_id}_subtitle_{uuid.uuid4().hex[:8]}{ext}"
     subtitle_url = _save_upload_file(subtitle_dir, unique_filename, content)
 
-    video.subtitle_url = subtitle_url
-    db.commit()
+    # 使用事务管理，确保数据一致性
+    try:
+        with transaction(db):
+            video.subtitle_url = subtitle_url
+            # 事务上下文管理器会自动提交或回滚
+    except Exception as e:
+        # 如果数据库更新失败，删除已保存的文件
+        file_path = os.path.join(subtitle_dir, unique_filename)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        logger.error(f"字幕上传失败，已删除文件: {e}")
+        raise
 
     logger.info(f"视频 {video_id} 字幕上传成功：{subtitle_url}")
     return SubtitleUploadResponse(message="字幕上传成功", subtitle_url=subtitle_url, video_id=video_id)
+
+
+# ==================== 用户视频管理 ====================
+
+@router.put("/{video_id}", response_model=VideoDetailResponse)
+async def update_video(
+    video_id: int,
+    video_update: VideoUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    更新视频信息（仅上传者可操作）
+    
+    路由层只负责调用 Service，所有业务逻辑在 Service 层
+    """
+    # 调用 Service 层更新视频
+    video = VideoService.update_video(
+        db=db,
+        video_id=video_id,
+        user_id=current_user.id,
+        title=video_update.title,
+        description=video_update.description,
+        category_id=video_update.category_id,
+    )
+    
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    
+    # 获取更新后的视频详情响应
+    video_detail = VideoService.get_video_detail_response(db, video_id)
+    if not video_detail:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    
+    return video_detail
+
+
+@router.delete("/{video_id}")
+async def delete_video(
+    video_id: int,
+    hard_delete: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    删除视频（仅上传者可操作）
+    
+    默认使用软删除（status=4），设置 hard_delete=True 可硬删除
+    
+    路由层只负责调用 Service，所有业务逻辑在 Service 层
+    """
+    success = VideoService.delete_video(
+        db=db,
+        video_id=video_id,
+        user_id=current_user.id,
+        hard_delete=hard_delete,
+    )
+    
+    if not success:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    
+    return success_response(
+        message="视频删除成功" if not hard_delete else "视频已永久删除"
+    )
 
