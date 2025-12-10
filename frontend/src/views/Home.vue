@@ -1,37 +1,54 @@
 <template>
   <div class="home-page">
     <AppHeader
-      @login="
-        authMode = 'login';
-        authVisible = true;
-      "
-      @register="
-        authMode = 'register';
-        authVisible = true;
-      "
+      @login="handleLogin"
+      @register="handleRegister"
     />
 
     <main class="main-content">
-      <div class="channel-layout">
-        <div
-          v-for="cat in categories"
-          :key="cat.id"
-          class="channel-link"
-          :class="{ active: currentCategory === cat.id }"
-          @click="selectCategory(cat.id)"
-        >
-          {{ cat.name }}
-        </div>
-      </div>
+      <!-- 分类导航 -->
+      <CategoryNav
+        :categories="categories"
+        :active="currentCategory"
+        @select="handleCategorySelect"
+      />
 
+      <!-- 轮播图 -->
+      <HomeBanner
+        v-if="banners.length > 0"
+        :banners="banners"
+        class="banner-section"
+      />
+
+      <!-- 视频列表 -->
       <div class="video-grid-wrapper">
         <VideoGrid
           :videos="videos"
           :loading="loading"
-          :has-more="hasMore"
-          @load-more="loadMoreVideos"
-          @video-click="router.push(`/videos/${$event.id}`)"
+          @video-click="handleVideoClick"
         />
+        
+        <!-- 加载更多 -->
+        <div v-if="hasMore && !loading" class="load-more-wrapper">
+          <el-button
+            type="primary"
+            :loading="loading"
+            @click="loadMoreVideos"
+          >
+            加载更多
+          </el-button>
+        </div>
+        
+        <!-- 加载中 -->
+        <div v-if="loading" class="loading-wrapper">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          <span>加载中...</span>
+        </div>
+        
+        <!-- 无更多数据 -->
+        <div v-if="!hasMore && videos.length > 0" class="no-more">
+          没有更多视频了
+        </div>
       </div>
     </main>
 
@@ -42,64 +59,125 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
+import { Loading } from "@element-plus/icons-vue";
 import AppHeader from "@/components/layout/AppHeader.vue";
+import CategoryNav from "@/components/category/CategoryNav.vue";
+import HomeBanner from "@/components/home/HomeBanner.vue";
 import VideoGrid from "@/components/video/VideoGrid.vue";
 import AuthDialog from "@/components/AuthDialog.vue";
 import { getVideoList } from "@/api/video";
 import { getCategories } from "@/api/category";
-import type { Video, Category } from "@/types/entity";
+import type { Video, Category, PageResult } from "@/types/entity";
 
 const router = useRouter();
-const categories = ref<Category[]>([]);
+
+// 视频列表相关状态
 const videos = ref<Video[]>([]);
-const currentCategory = ref<number | null>(null);
 const loading = ref(false);
 const hasMore = ref(true);
-const page = ref(1);
+const currentPage = ref(1);
+const pageSize = ref(20);
 
+// 分类相关状态
+const categories = ref<Category[]>([]);
+const currentCategory = ref<number | null>(null);
+
+// 认证对话框
 const authVisible = ref(false);
-const authMode = ref("login");
+const authMode = ref<"login" | "register">("login");
 
-const loadData = async (reset = false) => {
+// 轮播图数据（可以从 API 获取，这里使用示例数据）
+const banners = ref([
+  {
+    id: 1,
+    title: "欢迎来到 IKVCS",
+    description: "一个现代化的视频分享平台",
+    image: "https://via.placeholder.com/1920x600",
+    link: "/",
+  },
+]);
+
+// 加载分类列表
+const loadCategories = async () => {
+  try {
+    const response = await getCategories();
+    if (response && response.data && Array.isArray(response.data)) {
+      categories.value = response.data as Category[];
+    } else if (Array.isArray(response)) {
+      categories.value = response as Category[];
+    }
+  } catch (error) {
+    console.error("加载分类失败:", error);
+  }
+};
+
+// 加载视频列表
+const loadVideos = async (append = false) => {
   if (loading.value) return;
   loading.value = true;
 
-  if (reset) {
-    page.value = 1;
-    videos.value = [];
-  }
-
   try {
-    const res = await getVideoList({
-      page: page.value,
-      page_size: 20,
+    if (!append) {
+      currentPage.value = 1;
+      videos.value = [];
+    }
+
+    const response = await getVideoList({
+      page: currentPage.value,
+      page_size: pageSize.value,
       category_id: currentCategory.value,
     });
 
-    // 因为用了 TS，这里有自动补全
-    if (res.success && res.data.items) {
-      videos.value.push(...res.data.items);
-      hasMore.value = videos.value.length < res.data.total;
-      page.value++;
+    if (response.success) {
+      const data = response.data as PageResult<Video>;
+      if (append) {
+        videos.value.push(...(data.items || []));
+      } else {
+        videos.value = data.items || [];
+      }
+      hasMore.value = videos.value.length < (data.total || 0);
+      currentPage.value++;
     }
+  } catch (error) {
+    console.error("加载视频列表失败:", error);
   } finally {
     loading.value = false;
   }
 };
 
-const selectCategory = (id: number) => {
-  currentCategory.value = id;
-  loadData(true);
+// 加载更多视频
+const loadMoreVideos = () => {
+  loadVideos(true);
 };
 
-onMounted(() => {
-  getCategories().then((res) => {
-    if (res.success) categories.value = res.data;
-  });
-  loadData(true);
-});
+// 处理分类选择
+const handleCategorySelect = (categoryId: number | null) => {
+  currentCategory.value = categoryId;
+  loadVideos();
+};
 
-const loadMoreVideos = () => loadData();
+// 处理视频点击
+const handleVideoClick = (video: Video) => {
+  router.push(`/videos/${video.id}`);
+};
+
+// 处理登录
+const handleLogin = () => {
+  authMode.value = "login";
+  authVisible.value = true;
+};
+
+// 处理注册
+const handleRegister = () => {
+  authMode.value = "register";
+  authVisible.value = true;
+};
+
+// 初始化
+onMounted(async () => {
+  await loadCategories();
+  await loadVideos();
+});
 </script>
 
 <style lang="scss" scoped>
@@ -109,42 +187,53 @@ const loadMoreVideos = () => loadData();
 }
 
 .main-content {
-  max-width: 1400px; // B站常见宽屏宽度
+  max-width: var(--container-max-width);
   margin: 0 auto;
-  padding: 20px;
+  padding: var(--spacing-lg);
 
-  // 响应式布局优化
   @media (max-width: 1400px) {
-    padding: 10px;
+    padding: var(--spacing-md);
   }
 }
 
-.channel-layout {
+.banner-section {
+  margin-bottom: var(--spacing-xl);
+}
+
+.video-grid-wrapper {
+  margin-top: var(--spacing-lg);
+}
+
+.load-more-wrapper {
   display: flex;
-  gap: 24px;
-  padding: 10px 0 20px;
-  margin-bottom: 10px;
-  overflow-x: auto;
+  justify-content: center;
+  margin-top: var(--spacing-xl);
+  padding: var(--spacing-lg) 0;
+}
 
-  .channel-link {
-    font-size: 16px;
-    color: var(--text-regular);
-    cursor: pointer;
-    white-space: nowrap;
-    padding: 6px 12px;
-    border-radius: 6px;
-    transition: all 0.2s;
+.loading-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-2xl) 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
 
-    &:hover {
-      color: var(--primary-color);
-      background-color: var(--bg-white);
-    }
-
-    &.active {
-      color: var(--primary-color);
-      background-color: rgba(251, 114, 153, 0.1); // B站粉淡色背景
-      font-weight: 600;
-    }
+  .el-icon {
+    font-size: 24px;
+    color: var(--primary-color);
   }
+}
+
+.no-more {
+  text-align: center;
+  padding: var(--spacing-xl) 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
 }
 </style>
+
+
+

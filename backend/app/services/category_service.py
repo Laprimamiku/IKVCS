@@ -12,13 +12,8 @@ from typing import List
 
 from app.models.video import Category, Video
 from app.schemas.category import CategoryCreateRequest
-from app.core.repository import BaseRepository
+from app.repositories.category_repository import CategoryRepository
 from app.core.exceptions import ResourceNotFoundException, ValidationException
-
-
-class CategoryRepository(BaseRepository):
-    """分类 Repository，继承通用 CRUD 方法"""
-    model = Category
 
 
 class CategoryService:
@@ -51,13 +46,8 @@ class CategoryService:
         
         使用 BaseRepository 的通用方法，减少重复代码
         """
-        # 使用 BaseRepository 的通用查询方法
-        return CategoryRepository.get_all(
-            db=db,
-            skip=0,
-            limit=1000,  # 分类数量通常不多，设置一个较大的限制
-            order_by="created_at.desc"
-        )
+        # 使用 Repository 的专用方法
+        return CategoryRepository.get_all_categories(db)
     
     @staticmethod
     def create_category(db: Session, category_data: CategoryCreateRequest) -> Category:
@@ -75,9 +65,7 @@ class CategoryService:
         使用 BaseRepository 的通用创建方法，减少重复代码
         """
         # 1. 检查分类名称是否已存在
-        existing_category = db.query(Category).filter(
-            Category.name == category_data.name
-        ).first()
+        existing_category = CategoryRepository.get_by_name(db, category_data.name)
         
         if existing_category:
             raise ValidationException(

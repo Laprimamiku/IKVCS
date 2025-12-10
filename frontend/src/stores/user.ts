@@ -9,10 +9,17 @@
  */
 import { defineStore } from 'pinia'
 import { login as loginApi, register as registerApi, logout as logoutApi, getCurrentUser } from '@/api/auth'
+import type { User } from '@/api/user'
+import type { LoginResponse } from '@/api/auth'
+
+interface UserState {
+  token: string
+  userInfo: User | null
+}
 
 export const useUserStore = defineStore('user', {
   // 状态（相当于 Java 的成员变量）
-  state: () => ({
+  state: (): UserState => ({
     token: localStorage.getItem('access_token') || '',
     userInfo: null
   }),
@@ -20,29 +27,22 @@ export const useUserStore = defineStore('user', {
   // 计算属性（相当于 Java 的 getter 方法）
   getters: {
     // 是否已登录
-    isLoggedIn: (state) => !!state.token,
+    isLoggedIn: (state): boolean => !!state.token,
     
     // 是否是管理员
-    isAdmin: (state) => state.userInfo?.role === 'admin',
+    isAdmin: (state): boolean => state.userInfo?.role === 'admin',
     
     // 用户昵称
-    nickname: (state) => state.userInfo?.nickname || '游客',
+    nickname: (state): string => state.userInfo?.nickname || '游客',
     
     // 用户头像
-    avatar: (state) => {
+    avatar: (state): string => {
       if (!state.userInfo?.avatar) {
         return 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
       }
       
-      const avatarUrl = state.userInfo.avatar
-      
-      // 如果已经是完整 URL，直接返回
-      if (avatarUrl.startsWith('http')) {
-        return avatarUrl
-      }
-      
-      // 否则拼接完整 URL（注意：静态文件不在 /api/v1 路径下）
-      return `http://localhost:8000${avatarUrl}`
+      // API 层已经处理过 URL，直接返回
+      return state.userInfo.avatar
     }
   },
   
@@ -51,8 +51,8 @@ export const useUserStore = defineStore('user', {
     /**
      * 登录
      * 
-     * @param {string} username - 用户名
-     * @param {string} password - 密码
+     * @param username - 用户名
+     * @param password - 密码
      * 
      * 流程：
      * 1. 调用登录 API
@@ -63,13 +63,13 @@ export const useUserStore = defineStore('user', {
      *   登录成功后立即获取用户信息
      *   这样可以在页面上显示用户昵称、头像等
      */
-    async login(username, password) {
+    async login(username: string, password: string) {
       try {
         // 1. 调用登录 API
         const res = await loginApi({ username, password })
         
         // 兼容响应包装：可能是 {access_token,...} 或 {success:true,data:{access_token,...}}
-        const token = res.access_token || res?.data?.access_token
+        const token = (res as LoginResponse).access_token || (res as any)?.data?.access_token
         if (!token) {
           throw new Error('未获取到登录令牌')
         }
@@ -91,9 +91,9 @@ export const useUserStore = defineStore('user', {
     /**
      * 注册
      * 
-     * @param {string} username - 用户名
-     * @param {string} password - 密码
-     * @param {string} nickname - 昵称
+     * @param username - 用户名
+     * @param password - 密码
+     * @param nickname - 昵称
      * 
      * 流程：
      * 1. 调用注册 API
@@ -103,7 +103,7 @@ export const useUserStore = defineStore('user', {
      *   注册成功后自动登录，提升用户体验
      *   用户不需要再次输入用户名密码
      */
-    async register(username, password, nickname) {
+    async register(username: string, password: string, nickname: string) {
       try {
         // 1. 调用注册 API
         await registerApi({ username, password, nickname })
@@ -127,8 +127,8 @@ export const useUserStore = defineStore('user', {
     async fetchUserInfo() {
       try {
         const res = await getCurrentUser()
-        const user = res?.data || res
-        this.userInfo = user
+        const user = (res as any)?.data || res
+        this.userInfo = user as User
         return user
       } catch (error) {
         console.error('获取用户信息失败:', error)
@@ -188,16 +188,17 @@ export const useUserStore = defineStore('user', {
     /**
      * 更新用户信息
      * 
-     * @param {Object} data - 更新数据
+     * @param data - 更新数据
      * 
      * 使用场景：
      *   用户在个人中心修改信息后
      *   更新本地状态
      */
-    updateUserInfo(data) {
+    updateUserInfo(data: Partial<User>) {
       if (this.userInfo) {
         Object.assign(this.userInfo, data)
       }
     }
   }
 })
+

@@ -39,7 +39,7 @@
   </el-dialog>
 </template>
 
-<script setup>
+<script setup lang="ts">
 /**
  * 头像裁剪组件
  * 
@@ -114,7 +114,7 @@ const handleConfirm = () => {
 }
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .avatar-cropper-dialog :deep(.el-dialog__body) {
   padding: 20px;
 }

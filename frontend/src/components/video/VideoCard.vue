@@ -1,7 +1,11 @@
 <template>
   <div class="bili-video-card" @click="emit('click', video)">
     <div class="card-cover">
-      <img :src="video.cover_url" :alt="video.title" loading="lazy" />
+      <img
+        :src="getCoverUrl(video.cover_url)"
+        :alt="video.title"
+        loading="lazy"
+      />
 
       <div class="stats-bar">
         <div class="left">
@@ -33,7 +37,6 @@
 <script setup lang="ts">
 import { VideoPlay, ChatDotRound, User } from "@element-plus/icons-vue";
 import type { Video } from "@/types/entity";
-
 // 定义 Props 类型
 defineProps<{
   video: Video;
@@ -59,6 +62,13 @@ const formatDate = (dateStr: string) => {
   const now = new Date();
   // 简单处理：如果是今天则显示时间，否则显示日期
   return date.toLocaleDateString();
+};
+
+// 获取封面URL，添加时间戳防止缓存（API层已处理URL，这里只需添加时间戳）
+const getCoverUrl = (coverUrl: string | undefined): string => {
+  if (!coverUrl) return '';
+  // 添加时间戳防止缓存
+  return `${coverUrl}?t=${Date.now()}`;
 };
 </script>
 

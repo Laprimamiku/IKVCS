@@ -35,7 +35,15 @@ class Settings(BaseSettings):
     # 文件存储配置
     UPLOAD_DIR: str = "./uploads"
     VIDEO_DIR: str = "./videos"
+    UPLOAD_TEMP_DIR: str = "./uploads/temp"  # 上传临时目录
+    HLS_OUTPUT_DIR: str = "./videos/hls"  # HLS转码输出目录
     MAX_UPLOAD_SIZE: int = 2147483648  # 2GB
+    CHUNK_SIZE: int = 5242880  # 分片大小：5MB
+    UPLOAD_SESSION_EXPIRE: int = 604800  # 上传会话过期时间：7天（秒）
+    
+    # 转码配置
+    TRANSCODE_MAX_CONCURRENT: int = 1  # 最大并发转码任务数
+    TRANSCODE_RESOLUTIONS: str = "480p:854x480:800k:128k,720p:1280x720:2000k:128k"  # 转码清晰度配置
     
     # CORS 配置
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"

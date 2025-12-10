@@ -1,5 +1,5 @@
 /**
- * 全局 CSS 变量定义
+ * 全局 SCSS 变量定义
  * 
  * 通用的设计系统变量，不包含品牌特定前缀
  */
@@ -138,31 +138,72 @@ body {
   background: var(--border-base);
   border-radius: var(--radius-sm);
   transition: background var(--transition-fast);
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--primary-color);
+  
+  &:hover {
+    background: var(--primary-color);
+  }
 }
 
 /* ==================== 通用工具类 ==================== */
-.text-primary { color: var(--primary-color); }
-.text-secondary { color: var(--secondary-color); }
-.text-regular { color: var(--text-regular); }
-.text-muted { color: var(--text-secondary); }
+.text-primary { 
+  color: var(--primary-color); 
+}
 
-.bg-primary { background-color: var(--primary-color); }
-.bg-secondary { background-color: var(--secondary-color); }
-.bg-white { background-color: var(--bg-white); }
-.bg-light { background-color: var(--bg-light); }
+.text-secondary { 
+  color: var(--secondary-color); 
+}
 
-.shadow-sm { box-shadow: var(--shadow-sm); }
-.shadow-base { box-shadow: var(--shadow-base); }
-.shadow-lg { box-shadow: var(--shadow-lg); }
+.text-regular { 
+  color: var(--text-regular); 
+}
 
-.radius-sm { border-radius: var(--radius-sm); }
-.radius-base { border-radius: var(--radius-base); }
-.radius-md { border-radius: var(--radius-md); }
-.radius-lg { border-radius: var(--radius-lg); }
+.text-muted { 
+  color: var(--text-secondary); 
+}
+
+.bg-primary { 
+  background-color: var(--primary-color); 
+}
+
+.bg-secondary { 
+  background-color: var(--secondary-color); 
+}
+
+.bg-white { 
+  background-color: var(--bg-white); 
+}
+
+.bg-light { 
+  background-color: var(--bg-light); 
+}
+
+.shadow-sm { 
+  box-shadow: var(--shadow-sm); 
+}
+
+.shadow-base { 
+  box-shadow: var(--shadow-base); 
+}
+
+.shadow-lg { 
+  box-shadow: var(--shadow-lg); 
+}
+
+.radius-sm { 
+  border-radius: var(--radius-sm); 
+}
+
+.radius-base { 
+  border-radius: var(--radius-base); 
+}
+
+.radius-md { 
+  border-radius: var(--radius-md); 
+}
+
+.radius-lg { 
+  border-radius: var(--radius-lg); 
+}
 
 /* ==================== 动画关键帧 ==================== */
 @keyframes fadeIn {
@@ -212,3 +253,4 @@ body {
   xl: >= 1200px
   2xl: >= 1400px
 */
+

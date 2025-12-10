@@ -119,7 +119,7 @@
   </el-dialog>
 </template>
 
-<script setup>
+<script setup lang="ts">
 /**
  * 登录注册弹窗组件
  * 
@@ -303,7 +303,7 @@ const handleRegister = async () => {
 }
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .auth-dialog :deep(.el-dialog__header) {
   text-align: center;
   padding: 24px 24px 16px;

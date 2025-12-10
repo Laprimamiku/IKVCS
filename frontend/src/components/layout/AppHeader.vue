@@ -50,9 +50,13 @@
           <button class="reg-btn" @click="$emit('register')">注册</button>
         </div>
 
-        <button class="upload-btn" @click="$router.push('/upload')">
-          <el-icon><Upload /></el-icon>
-          <span>投稿</span>
+        <button
+          v-if="userStore.isLoggedIn"
+          class="upload-btn"
+          @click="$router.push('/video-center')"
+        >
+          <el-icon><VideoCamera /></el-icon>
+          <span>视频中心</span>
         </button>
       </div>
     </div>
@@ -63,7 +67,7 @@
 import { ref } from "vue";
 import { useRouter } from "vue-router";
 import { useUserStore } from "@/stores/user";
-import { Search, Upload } from "@element-plus/icons-vue";
+import { Search, Upload, VideoCamera } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
 const router = useRouter();

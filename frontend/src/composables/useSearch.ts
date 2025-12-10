@@ -1,14 +1,14 @@
-import { ref, onMounted } from "vue";
+import { ref, onMounted, type Ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 
 export function useSearch() {
   const router = useRouter();
 
-  const searchKeyword = ref("");
-  const showSearchPanel = ref(false);
-  const searchHistory = ref([]);
-  const trendingSearches = ref([
+  const searchKeyword: Ref<string> = ref("");
+  const showSearchPanel: Ref<boolean> = ref(false);
+  const searchHistory: Ref<string[]> = ref([]);
+  const trendingSearches: Ref<string[]> = ref([
     "AI 技术解析",
     "Vue 3 新特性",
     "前端性能优化",
@@ -29,7 +29,7 @@ export function useSearch() {
     const saved = localStorage.getItem("searchHistory");
     if (saved) {
       try {
-        searchHistory.value = JSON.parse(saved);
+        searchHistory.value = JSON.parse(saved) as string[];
       } catch (error) {
         console.error("加载搜索历史失败:", error);
       }
@@ -70,12 +70,12 @@ export function useSearch() {
     }, 200);
   };
 
-  const selectHistory = (keyword) => {
+  const selectHistory = (keyword: string) => {
     searchKeyword.value = keyword;
     handleSearch();
   };
 
-  const selectTrending = (keyword) => {
+  const selectTrending = (keyword: string) => {
     searchKeyword.value = keyword;
     handleSearch();
   };

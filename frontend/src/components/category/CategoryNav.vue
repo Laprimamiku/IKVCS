@@ -15,22 +15,18 @@
   </nav>
 </template>
 
-<script setup>
-defineProps({
-  categories: {
-    type: Array,
-    default: () => [],
-  },
-  active: {
-    type: [Number, null],
-    default: null,
-  },
-});
+<script setup lang="ts">
+defineProps<{
+  categories: Array<any>
+  active?: number | null
+}>()
 
-defineEmits(["select"]);
+defineEmits<{
+  select: [id: number | null]
+}>()
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .category-nav {
   background: var(--bg-white);
   border-bottom: 1px solid var(--border-light);

@@ -38,22 +38,20 @@
   </div>
 </template>
 
-<script setup>
-defineProps({
-  searchHistory: {
-    type: Array,
-    default: () => [],
-  },
-  trendingSearches: {
-    type: Array,
-    default: () => [],
-  },
-});
+<script setup lang="ts">
+defineProps<{
+  searchHistory: string[]
+  trendingSearches: string[]
+}>()
 
-defineEmits(["select-history", "select-trending", "clear-history"]);
+defineEmits<{
+  'select-history': [keyword: string]
+  'select-trending': [keyword: string]
+  'clear-history': []
+}>()
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .search-dropdown {
   position: absolute;
   top: calc(100% + var(--spacing-sm));

@@ -71,7 +71,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { VideoPlay, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 
@@ -170,7 +170,7 @@ onUnmounted(() => {
 })
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
 .home-banner {
   position: relative;
   width: 100%;

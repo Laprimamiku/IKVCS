@@ -35,7 +35,12 @@ from app.schemas.video import (
     TranscodeTestRequest,
     TranscodeTestResponse,
 )
-from app.services.video_service import VideoService
+from app.services.video import (
+    VideoQueryService,
+    VideoStatsService,
+    VideoManagementService,
+    VideoResponseBuilder,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -84,7 +89,7 @@ async def test_transcode(
     video.status = 0
     db.commit()
 
-    from app.services.transcode_service import TranscodeService
+    from app.services.transcode import TranscodeService
 
     background_tasks.add_task(TranscodeService.transcode_video, video_id)
 
@@ -113,7 +118,7 @@ async def get_video_list(
         page_size = 100
 
     # 调用 Service 层获取响应（包含所有业务逻辑）
-    return VideoService.get_video_list_response(
+    return VideoResponseBuilder.get_video_list_response(
         db=db,
         page=page,
         page_size=page_size,
@@ -146,7 +151,7 @@ async def get_my_videos(
         page_size = 100
     
     # 调用 Service 层获取响应
-    return VideoService.get_user_video_list_response(
+    return VideoResponseBuilder.get_user_video_list_response(
         db=db,
         user_id=current_user.id,
         page=page,
@@ -166,10 +171,10 @@ async def get_video_detail(
     路由层只负责调用 Service，所有业务逻辑在 Service 层
     """
     # 增加播放量
-    VideoService.increment_view_count(db, video_id)
+    VideoStatsService.increment_view_count(db, video_id)
     
     # 获取视频详情响应（包含所有数据组装逻辑）
-    video_detail = VideoService.get_video_detail_response(db, video_id)
+    video_detail = VideoResponseBuilder.get_video_detail_response(db, video_id)
     if not video_detail:
         raise ResourceNotFoundException(resource="视频", resource_id=video_id)
     
@@ -182,11 +187,11 @@ async def increase_view_count(
     db: Session = Depends(get_db),
 ):
     """增加视频播放量（公开接口）"""
-    success = VideoService.increment_view_count(db, video_id)
+    success = VideoStatsService.increment_view_count(db, video_id)
     if not success:
         raise ResourceNotFoundException(resource="视频", resource_id=video_id)
     
-    view_count = VideoService.get_merged_view_count(db, video_id)
+    view_count = VideoStatsService.get_merged_view_count(db, video_id)
     return success_response(
         data={"view_count": view_count},
         message="播放量已记录"
@@ -300,7 +305,7 @@ async def update_video(
     路由层只负责调用 Service，所有业务逻辑在 Service 层
     """
     # 调用 Service 层更新视频
-    video = VideoService.update_video(
+    video = VideoManagementService.update_video(
         db=db,
         video_id=video_id,
         user_id=current_user.id,
@@ -313,7 +318,7 @@ async def update_video(
         raise ResourceNotFoundException(resource="视频", resource_id=video_id)
     
     # 获取更新后的视频详情响应
-    video_detail = VideoService.get_video_detail_response(db, video_id)
+    video_detail = VideoResponseBuilder.get_video_detail_response(db, video_id)
     if not video_detail:
         raise ResourceNotFoundException(resource="视频", resource_id=video_id)
     
@@ -334,7 +339,7 @@ async def delete_video(
     
     路由层只负责调用 Service，所有业务逻辑在 Service 层
     """
-    success = VideoService.delete_video(
+    success = VideoManagementService.delete_video(
         db=db,
         video_id=video_id,
         user_id=current_user.id,

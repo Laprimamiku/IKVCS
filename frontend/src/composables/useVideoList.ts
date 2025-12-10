@@ -1,35 +1,58 @@
-import { ref } from "vue";
+import { ref, type Ref } from "vue";
 import { ElMessage } from "element-plus";
 import { Star, Film, Monitor, Reading } from "@element-plus/icons-vue";
 import { getVideoList } from "@/api/video";
 import { getCategories } from "@/api/category";
 import { resolveFileUrl } from "@/utils/urlHelpers";
 import { formatDuration } from "@/utils/formatters";
+import type { Video, Category, PageResult } from "@/types/entity";
+
+export interface VideoListItem {
+  id: number;
+  title: string;
+  cover: string;
+  duration: string;
+  views: number;
+  likes: number;
+  danmaku: number;
+  author: {
+    name: string;
+    avatar: string;
+    verified: boolean;
+    verifiedType: string;
+  };
+  tags: string[];
+  publishTime: string;
+}
+
+export interface CategoryItem extends Category {
+  icon?: any;
+}
 
 export function useVideoList() {
-  const loading = ref(false);
-  const hasMore = ref(true);
-  const currentPage = ref(1);
-  const pageSize = ref(20);
-  const videos = ref([]);
+  const loading: Ref<boolean> = ref(false);
+  const hasMore: Ref<boolean> = ref(true);
+  const currentPage: Ref<number> = ref(1);
+  const pageSize: Ref<number> = ref(20);
+  const videos: Ref<VideoListItem[]> = ref([]);
 
-  const currentCategory = ref(null);
-  const categories = ref([]);
+  const currentCategory: Ref<number | null> = ref(null);
+  const categories: Ref<CategoryItem[]> = ref([]);
 
   const loadCategories = async () => {
     try {
       const response = await getCategories();
 
-      let categoryList = [];
+      let categoryList: Category[] = [];
       if (response && response.data && Array.isArray(response.data)) {
-        categoryList = response.data;
+        categoryList = response.data as Category[];
       } else if (Array.isArray(response)) {
-        categoryList = response;
+        categoryList = response as Category[];
       }
 
       if (categoryList && categoryList.length > 0) {
         categories.value = [
-          { id: null, name: "推荐", icon: Star },
+          { id: 0, name: "推荐", icon: Star },
           ...categoryList.map((cat) => ({
             ...cat,
             icon: Film,
@@ -41,7 +64,7 @@ export function useVideoList() {
     } catch (error) {
       console.error("加载分类失败:", error);
       categories.value = [
-        { id: null, name: "推荐", icon: Star },
+        { id: 0, name: "推荐", icon: Star },
         { id: 1, name: "科技", icon: Monitor },
         { id: 2, name: "教育", icon: Reading },
         { id: 3, name: "娱乐", icon: Film },
@@ -54,7 +77,11 @@ export function useVideoList() {
     loading.value = true;
 
     try {
-      const params = {
+      const params: {
+        page: number;
+        page_size: number;
+        category_id?: number | null;
+      } = {
         page: currentPage.value,
         page_size: pageSize.value,
       };
@@ -66,7 +93,8 @@ export function useVideoList() {
       const response = await getVideoList(params);
 
       if (response.success) {
-        const newVideos = (response.data.items || []).map((video) => ({
+        const data = response.data as PageResult<Video>;
+        const newVideos: VideoListItem[] = (data.items || []).map((video) => ({
           id: video.id,
           title: video.title,
           cover: resolveFileUrl(video.cover_url),
@@ -93,7 +121,7 @@ export function useVideoList() {
           videos.value = newVideos;
         }
 
-        hasMore.value = videos.value.length < (response.data.total || 0);
+        hasMore.value = videos.value.length < (data.total || 0);
       }
     } catch (error) {
       console.error("加载视频列表失败:", error);
@@ -109,7 +137,7 @@ export function useVideoList() {
     await loadVideos(true);
   };
 
-  const selectCategory = (categoryId) => {
+  const selectCategory = (categoryId: number | null) => {
     currentCategory.value = categoryId;
     currentPage.value = 1;
     loadVideos();

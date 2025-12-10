@@ -1,25 +1,27 @@
 import { request } from '@/utils/request';
-import type { Video, PageResult } from '@/types/entity';
-
-export interface VideoQueryParams {
-  page: number;
-  page_size: number;
-  category_id?: number | null;
-  keyword?: string;
-}
+import type { Video, PageResult, VideoQueryParams } from '@/types/entity';
+import { processVideoUrls, processVideoList } from '@/utils/apiHelpers';
 
 /**
  * 获取视频列表
  */
-export function getVideoList(params: VideoQueryParams) {
-  return request.get<PageResult<Video>>('/videos', { params });
+export async function getVideoList(params: VideoQueryParams) {
+  const response = await request.get<PageResult<Video>>('/videos', { params });
+  if (response.success && response.data) {
+    response.data.items = processVideoList(response.data.items);
+  }
+  return response;
 }
 
 /**
  * 获取视频详情
  */
-export function getVideoDetail(videoId: number) {
-  return request.get<Video>(`/videos/${videoId}`);
+export async function getVideoDetail(videoId: number) {
+  const response = await request.get<Video>(`/videos/${videoId}`);
+  if (response.success && response.data) {
+    response.data = processVideoUrls(response.data);
+  }
+  return response;
 }
 
 /**
@@ -49,4 +51,31 @@ export function uploadVideoSubtitle(videoId: number, file: File) {
   return request.post(`/videos/${videoId}/subtitle`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   });
+}
+
+/**
+ * 获取我的视频列表
+ */
+import type { MyVideosQueryParams } from '@/types/entity';
+
+export async function getMyVideos(params: MyVideosQueryParams) {
+  const response = await request.get<PageResult<Video>>('/videos/my', { params });
+  if (response.success && response.data) {
+    response.data.items = processVideoList(response.data.items);
+  }
+  return response;
+}
+
+/**
+ * 更新视频信息
+ */
+export function updateVideo(videoId: number, data: { title?: string; description?: string; category_id?: number }) {
+  return request.put(`/videos/${videoId}`, data);
+}
+
+/**
+ * 删除视频
+ */
+export function deleteVideo(videoId: number, hardDelete: boolean = true) {
+  return request.delete(`/videos/${videoId}`, { params: { hard_delete: hardDelete } });
 }

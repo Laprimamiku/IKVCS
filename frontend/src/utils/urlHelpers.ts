@@ -1,5 +1,5 @@
 // 解析文件 URL，支持相对路径与完整 URL
-export function resolveFileUrl(path) {
+export function resolveFileUrl(path: string | undefined): string {
   if (!path) return "";
   if (path.startsWith("http")) return path;
   const base =

@@ -4,10 +4,10 @@
  * 这个文件定义了所有页面的路由
  * 相当于 Spring MVC 的 @RequestMapping
  */
-import { createRouter, createWebHistory } from "vue-router";
+import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
 
 // 路由配置
-const routes = [
+const routes: RouteRecordRaw[] = [
   {
     path: "/",
     name: "Home",
@@ -81,3 +81,4 @@ router.beforeEach((to, from, next) => {
 });
 
 export default router;
+

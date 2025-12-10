@@ -27,7 +27,7 @@ from app.schemas.upload import (
     UploadFinishResponse,
     UploadProgressResponse
 )
-from app.services.upload_service import UploadService
+from app.services.upload.upload_orchestration_service import UploadOrchestrationService
 
 router = APIRouter()
 
@@ -69,7 +69,7 @@ async def init_upload(
         - 前端计算哈希可以使用 Web Crypto API
         - 分片大小建议 5MB（平衡上传速度和失败重试成本）
     """
-    session, uploaded_chunks, is_instant = UploadService.init_upload(
+    session, uploaded_chunks, is_instant = UploadOrchestrationService.init_upload(
         db,
         current_user.id,
         upload_data
@@ -137,7 +137,7 @@ async def upload_chunk(
         - chunk_index 从 0 开始
         - 分片文件大小建议 5MB
     """
-    uploaded_count = UploadService.upload_chunk(
+    uploaded_count = UploadOrchestrationService.upload_chunk(
         db,
         file_hash,
         chunk_index,
@@ -164,7 +164,7 @@ async def finish_upload(
     ... (保留原有的文档)
     """
     try:
-        video = UploadService.finish_upload(
+        video = UploadOrchestrationService.finish_upload(
             db,
             current_user.id,
             finish_data.file_hash,
@@ -177,7 +177,7 @@ async def finish_upload(
         # 触发后台转码任务（需求 3.6, 4.2）
         # 已有视频且已转码完成时不重复触发
         if video.status == 0 or not video.video_url:
-            from app.services.transcode_service import TranscodeService
+            from app.services.transcode import TranscodeService
             background_tasks.add_task(TranscodeService.transcode_video, video.id)
         
         return UploadFinishResponse(
@@ -228,7 +228,7 @@ async def get_upload_progress(
         - 前端需要定期轮询此接口（建议 1-2 秒间隔）
         - 或者使用 WebSocket 实时推送进度（更高级）
     """
-    session, uploaded_chunks = UploadService.get_upload_progress(db, file_hash)
+    session, uploaded_chunks = UploadOrchestrationService.get_upload_progress(db, file_hash)
     
     progress_percentage = (len(uploaded_chunks) / session.total_chunks) * 100 if session.total_chunks > 0 else 0
     
