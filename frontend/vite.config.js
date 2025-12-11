@@ -25,6 +25,21 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true
+      },
+      // 代理 HLS 和上传静态资源，避免抢占 SPA 路由
+      '/videos/hls': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      '/uploads': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        bypass(req) {
+          // HTML 直刷时返回前端入口，避免 404
+          if (req.headers.accept && req.headers.accept.includes('text/html')) {
+            return '/index.html'
+          }
+        }
       }
     }
   },
