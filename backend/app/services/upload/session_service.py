@@ -101,10 +101,30 @@ class SessionService:
             db.commit()
             return None
         
+        # 检查视频文件是否存在
+        # video.video_url 是URL路径（如 /videos/hls/14/master.m3u8）
+        # 需要转换为实际的文件系统路径（如 ./storage/videos/hls/14/master.m3u8）
         import os
-        video_path = video.video_url.lstrip("/")
+        from app.core.config import settings
+        
+        # 将URL路径转换为文件系统路径
+        # /videos/hls/{video_id}/master.m3u8 -> ./storage/videos/hls/{video_id}/master.m3u8
+        # /uploads/covers/{filename} -> ./storage/uploads/covers/{filename}
+        if video.video_url.startswith("/videos/"):
+            # 视频文件：去掉 /videos 前缀，加上 storage 前缀
+            relative_path = video.video_url.replace("/videos/", "")
+            video_path = os.path.join(settings.VIDEO_DIR, relative_path)
+        elif video.video_url.startswith("/uploads/"):
+            # 上传文件：去掉 /uploads 前缀，加上 storage 前缀
+            relative_path = video.video_url.replace("/uploads/", "")
+            video_path = os.path.join(settings.UPLOAD_DIR, relative_path)
+        else:
+            # 未知格式，尝试直接使用
+            video_path = video.video_url.lstrip("/")
+        
         if not os.path.exists(video_path):
             # 文件不存在，重置会话
+            logger.warning(f"视频文件不存在：{video_path}，重置会话")
             session.is_completed = False
             session.video_id = None
             session.uploaded_chunks = ""

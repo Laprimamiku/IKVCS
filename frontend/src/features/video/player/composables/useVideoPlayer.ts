@@ -59,13 +59,14 @@ export function useVideoPlayer() {
       });
 
       if (res.success && res.data) {
+        // res.data.items 已经通过 processVideoList 处理过，cover_url 已经是处理后的URL
         recommendVideos.value = res.data.items
           .filter((v) => v.id !== videoData.value?.id)
           .slice(0, 10)
           .map((v) => ({
             id: v.id,
             title: v.title,
-            cover: v.cover_url,
+            cover: v.cover_url || '', // 使用已处理的 cover_url
             uploader: v.uploader?.nickname || v.uploader?.username || '未知',
             views: v.view_count || 0,
           }));

@@ -22,6 +22,7 @@ from app.core.dependencies import get_current_user
 from app.core.exceptions import ResourceNotFoundException, ForbiddenException, ValidationException
 from app.core.response import success_response
 from app.core.transaction import transaction
+from app.core.config import settings
 from app.models.user import User
 from app.models.video import Video
 from app.schemas.video import (
@@ -196,17 +197,6 @@ async def increase_view_count(
         data={"view_count": view_count},
         message="播放量已记录"
     )
-
-
-def _save_upload_file(target_dir: str, filename: str, data: bytes) -> str:
-    """保存文件并返回相对 URL"""
-    os.makedirs(target_dir, exist_ok=True)
-    file_path = os.path.join(target_dir, filename)
-    with open(file_path, "wb") as f:
-        f.write(data)
-    return f"/{file_path.replace(os.path.sep, '/')}"
-
-
 @router.post("/{video_id}/cover", response_model=CoverUploadResponse)
 async def upload_video_cover(
     video_id: int,
@@ -229,9 +219,18 @@ async def upload_video_cover(
     if len(content) > 5 * 1024 * 1024:
         raise ValidationException(message="封面文件过大，最大 5MB")
 
-    cover_dir = "uploads/covers"
+    # 使用配置的封面目录，确保路径正确
+    # 静态文件挂载：/uploads -> ./storage/uploads
+    # 封面文件路径：./storage/uploads/covers/{filename}
+    # URL路径应该是：/uploads/covers/{filename}
+    cover_dir = settings.UPLOAD_COVER_DIR
     unique_filename = f"{video_id}_cover_{uuid.uuid4().hex[:8]}{ext}"
-    cover_url = _save_upload_file(cover_dir, unique_filename, content)
+    file_path = os.path.join(cover_dir, unique_filename)
+    os.makedirs(cover_dir, exist_ok=True)
+    with open(file_path, "wb") as f:
+        f.write(content)
+    # 生成URL路径：/uploads/covers/{filename}
+    cover_url = f"/uploads/covers/{unique_filename}"
 
     # 使用事务管理，确保数据一致性
     try:
@@ -269,9 +268,18 @@ async def upload_video_subtitle(
         raise ValidationException(message="字幕格式不支持，仅支持 SRT/VTT/JSON/ASS")
 
     content = await subtitle.read()
-    subtitle_dir = "uploads/subtitles"
+    # 使用配置的字幕目录，确保路径正确
+    # 静态文件挂载：/uploads -> ./storage/uploads
+    # 字幕文件路径：./storage/uploads/subtitles/{filename}
+    # URL路径应该是：/uploads/subtitles/{filename}
+    subtitle_dir = settings.UPLOAD_SUBTITLE_DIR
     unique_filename = f"{video_id}_subtitle_{uuid.uuid4().hex[:8]}{ext}"
-    subtitle_url = _save_upload_file(subtitle_dir, unique_filename, content)
+    file_path = os.path.join(subtitle_dir, unique_filename)
+    os.makedirs(subtitle_dir, exist_ok=True)
+    with open(file_path, "wb") as f:
+        f.write(content)
+    # 生成URL路径：/uploads/subtitles/{filename}
+    subtitle_url = f"/uploads/subtitles/{unique_filename}"
 
     # 使用事务管理，确保数据一致性
     try:

@@ -12,12 +12,9 @@ from logging.handlers import RotatingFileHandler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.api import videos
 
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.api import auth, users, categories, upload, videos, danmaku, websocket
-from app.api.websocket import start_redis_listener
 
 # 创建日志目录
 os.makedirs("logs", exist_ok=True)
@@ -143,6 +140,14 @@ async def startup_event():
     logger.info(f"环境：{settings.APP_ENV}")
     logger.info(f"调试模式：{settings.DEBUG}")
     
+    # 初始化存储目录结构（启动时再次确保目录存在）
+    try:
+        from app.utils.storage_utils import ensure_storage_structure
+        directories = ensure_storage_structure()
+        logger.info(f"存储目录结构初始化完成：{len(directories)} 个目录")
+    except Exception as e:
+        logger.error(f"存储目录初始化失败：{e}")
+    
     # 创建数据库表
     try:
         Base.metadata.create_all(bind=engine)
@@ -164,22 +169,38 @@ async def shutdown_event():
     """应用关闭时执行"""
     logger.info("应用关闭中...")
 
+# 初始化存储目录（在挂载静态文件之前）
+from app.utils.storage_utils import ensure_storage_structure
+try:
+    ensure_storage_structure()
+    logger.info("存储目录初始化完成")
+except Exception as e:
+    logger.error(f"存储目录初始化失败：{e}")
+
 # 配置静态文件服务（用于访问上传的文件与转码输出）
-os.makedirs("uploads/avatars", exist_ok=True)
-os.makedirs("videos/hls", exist_ok=True)
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-app.mount("/videos", StaticFiles(directory="videos"), name="videos")
+# 使用配置中的路径，确保与存储结构一致
+# 新结构：
+# - /uploads -> ./storage/uploads (包含 covers, avatars, subtitles 等)
+# - /videos -> ./storage/videos (包含 hls, originals 等)
+import os
+upload_dir = os.path.abspath(settings.UPLOAD_DIR)
+video_dir = os.path.abspath(settings.VIDEO_DIR)
+
+logger.info(f"挂载静态文件目录：/uploads -> {upload_dir}")
+logger.info(f"挂载静态文件目录：/videos -> {video_dir}")
+
+app.mount("/uploads", StaticFiles(directory=upload_dir), name="uploads")
+app.mount("/videos", StaticFiles(directory=video_dir), name="videos")
 
 # 注册路由
 # 类比 Spring Boot：相当于在 Application.java 中配置 Controller 扫描路径
-from app.api import auth, users, categories, upload, videos
+from app.api import auth, users, categories, upload, videos, danmaku, websocket
+
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["用户"])
 app.include_router(categories.router, prefix="/api/v1/categories", tags=["分类"])
 app.include_router(upload.router, prefix="/api/v1/upload", tags=["上传"])
 app.include_router(videos.router, prefix="/api/v1/videos", tags=["视频"])
-
-# TODO: 后续任务会注册更多路由
 app.include_router(danmaku.router, prefix="/api/v1", tags=["弹幕"])
 app.include_router(websocket.router, prefix="/api/v1/ws", tags=["WebSocket"])
 # app.include_router(admin.router, prefix="/api/v1/admin", tags=["管理"])

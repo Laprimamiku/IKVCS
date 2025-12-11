@@ -11,7 +11,7 @@ from typing import Optional
 import logging
 
 from app.repositories.video_repository import VideoRepository
-from app.services.redis_service import RedisService
+from app.services.cache.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
 

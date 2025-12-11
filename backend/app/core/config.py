@@ -33,10 +33,20 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "gpt-3.5-turbo"
     
     # 文件存储配置
-    UPLOAD_DIR: str = "./uploads"
-    VIDEO_DIR: str = "./videos"
-    UPLOAD_TEMP_DIR: str = "./uploads/temp"  # 上传临时目录
-    HLS_OUTPUT_DIR: str = "./videos/hls"  # HLS转码输出目录
+    STORAGE_ROOT: str = "./storage"  # 统一存储根目录
+    
+    # 上传相关
+    UPLOAD_DIR: str = "./storage/uploads"  # 上传文件根目录
+    UPLOAD_TEMP_DIR: str = "./storage/uploads/temp"  # 分片上传临时目录
+    UPLOAD_AVATAR_DIR: str = "./storage/uploads/avatars"  # 用户头像
+    UPLOAD_COVER_DIR: str = "./storage/uploads/covers"  # 视频封面
+    UPLOAD_SUBTITLE_DIR: str = "./storage/uploads/subtitles"  # 字幕文件
+    
+    # 视频相关
+    VIDEO_DIR: str = "./storage/videos"  # 视频根目录
+    VIDEO_ORIGINAL_DIR: str = "./storage/videos/originals"  # 原始上传视频
+    VIDEO_HLS_DIR: str = "./storage/videos/hls"  # HLS转码输出
+    
     MAX_UPLOAD_SIZE: int = 2147483648  # 2GB
     CHUNK_SIZE: int = 5242880  # 分片大小：5MB
     UPLOAD_SESSION_EXPIRE: int = 604800  # 上传会话过期时间：7天（秒）

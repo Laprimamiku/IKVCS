@@ -58,7 +58,7 @@ class TranscodeService:
     @staticmethod
     def _ensure_directories():
         """确保转码输出目录存在"""
-        os.makedirs(settings.HLS_OUTPUT_DIR, exist_ok=True)
+        os.makedirs(settings.VIDEO_HLS_DIR, exist_ok=True)
     
     @staticmethod
     async def transcode_video(video_id: int):
@@ -104,12 +104,12 @@ class TranscodeService:
                 TranscodeService._ensure_directories()
                 
                 input_path = os.path.join(
-                    settings.VIDEO_DIR,
+                    settings.VIDEO_ORIGINAL_DIR,
                     f"{upload_session.file_hash}_{upload_session.file_name}"
                 )
                 
                 output_dir = os.path.join(
-                    settings.HLS_OUTPUT_DIR,
+                    settings.VIDEO_HLS_DIR,
                     str(video_id)
                 )
                 os.makedirs(output_dir, exist_ok=True)
@@ -191,9 +191,10 @@ class TranscodeService:
                     logger.info(f"转码完成：video_id={video_id}, 成功 {len(transcoded_resolutions)}/{len(RESOLUTIONS)} 个清晰度")
                     
                     # 更新视频 URL 和状态（使用主播放列表）
-                    # 使用配置的HLS目录，转换为URL路径
-                    hls_url_path = settings.HLS_OUTPUT_DIR.lstrip('./').replace('\\', '/')
-                    video.video_url = f"/{hls_url_path}/{video_id}/master.m3u8"
+                    # 静态文件挂载：/videos -> ./storage/videos
+                    # HLS文件路径：./storage/videos/hls/{video_id}/master.m3u8
+                    # URL路径应该是：/videos/hls/{video_id}/master.m3u8
+                    video.video_url = f"/videos/hls/{video_id}/master.m3u8"
                     # 当前未实现审核流，转码成功后直接设置为已发布以便前端展示
                     video.status = 2  # 2=已发布
                     

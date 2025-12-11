@@ -13,11 +13,12 @@ from app.core.dependencies import get_current_user, get_current_active_user
 from app.core.response import success_response
 from app.models.user import User
 from app.schemas.user import UserResponse, UserUpdateRequest, MessageResponse
+from app.core.config import settings
 
 router = APIRouter()
 
-# 头像上传目录
-AVATAR_UPLOAD_DIR = Path("uploads/avatars")
+# 头像上传目录（使用配置中的路径）
+AVATAR_UPLOAD_DIR = Path(settings.UPLOAD_AVATAR_DIR)
 AVATAR_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 

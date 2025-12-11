@@ -22,16 +22,27 @@ __pycache__/
 # 日志文件（运行时生成）
 logs/*.log
 
-# 用户上传文件（用户数据，不提交）
-uploads/*
-!uploads/.gitkeep
-!uploads/avatars/.gitkeep
-!uploads/temp/.gitkeep
+# ============================================
+# Storage 目录 - 用户数据，不提交
+# ============================================
 
-# 视频文件（用户数据，不提交）
-videos/*
-!videos/.gitkeep
-!videos/hls/.gitkeep
+# Storage 根目录（忽略所有文件，但保留目录结构）
+storage/*
+!storage/.gitkeep
+
+# Uploads 目录（用户上传文件）
+storage/uploads/*
+!storage/uploads/.gitkeep
+!storage/uploads/temp/.gitkeep
+!storage/uploads/avatars/.gitkeep
+!storage/uploads/covers/.gitkeep
+!storage/uploads/subtitles/.gitkeep
+
+# Videos 目录（视频文件）
+storage/videos/*
+!storage/videos/.gitkeep
+!storage/videos/originals/.gitkeep
+!storage/videos/hls/.gitkeep
 
 # 数据库文件（本地数据，不提交）
 *.db

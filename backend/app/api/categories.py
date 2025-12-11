@@ -23,7 +23,7 @@ from app.schemas.category import (
     CategoryResponse,
     MessageResponse
 )
-from app.services.category_service import CategoryService
+from app.services.category.category_service import CategoryService
 
 router = APIRouter()
 

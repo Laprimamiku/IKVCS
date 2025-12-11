@@ -127,3 +127,4 @@ class CategoryService:
         if not category:
             raise ResourceNotFoundException(resource="分类", resource_id=category_id)
         return category
+

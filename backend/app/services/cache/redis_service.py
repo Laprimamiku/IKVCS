@@ -300,3 +300,4 @@ class RedisService:
             return 0
         finally:
             await client.close()
+

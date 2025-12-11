@@ -19,10 +19,15 @@ class FileStorageService:
     @staticmethod
     def ensure_directories():
         """确保上传目录存在"""
-        upload_temp_dir = os.path.join(settings.UPLOAD_DIR, "temp")
-        os.makedirs(upload_temp_dir, exist_ok=True)
-        os.makedirs(settings.VIDEO_DIR, exist_ok=True)
-        logger.debug(f"确保目录存在：{upload_temp_dir}, {settings.VIDEO_DIR}")
+        # 创建所有必要的目录
+        os.makedirs(settings.UPLOAD_TEMP_DIR, exist_ok=True)
+        os.makedirs(settings.UPLOAD_AVATAR_DIR, exist_ok=True)
+        os.makedirs(settings.UPLOAD_COVER_DIR, exist_ok=True)
+        os.makedirs(settings.UPLOAD_SUBTITLE_DIR, exist_ok=True)
+        os.makedirs(settings.VIDEO_ORIGINAL_DIR, exist_ok=True)
+        os.makedirs(settings.VIDEO_HLS_DIR, exist_ok=True)
+        logger.debug(f"确保存储目录存在：{settings.STORAGE_ROOT}")
+
     
     @staticmethod
     def save_chunk(
@@ -46,7 +51,7 @@ class FileStorageService:
         """
         FileStorageService.ensure_directories()
         
-        chunk_dir = os.path.join(settings.UPLOAD_DIR, "temp", file_hash)
+        chunk_dir = os.path.join(settings.UPLOAD_TEMP_DIR, file_hash)
         os.makedirs(chunk_dir, exist_ok=True)
         
         chunk_path = os.path.join(chunk_dir, f"chunk_{chunk_index}")
@@ -83,8 +88,9 @@ class FileStorageService:
         Raises:
             HTTPException: 合并失败时抛出
         """
-        chunk_dir = os.path.join(settings.UPLOAD_DIR, "temp", file_hash)
-        final_file_path = os.path.join(settings.VIDEO_DIR, f"{file_hash}_{file_name}")
+        chunk_dir = os.path.join(settings.UPLOAD_TEMP_DIR, file_hash)
+        final_file_path = os.path.join(settings.VIDEO_ORIGINAL_DIR, f"{file_hash}_{file_name}")
+
         
         try:
             if not os.path.exists(chunk_dir):
@@ -128,7 +134,7 @@ class FileStorageService:
             bool: 是否存在
         """
         chunk_path = os.path.join(
-            settings.UPLOAD_DIR, "temp", file_hash, f"chunk_{chunk_index}"
+            settings.UPLOAD_TEMP_DIR, file_hash, f"chunk_{chunk_index}"
         )
         return os.path.exists(chunk_path)
     
@@ -143,6 +149,6 @@ class FileStorageService:
         Returns:
             bool: 是否存在
         """
-        chunk_dir = os.path.join(settings.UPLOAD_DIR, "temp", file_hash)
+        chunk_dir = os.path.join(settings.UPLOAD_TEMP_DIR, file_hash)
         return os.path.exists(chunk_dir)
 
