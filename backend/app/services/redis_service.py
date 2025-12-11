@@ -265,3 +265,38 @@ class RedisService:
         """获取缓存数据"""
         # TODO: 实现缓存读取
         pass
+
+
+
+    # ==================== 弹幕 Pub/Sub ====================
+    
+    async def publish_danmaku(self, video_id: int, message: dict) -> int:
+        """
+        发布弹幕消息到 Redis 频道
+        
+        Args:
+            video_id: 视频 ID
+            message: 消息字典
+            
+        Returns:
+            int: 接收到消息的订阅者数量
+        """
+        import redis.asyncio as aioredis
+        from app.core.config import settings
+        
+        # 创建临时异步连接用于发布（或者复用全局异步连接）
+        # 注意：这里假设配置中有 REDIS_URL，或者手动拼接
+        redis_url = f"redis://:{settings.REDIS_PASSWORD}@{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}"
+        
+        client = await aioredis.from_url(redis_url, encoding="utf-8", decode_responses=True)
+        try:
+            channel = f"danmaku:video:{video_id}"
+            # 发布 JSON 字符串
+            result = await client.publish(channel, json.dumps(message))
+            logger.debug(f"已发布弹幕到频道 {channel}: {message}")
+            return result
+        except Exception as e:
+            logger.error(f"Redis 发布弹幕失败: {e}")
+            return 0
+        finally:
+            await client.close()

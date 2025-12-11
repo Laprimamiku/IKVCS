@@ -5,8 +5,10 @@ IKVCS FastAPI 应用入口
 相当于 Spring Boot 的 Application.java
 """
 import logging
-from logging.handlers import RotatingFileHandler
+import asyncio
 import os
+
+from logging.handlers import RotatingFileHandler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -14,6 +16,8 @@ from app.api import videos
 
 from app.core.config import settings
 from app.core.database import engine, Base
+from app.api import auth, users, categories, upload, videos, danmaku, websocket
+from app.api.websocket import start_redis_listener
 
 # 创建日志目录
 os.makedirs("logs", exist_ok=True)
@@ -126,7 +130,7 @@ app.add_middleware(
     allow_headers=["*"],  # 允许所有 HTTP 头
 )
 
-# 启动事件：创建数据库表
+# 启动事件：创建数据库表 + 启动 Redis 监听
 @app.on_event("startup")
 async def startup_event():
     """
@@ -145,6 +149,12 @@ async def startup_event():
         logger.info("数据库表创建成功")
     except Exception as e:
         logger.error(f"数据库表创建失败：{e}")
+
+    # 启动 Redis 监听器（任务10测试问题）
+    # 关键修改：将任务赋值给 app.state.redis_task，防止被垃圾回收(GC)
+    from app.api.websocket import start_redis_listener
+    app.state.redis_task = asyncio.create_task(start_redis_listener())
+    logger.info("后台 Redis 监听任务已启动并绑定")
     
     logger.info("应用启动完成")
 
@@ -170,11 +180,10 @@ app.include_router(upload.router, prefix="/api/v1/upload", tags=["上传"])
 app.include_router(videos.router, prefix="/api/v1/videos", tags=["视频"])
 
 # TODO: 后续任务会注册更多路由
-# from app.api import interactions, danmaku, websocket, admin
-# app.include_router(interactions.router, prefix="/api/v1", tags=["互动"])
-# app.include_router(danmaku.router, prefix="/api/v1", tags=["弹幕"])
-# app.include_router(websocket.router, prefix="/api/v1/ws", tags=["WebSocket"])
+app.include_router(danmaku.router, prefix="/api/v1", tags=["弹幕"])
+app.include_router(websocket.router, prefix="/api/v1/ws", tags=["WebSocket"])
 # app.include_router(admin.router, prefix="/api/v1/admin", tags=["管理"])
+# app.include_router(interactions.router, prefix="/api/v1", tags=["互动"])
 
 @app.get("/")
 async def root():
