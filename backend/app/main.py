@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.database import engine, Base
+from app.api import danmaku, websocket, comments
 
 # 创建日志目录
 os.makedirs("logs", exist_ok=True)
@@ -205,6 +206,7 @@ app.include_router(danmaku.router, prefix="/api/v1", tags=["弹幕"])
 app.include_router(websocket.router, prefix="/api/v1/ws", tags=["WebSocket"])
 # app.include_router(admin.router, prefix="/api/v1/admin", tags=["管理"])
 # app.include_router(interactions.router, prefix="/api/v1", tags=["互动"])
+app.include_router(comments.router, prefix="/api/v1", tags=["评论"]) 
 
 @app.get("/")
 async def root():
