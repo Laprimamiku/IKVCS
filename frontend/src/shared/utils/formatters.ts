@@ -37,3 +37,21 @@ export function formatFileSize(bytes: number): string {
   return (bytes / Math.pow(k, i)).toFixed(2) + " " + sizes[i];
 }
 
+/**
+ * 格式化相对时间 (例如：刚刚, 5分钟前, 2小时前)
+ */
+export function formatTimeAgo(dateStr: string | Date): string {
+  if (!dateStr) return '';
+  
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diff = (now.getTime() - date.getTime()) / 1000; // 秒数
+
+  if (diff < 60) return '刚刚';
+  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
+  if (diff < 2592000) return `${Math.floor(diff / 86400)}天前`; // 30天内
+  if (diff < 31536000) return `${Math.floor(diff / 2592000)}个月前`; // 1年内
+  
+  return date.toLocaleDateString(); // 超过1年显示日期
+}

@@ -142,3 +142,31 @@ export interface DanmakuDisplayItem {
   // [New]: 记录这条弹幕已经展示了多久（毫秒），用于回退时计算位置
   initialOffset?: number; 
 }
+
+// [新增] 评论接口
+export interface Comment {
+  id: number;
+  video_id: number;
+  user_id: number;
+  parent_id: number | null;
+  content: string;
+  like_count: number;
+  created_at: string;
+  
+  // 关联用户
+  user: UserBrief;
+  
+  // AI 分析字段
+  ai_score?: number;
+  ai_label?: string;
+  
+  // 回复相关
+  reply_count: number;
+  replies: Comment[]; // 嵌套回复
+}
+
+// [新增] 评论创建参数
+export interface CommentCreatePayload {
+  content: string;
+  parent_id?: number | null;
+}
