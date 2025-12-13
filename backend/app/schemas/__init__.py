@@ -17,8 +17,8 @@ from .danmaku import (
     DanmakuResponse, DanmakuListResponse
 )
 from .interaction import (
-    LikeRequest, CollectionRequest,
-    LikeResponse, CollectionResponse, InteractionStatsResponse
+    LikeCreate, LikeStatus,
+    CollectionCreate, CollectionStatus, CollectionResponse
 )
 
 __all__ = [
@@ -50,9 +50,9 @@ __all__ = [
     'DanmakuResponse',
     'DanmakuListResponse',
     # 互动
-    'LikeRequest',
-    'CollectionRequest',
-    'LikeResponse',
+    'LikeCreate',
+    'LikeStatus',
+    'CollectionCreate',
+    'CollectionStatus',
     'CollectionResponse',
-    'InteractionStatsResponse',
 ]

@@ -113,6 +113,24 @@ class VideoListResponse(BaseModel):
     total_pages: int
 
 
+class VideoBrief(BaseModel):
+    """
+    视频简要信息
+    
+    用于收藏列表等场景展示基本视频信息
+    """
+    id: int
+    title: str
+    cover_url: Optional[str]
+    duration: int
+    view_count: int
+    uploader: UploaderBriefResponse
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
 class VideoDetailResponse(BaseModel):
     """
     视频详情响应
