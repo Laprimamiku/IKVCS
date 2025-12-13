@@ -1,5 +1,6 @@
 <template>
   <div class="comment-item">
+    <!-- 头像 -->
     <div class="user-avatar">
       <el-avatar
         :size="40"
@@ -8,10 +9,11 @@
     </div>
 
     <div class="content-container">
+      <!-- 用户信息 -->
       <div class="user-info">
-        <span class="nickname" :class="{ 'is-uploader': isUploader }">{{
-          comment.user.nickname
-        }}</span>
+        <span class="nickname" :class="{ 'is-uploader': isUploader }">
+          {{ comment.user.nickname }}
+        </span>
 
         <div class="ai-tags" v-if="comment.ai_score">
           <el-tag
@@ -21,7 +23,7 @@
             color="#FFD700"
             class="ai-tag high-quality"
           >
-            <span class="tag-icon">🔥</span> 优质
+            🔥 优质
           </el-tag>
 
           <el-tag
@@ -36,21 +38,30 @@
         </div>
       </div>
 
+      <!-- 评论内容 -->
       <p class="text-content">
         {{ comment.content }}
       </p>
 
+      <!-- 操作栏 -->
       <div class="action-footer">
         <span class="time">{{ formatDate(comment.created_at) }}</span>
 
-        <span class="action-btn like-btn">
-          <el-icon><Pointer /></el-icon>
-          {{ comment.like_count || "点赞" }}
+        <span
+          class="action-btn like-btn"
+          :class="{ active: localIsLiked }"
+          @click="handleLike"
+        >
+          <el-icon>
+            <component :is="localIsLiked ? StarFilled : Pointer" />
+          </el-icon>
+          {{ localLikeCount || "点赞" }}
         </span>
 
         <span class="action-btn reply-btn" @click="toggleReplyBox"> 回复 </span>
       </div>
 
+      <!-- 回复输入框 -->
       <div v-if="showReplyBox">
         <CommentInput
           :is-reply="true"
@@ -60,6 +71,7 @@
         />
       </div>
 
+      <!-- 子评论 -->
       <div
         class="sub-comments"
         v-if="comment.replies && comment.replies.length > 0"
@@ -71,15 +83,17 @@
         >
           <div class="sub-user-info">
             <span class="sub-nickname">{{ reply.user.nickname }}</span>
+
             <span
               v-if="reply.ai_label && reply.ai_label !== '普通'"
               class="mini-ai-tag"
             >
               {{ reply.ai_label }}
             </span>
-            :
-            <span class="sub-content">{{ reply.content }}</span>
+
+            ：<span class="sub-content">{{ reply.content }}</span>
           </div>
+
           <div class="sub-footer">
             <span class="time">{{ formatDate(reply.created_at) }}</span>
           </div>
@@ -91,9 +105,12 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { Pointer } from "@element-plus/icons-vue";
+import { Pointer, StarFilled } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+
 import type { Comment } from "@/shared/types/entity";
-import { formatTimeAgo } from "@/shared/utils/formatters"; // 假设你有这个工具，或者用 dayjs
+import { toggleCommentLike } from "@/features/video/player/api/comment.api";
+import { useUserStore } from "@/shared/stores/user";
 import CommentInput from "./CommentInput.vue";
 
 const props = defineProps<{
@@ -105,13 +122,19 @@ const emit = defineEmits<{
   (e: "reply", content: string, parentId: number): Promise<void>;
 }>();
 
+const userStore = useUserStore();
+
+// 回复
 const showReplyBox = ref(false);
 const submitting = ref(false);
+
+// 点赞本地状态
+const localIsLiked = ref(!!props.comment.is_liked);
+const localLikeCount = ref(props.comment.like_count || 0);
 
 const isUploader = computed(() => props.comment.user_id === props.uploaderId);
 
 const formatDate = (dateStr: string) => {
-  // 简单格式化，建议使用 dayjs 或 date-fns
   return new Date(dateStr).toLocaleDateString();
 };
 
@@ -126,6 +149,38 @@ const handleReplySubmit = async (content: string) => {
     showReplyBox.value = false;
   } finally {
     submitting.value = false;
+  }
+};
+
+// 点赞逻辑（乐观更新 + 后端状态同步）
+const handleLike = async () => {
+  if (!userStore.isLoggedIn) {
+    ElMessage.warning("请先登录");
+    return;
+  }
+
+  const prevState = localIsLiked.value;
+  const prevCount = localLikeCount.value;
+
+  // 乐观更新
+  localIsLiked.value = !localIsLiked.value;
+  localLikeCount.value += localIsLiked.value ? 1 : -1;
+
+  try {
+    const response = await toggleCommentLike(props.comment.id);
+    // 使用后端返回的最新状态
+    if (response.success && response.data) {
+      localIsLiked.value = response.data.is_liked;
+      localLikeCount.value = response.data.like_count;
+      // 同步更新 comment 对象
+      props.comment.is_liked = response.data.is_liked;
+      props.comment.like_count = response.data.like_count;
+    }
+  } catch (e) {
+    // 回滚乐观更新
+    localIsLiked.value = prevState;
+    localLikeCount.value = prevCount;
+    ElMessage.error("点赞失败，请重试");
   }
 };
 </script>
@@ -165,7 +220,7 @@ const handleReplySubmit = async (content: string) => {
           border: none;
 
           &.high-quality {
-            color: #5a3a00; // 金色背景下的深色文字
+            color: #5a3a00;
             font-weight: bold;
           }
         }
@@ -192,7 +247,12 @@ const handleReplySubmit = async (content: string) => {
         display: flex;
         align-items: center;
         gap: 4px;
+
         &:hover {
+          color: #00aeec;
+        }
+
+        &.active {
           color: #00aeec;
         }
       }

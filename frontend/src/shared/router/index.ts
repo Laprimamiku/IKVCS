@@ -8,6 +8,13 @@ const routes: RouteRecordRaw[] = [
     component: () => import("@/features/home/views/Home.vue"),
     meta: { title: "首页" },
   },
+  // [New] 新增收藏路由
+  {
+    path: "/collections",
+    name: "MyCollections",
+    component: () => import("@/features/user/views/MyCollections.vue"),
+    meta: { title: "我的收藏", requiresAuth: true },
+  },
   {
     path: "/profile",
     name: "Profile",

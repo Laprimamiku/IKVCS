@@ -1,29 +1,101 @@
-import { ref } from 'vue';
+import { ref, watch, type Ref } from 'vue'; // 确保引入 Ref
 import { ElMessage } from 'element-plus';
 import { useUserStore } from "@/shared/stores/user";
+import { toggleVideoLike, toggleVideoCollect } from "@/features/video/shared/api/video.api";
+import type { Video } from "@/shared/types/entity";
 
-export function useVideoInteractions() {
+// ✅ 修正：将类型定义为 Ref<Video | null | undefined> 以兼容所有情况
+export function useVideoInteractions(videoData?: Ref<Video | null | undefined>) {
   const userStore = useUserStore();
+  
   const isLiked = ref(false);
   const isCollected = ref(false);
+  const likeCount = ref(0);
+  const collectCount = ref(0);
 
-  const handleLike = () => {
+  // 监听视频数据变化
+  watch(() => videoData?.value, (newVal) => {
+    // ✅ 增加非空检查 (newVal 可能是 null)
+    if (newVal) {
+      isLiked.value = !!newVal.is_liked;
+      isCollected.value = !!newVal.is_collected;
+      likeCount.value = newVal.like_count || 0;
+      collectCount.value = newVal.collect_count || 0;
+    }
+  }, { immediate: true });
+
+  const handleLike = async () => {
     if (!userStore.isLoggedIn) {
       ElMessage.warning('请先登录');
       return false;
     }
+    
+    const originalState = isLiked.value;
+    const originalCount = likeCount.value;
+    
+    // 乐观更新
     isLiked.value = !isLiked.value;
-    ElMessage.success(isLiked.value ? '点赞成功' : '取消点赞');
+    likeCount.value = isLiked.value ? likeCount.value + 1 : likeCount.value - 1;
+
+    try {
+      if (videoData?.value) {
+        const response = await toggleVideoLike(videoData.value.id);
+        // 使用后端返回的最新状态
+        if (response.success && response.data) {
+          isLiked.value = response.data.is_liked;
+          likeCount.value = response.data.like_count;
+          // 同步更新 videoData
+          if (videoData.value) {
+            videoData.value.is_liked = response.data.is_liked;
+            videoData.value.like_count = response.data.like_count;
+          }
+        }
+      }
+    } catch (error) {
+      // 回滚乐观更新
+      isLiked.value = originalState;
+      likeCount.value = originalCount;
+      ElMessage.error('操作失败');
+      return false;
+    }
     return true;
   };
 
-  const handleCollect = () => {
+  const handleCollect = async () => {
     if (!userStore.isLoggedIn) {
       ElMessage.warning('请先登录');
       return false;
     }
+
+    const originalState = isCollected.value;
+    const originalCount = collectCount.value;
+
+    // 乐观更新
     isCollected.value = !isCollected.value;
-    ElMessage.success(isCollected.value ? '收藏成功' : '取消收藏');
+    collectCount.value = isCollected.value ? collectCount.value + 1 : collectCount.value - 1;
+
+    try {
+      if (videoData?.value) {
+        const response = await toggleVideoCollect(videoData.value.id);
+        // 使用后端返回的最新状态
+        if (response.success && response.data) {
+          isCollected.value = response.data.is_collected;
+          collectCount.value = response.data.collect_count;
+          // 同步更新 videoData
+          if (videoData.value) {
+            videoData.value.is_collected = response.data.is_collected;
+            videoData.value.collect_count = response.data.collect_count;
+          }
+          ElMessage.success(isCollected.value ? '收藏成功' : '取消收藏');
+        }
+      }
+    } catch (error) {
+      // 回滚乐观更新
+      isCollected.value = originalState;
+      collectCount.value = originalCount;
+      ElMessage.error('操作失败');
+      return false;
+    }
     return true;
   };
 
@@ -35,6 +107,8 @@ export function useVideoInteractions() {
   return {
     isLiked,
     isCollected,
+    likeCount,
+    collectCount,
     handleLike,
     handleCollect,
     handleShare,

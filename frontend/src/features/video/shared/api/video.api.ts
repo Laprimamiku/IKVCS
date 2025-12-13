@@ -79,3 +79,35 @@ export function updateVideo(videoId: number, data: { title?: string; description
 export function deleteVideo(videoId: number, hardDelete: boolean = true) {
   return request.delete(`/videos/${videoId}`, { params: { hard_delete: hardDelete } });
 }
+
+/**
+ * 点赞/取消点赞视频
+ */
+export function toggleVideoLike(videoId: number) {
+  return request.post<{ is_liked: boolean; like_count: number }>(`/videos/${videoId}/like`);
+}
+
+/**
+ * 收藏/取消收藏视频
+ */
+export function toggleVideoCollect(videoId: number) {
+  return request.post<{ is_collected: boolean; collect_count: number }>(`/videos/${videoId}/collect`);
+}
+
+/**
+ * 获取我的收藏列表
+ */
+export async function getMyCollections(params: { page: number; page_size: number }) {
+  const response = await request.get<PageResult<Video>>('/users/me/favorites', { params });
+  if (response.success && response.data) {
+    // 假设 apiHelpers 里的处理函数也适用于收藏列表
+    // response.data.items = processVideoList(response.data.items);
+    // 这里简单处理封面图路径
+    response.data.items.forEach(v => {
+      if (v.cover_url && !v.cover_url.startsWith('http')) {
+        v.cover_url = import.meta.env.VITE_API_BASE_URL + v.cover_url;
+      }
+    });
+  }
+  return response;
+}

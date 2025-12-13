@@ -29,51 +29,52 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { VideoPlay } from '@element-plus/icons-vue'
+import { ref } from "vue";
+import { VideoPlay } from "@element-plus/icons-vue";
 
+// ✅ 修复关键点：将 videoUrl 改为可选 (?) 或者明确添加 | undefined
 const props = defineProps<{
-  videoUrl: string | null
-  subtitleUrl?: string | null
-}>()
+  videoUrl?: string | null;
+  subtitleUrl?: string | null;
+}>();
 
 const emit = defineEmits<{
-  (e: 'ready', duration: number): void
-  (e: 'timeupdate', current: number): void
-  (e: 'play'): void
-  (e: 'pause'): void
-}>()
+  (e: "ready", duration: number): void;
+  (e: "timeupdate", current: number): void;
+  (e: "play"): void;
+  (e: "pause"): void;
+}>();
 
-const videoRef = ref<HTMLVideoElement | null>(null)
+const videoRef = ref<HTMLVideoElement | null>(null);
 
 const handleLoadedMetadata = () => {
   if (videoRef.value) {
-    emit('ready', videoRef.value.duration)
+    emit("ready", videoRef.value.duration);
   }
-}
+};
 
 const handleTimeUpdate = () => {
   if (videoRef.value) {
-    emit('timeupdate', videoRef.value.currentTime)
+    emit("timeupdate", videoRef.value.currentTime);
   }
-}
+};
 
-const getCurrentTime = () => videoRef.value?.currentTime || 0
+const getCurrentTime = () => videoRef.value?.currentTime || 0;
 const seek = (time: number) => {
   if (videoRef.value) {
-    videoRef.value.currentTime = time
+    videoRef.value.currentTime = time;
   }
-}
-const play = () => videoRef.value?.play()
-const pause = () => videoRef.value?.pause()
+};
+const play = () => videoRef.value?.play();
+const pause = () => videoRef.value?.pause();
 
 defineExpose({
   getCurrentTime,
   seek,
   play,
   pause,
-  videoEl: videoRef
-})
+  videoEl: videoRef,
+});
 </script>
 
 <style lang="scss" scoped>
@@ -106,4 +107,3 @@ defineExpose({
   }
 }
 </style>
-

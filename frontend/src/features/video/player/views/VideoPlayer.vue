@@ -5,7 +5,7 @@
       @register="showAuthDialog = true"
     />
 
-    <div class="main-container">
+    <div class="main-container" v-if="videoData">
       <!-- 左侧主内容区 -->
       <div class="left-column">
         <!-- 播放器 -->
@@ -13,8 +13,8 @@
           <div class="player-stack">
             <VideoPlayerCore
               ref="playerRef"
-              :video-url="videoData?.video_url || null"
-              :subtitle-url="videoData?.subtitle_url || null"
+              :video-url="videoData.video_url"
+              :subtitle-url="videoData.subtitle_url"
               @timeupdate="handleTimeUpdate"
               @play="handlePlay"
               @playing="handlePlay"
@@ -39,30 +39,27 @@
         <DanmakuToolbar
           v-model:show-danmaku="showDanmaku"
           v-model:filter-low-score="filterLowScore"
-          :view-count="videoData?.view_count"
+          :view-count="videoData.view_count"
           :preset-colors="colorPreset"
           :disabled="!userStore.isLoggedIn"
           :on-send="handleSendDanmaku"
         />
 
-        <!-- 视频信息 -->
-        <VideoInfo :video="videoData" :danmaku-count="danmakuItems.length">
-          <template #actions>
-            <VideoActions
-              :is-liked="isLiked"
-              :is-collected="isCollected"
-              :like-count="videoData?.like_count"
-              :collect-count="videoData?.collect_count"
-              @like="handleLike"
-              @collect="handleCollect"
-              @share="handleShare"
-            />
-          </template>
-        </VideoInfo>
+        <!-- 视频信息 + 互动 -->
+        <VideoInfo
+          :video="videoData"
+          :danmaku-count="danmakuItems.length"
+          :is-liked="isLiked"
+          :is-collected="isCollected"
+          :like-count="likeCount"
+          :collect-count="collectCount"
+          @like="handleLike"
+          @collect="handleCollect"
+          @share="handleShare"
+        />
 
-        <!-- [New] 评论区 -->
+        <!-- 评论区 -->
         <VideoCommentSection
-          v-if="videoData"
           :video-id="videoData.id"
           :uploader-id="videoData.uploader.id"
         />
@@ -70,15 +67,17 @@
 
       <!-- 右侧推荐区 -->
       <div class="right-column">
-        <UploaderCard
-          :uploader="videoData?.uploader || null"
-          @follow="handleFollow"
-        />
+        <UploaderCard :uploader="videoData.uploader" @follow="handleFollow" />
         <RecommendList
           :videos="recommendVideos"
           @select="handleRecommendClick"
         />
       </div>
+    </div>
+
+    <!-- 加载 / 异常状态 -->
+    <div v-else class="loading-container">
+      <el-skeleton animated />
     </div>
 
     <AuthDialog v-model="showAuthDialog" />
@@ -96,11 +95,8 @@ import VideoPlayerCore from "@/features/video/player/components/core/VideoPlayer
 import DanmakuDisplay from "@/features/video/player/components/danmaku/DanmakuDisplay.vue";
 import DanmakuToolbar from "@/features/video/player/components/danmaku/DanmakuToolbar.vue";
 import VideoInfo from "@/features/video/player/components/info/VideoInfo.vue";
-import VideoActions from "@/features/video/player/components/info/VideoActions.vue";
 import UploaderCard from "@/features/video/player/components/info/UploaderCard.vue";
 import RecommendList from "@/features/video/player/components/recommend/RecommendList.vue";
-
-// [New] 评论区组件
 import VideoCommentSection from "@/features/video/player/components/comment/VideoCommentSection.vue";
 
 import { useUserStore } from "@/shared/stores/user";
@@ -116,13 +112,13 @@ const router = useRouter();
 const userStore = useUserStore();
 const showAuthDialog = ref(false);
 
-// 低分弹幕过滤
+// 弹幕过滤
 const filterLowScore = ref(false);
 
-// 视频数据和推荐
+// 1️⃣ 视频数据
 const { videoData, recommendVideos, videoIdRef } = useVideoPlayer();
 
-// 播放器状态
+// 2️⃣ 播放器状态
 const {
   currentTime,
   isPlaying,
@@ -132,11 +128,18 @@ const {
   handleTimeUpdate,
 } = usePlayerState();
 
-// 视频交互
-const { isLiked, isCollected, handleLike, handleCollect, handleShare } =
-  useVideoInteractions();
+// 3️⃣ ✅ 视频互动（关键合并点）
+const {
+  isLiked,
+  isCollected,
+  likeCount,
+  collectCount,
+  handleLike,
+  handleCollect,
+  handleShare,
+} = useVideoInteractions(videoData);
 
-// 弹幕
+// 4️⃣ 弹幕系统
 const {
   activeList: danmakuItems,
   colorPreset,
@@ -153,7 +156,6 @@ const handleSendDanmaku = async (content: string, color: string) => {
     const res = await sendDanmaku(content, color, currentTime.value);
     return res?.success || false;
   } catch (error) {
-    console.error("发送弹幕失败", error);
     ElMessage.error("发送弹幕失败");
     return false;
   }
@@ -209,6 +211,10 @@ const handleFollow = () => {
     height: 100%;
     position: relative;
   }
+}
+
+.loading-container {
+  padding: 40px;
 }
 
 @media (max-width: 1100px) {

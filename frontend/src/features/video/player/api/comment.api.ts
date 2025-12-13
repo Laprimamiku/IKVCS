@@ -24,3 +24,10 @@ export function createComment(videoId: number, data: CommentCreatePayload) {
 export function deleteComment(commentId: number) {
   return request.delete<null>(`/comments/${commentId}`);
 }
+
+/**
+ * 点赞/取消点赞评论
+ */
+export function toggleCommentLike(commentId: number) {
+  return request.post<{ is_liked: boolean; like_count: number }>(`/comments/${commentId}/like`);
+}

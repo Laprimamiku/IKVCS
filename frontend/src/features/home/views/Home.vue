@@ -173,10 +173,13 @@ const handleRegister = () => {
   authVisible.value = true;
 };
 
-// 初始化
+// 初始化 - 并行加载分类和视频，提升加载速度
 onMounted(async () => {
-  await loadCategories();
-  await loadVideos();
+  // 并行加载分类和视频，而不是串行等待
+  await Promise.all([
+    loadCategories(),
+    loadVideos()
+  ]);
 });
 </script>
 

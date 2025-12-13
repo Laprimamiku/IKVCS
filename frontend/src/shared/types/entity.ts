@@ -38,6 +38,11 @@ export interface Video {
   like_count: number;
   collect_count?: number;
   danmaku_count?: number; // 后端可能需要补这个字段，前端暂用0
+  
+  // [New] 新增互动状态字段
+  is_liked?: boolean;
+  is_collected?: boolean;
+  
   status?: number; // 0: 转码中, 1: 审核中, 2: 已发布, 3: 已拒绝, 4: 已删除
   category_id?: number;
   uploader: UserBrief;
@@ -152,6 +157,9 @@ export interface Comment {
   content: string;
   like_count: number;
   created_at: string;
+
+  // [New] 新增互动状态
+  is_liked?: boolean;
   
   // 关联用户
   user: UserBrief;

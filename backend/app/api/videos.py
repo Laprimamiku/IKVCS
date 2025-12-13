@@ -361,3 +361,91 @@ async def delete_video(
         message="视频删除成功" if not hard_delete else "视频已永久删除"
     )
 
+
+# ==================== 视频互动（点赞、收藏）====================
+
+@router.post("/{video_id}/like", response_model=dict)
+async def like_video(
+    video_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    点赞/取消点赞视频（RESTful 风格路由）
+    
+    如果已点赞则取消点赞，如果未点赞则点赞
+    立即同步更新数据库的 like_count 字段
+    """
+    from app.services.cache.redis_service import redis_service
+    
+    # 检查视频是否存在
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    
+    # 检查是否已点赞
+    key = f"likes:video:{video_id}"
+    is_liked = redis_service.redis.sismember(key, current_user.id)
+    
+    if is_liked:
+        # 取消点赞
+        await redis_service.remove_like(current_user.id, "video", video_id)
+        count = await redis_service.get_like_count("video", video_id)
+        
+        # 立即同步更新数据库的 like_count
+        video.like_count = count
+        db.commit()
+        
+        return {"is_liked": False, "like_count": count}
+    else:
+        # 点赞
+        await redis_service.add_like(current_user.id, "video", video_id)
+        count = await redis_service.get_like_count("video", video_id)
+        
+        # 立即同步更新数据库的 like_count
+        video.like_count = count
+        db.commit()
+        
+        return {"is_liked": True, "like_count": count}
+
+
+@router.post("/{video_id}/collect", response_model=dict)
+async def collect_video(
+    video_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    收藏/取消收藏视频（RESTful 风格路由）
+    
+    如果已收藏则取消收藏，如果未收藏则收藏
+    """
+    from app.models.interaction import UserCollection
+    
+    # 检查是否已收藏
+    exists = db.query(UserCollection).filter(
+        UserCollection.user_id == current_user.id,
+        UserCollection.video_id == video_id
+    ).first()
+    
+    if exists:
+        # 取消收藏
+        db.delete(exists)
+        db.query(Video).filter(Video.id == video_id).update(
+            {Video.collect_count: Video.collect_count - 1}
+        )
+        db.commit()
+        # 获取最新收藏数
+        video = db.query(Video).filter(Video.id == video_id).first()
+        return {"is_collected": False, "collect_count": video.collect_count if video else 0}
+    else:
+        # 收藏
+        new_collection = UserCollection(user_id=current_user.id, video_id=video_id)
+        db.add(new_collection)
+        db.query(Video).filter(Video.id == video_id).update(
+            {Video.collect_count: Video.collect_count + 1}
+        )
+        db.commit()
+        # 获取最新收藏数
+        video = db.query(Video).filter(Video.id == video_id).first()
+        return {"is_collected": True, "collect_count": video.collect_count if video else 0}

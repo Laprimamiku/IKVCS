@@ -125,3 +125,48 @@ def delete_comment(
     comment_repository.delete(db, comment_id)
     
     return {"success": True, "message": "评论已删除"}
+
+
+@router.post("/comments/{comment_id}/like", response_model=dict)
+async def like_comment(
+    comment_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    点赞/取消点赞评论（RESTful 风格路由）
+    
+    如果已点赞则取消点赞，如果未点赞则点赞
+    立即同步更新数据库的 like_count 字段
+    """
+    from app.services.cache.redis_service import redis_service
+    
+    # 检查评论是否存在
+    comment = comment_repository.get(db, comment_id)
+    if not comment:
+        raise HTTPException(status_code=404, detail="评论不存在")
+    
+    # 检查是否已点赞
+    key = f"likes:comment:{comment_id}"
+    is_liked = redis_service.redis.sismember(key, current_user.id)
+    
+    if is_liked:
+        # 取消点赞
+        await redis_service.remove_like(current_user.id, "comment", comment_id)
+        count = await redis_service.get_like_count("comment", comment_id)
+        
+        # 立即同步更新数据库的 like_count
+        comment.like_count = count
+        db.commit()
+        
+        return {"is_liked": False, "like_count": count}
+    else:
+        # 点赞
+        await redis_service.add_like(current_user.id, "comment", comment_id)
+        count = await redis_service.get_like_count("comment", comment_id)
+        
+        # 立即同步更新数据库的 like_count
+        comment.like_count = count
+        db.commit()
+        
+        return {"is_liked": True, "like_count": count}
