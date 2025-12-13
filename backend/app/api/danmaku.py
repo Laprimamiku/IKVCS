@@ -12,6 +12,7 @@ from app.core.dependencies import get_db, get_current_user
 from app.models.user import User
 from app.models.danmaku import Danmaku
 from app.services.cache.redis_service import RedisService
+from app.services.ai.llm_service import llm_service  # <--- 导入新写的服务
 
 router = APIRouter()
 redis_service = RedisService()
@@ -31,7 +32,9 @@ class DanmakuResponse(BaseModel):
     video_time: float
     color: str
     created_at: datetime
-    # 暂时不返回 AI 分分，除非是管理员接口
+    ai_score: int | None = None      # <--- 新增返回字段方便查看结果
+    ai_category: str | None = None   # <--- 新增返回字段
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -56,7 +59,7 @@ async def send_danmaku(
     db: Session = Depends(get_db)
 ):
     """
-    发送弹幕
+    发送弹幕：保存 -> 广播 -> 触发AI分析
     1. 保存到 MySQL
     2. 发布到 Redis (触发 WebSocket 广播)
     3. 触发 AI 异步分析
@@ -67,7 +70,10 @@ async def send_danmaku(
         user_id=current_user.id,
         content=danmaku_in.content,
         video_time=danmaku_in.video_time,
-        color=danmaku_in.color
+        color=danmaku_in.color,
+        # 默认值，等待 AI 异步更新
+        ai_score=None, 
+        ai_category=None
     )
     db.add(db_danmaku)
     db.commit()
@@ -87,7 +93,7 @@ async def send_danmaku(
     await redis_service.publish_danmaku(video_id, message)
     
     # 3. 触发后台 AI 分析任务
-    background_tasks.add_task(analyze_danmaku_content, db_danmaku.id)
+    background_tasks.add_task(llm_service.process_danmaku_task, db_danmaku.id)
     
     return db_danmaku
 
