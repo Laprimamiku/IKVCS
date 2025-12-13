@@ -1,15 +1,20 @@
 <template>
   <div class="danmaku-layer" :class="{ 'is-hidden': !visible }">
-    <div
-      v-for="item in items"
-      :key="item.key"
-      class="danmaku-item"
-      :class="{ paused }"
-      :style="getItemStyle(item)"
-      @animationend="() => emit('finish', item.key)"
-    >
-      {{ item.text }}
-    </div>
+    <template v-for="item in items" :key="item.key">
+      <div
+        v-if="!shouldFilter(item)"
+        class="danmaku-item"
+        :class="{
+          paused,
+          'is-highlight': isHighlight(item),
+        }"
+        :style="getItemStyle(item)"
+        @animationend="() => emit('finish', item.key)"
+      >
+        <span v-if="isHighlight(item)" class="hq-icon">🔥</span>
+        {{ item.text }}
+      </div>
+    </template>
   </div>
 </template>
 
@@ -23,6 +28,7 @@ const props = defineProps<{
   duration?: number;
   paused?: boolean;
   visible?: boolean; // 使用 visible 而非 v-if
+  filterLowScore?: boolean; // [New] 新增过滤属性
 }>();
 
 const emit = defineEmits<{
@@ -33,7 +39,21 @@ const lanes = props.lanes ?? 10;
 const laneHeight = props.laneHeight ?? 32;
 const duration = props.duration ?? 10000;
 
-// 计算单个弹幕的样式
+// [New] 判断是否为优质弹幕
+// 分数 >= 85 或后端标记为 highlight
+const isHighlight = (item: DanmakuDisplayItem) => {
+  return (item.ai_score && item.ai_score >= 85) || item.is_highlight;
+};
+
+// [New] 过滤逻辑
+const shouldFilter = (item: DanmakuDisplayItem) => {
+  if (!props.filterLowScore) return false;
+  // 如果开启过滤，且分数存在且 < 60，则隐藏
+  // 新发弹幕无分数(undefined)不应被过滤
+  return item.ai_score !== undefined && item.ai_score < 70;
+};
+
+// 计算单个弹幕样式
 const getItemStyle = (item: DanmakuDisplayItem) => {
   const style: Record<string, string> = {
     top: `${(item.lane % lanes) * laneHeight}px`,
@@ -42,11 +62,19 @@ const getItemStyle = (item: DanmakuDisplayItem) => {
     animationPlayState: props.paused ? "paused" : "running",
   };
 
-  // [Fix]: 关键逻辑
-  // 如果有 initialOffset，说明是回退产生的弹幕
-  // 设置负的 delay，让动画直接跳到中间位置开始播放
+  // [Fix] 回退弹幕：负 delay 直接跳到中间进度
   if (item.initialOffset && item.initialOffset > 0) {
     style.animationDelay = `-${item.initialOffset}ms`;
+  }
+
+  // [New] 优质弹幕额外样式
+  if (isHighlight(item)) {
+    style.zIndex = "100";
+    style.fontWeight = "800";
+    // 白色弹幕强制转为金色
+    if (item.color.toLowerCase() === "#ffffff") {
+      style.color = "#ffd700";
+    }
   }
 
   return style;
@@ -60,7 +88,6 @@ const getItemStyle = (item: DanmakuDisplayItem) => {
   pointer-events: none;
   overflow: hidden;
   z-index: 10;
-  // 使用 opacity 切换显隐，保证动画在后台依然计算
   transition: opacity 0.2s ease;
   opacity: 1;
 
@@ -73,17 +100,41 @@ const getItemStyle = (item: DanmakuDisplayItem) => {
   position: absolute;
   left: 100%;
   white-space: nowrap;
-  font-size: 24px; // 调大一点更像 B 站
+  font-size: 24px; // 基础字号
   font-weight: 600;
-  // 强描边，保证在白色背景下也看得清
+  font-family: SimHei, "Microsoft YaHei", sans-serif;
+
+  // 强描边，保证亮色背景可读
   text-shadow: 1px 0 1px rgba(0, 0, 0, 0.6), -1px 0 1px rgba(0, 0, 0, 0.6),
     0 1px 1px rgba(0, 0, 0, 0.6), 0 -1px 1px rgba(0, 0, 0, 0.6);
-  font-family: SimHei, "Microsoft YaHei", sans-serif;
 
   animation-name: danmaku-move;
   animation-timing-function: linear;
   animation-fill-mode: forwards;
   will-change: transform;
+
+  display: flex;
+  align-items: center;
+
+  /* ===============================
+     [New] 优质弹幕特效
+     =============================== */
+  &.is-highlight {
+    font-size: 28px; // 字号加大
+    text-shadow: 0 0 4px rgba(255, 215, 0, 0.6), 1px 1px 2px rgba(0, 0, 0, 0.8),
+      -1px -1px 0 rgba(0, 0, 0, 0.8);
+    background: rgba(0, 0, 0, 0.4); // 半透明黑底
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 215, 0, 0.4); // 金边
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+  }
+
+  .hq-icon {
+    margin-right: 4px;
+    font-size: 0.9em;
+    filter: drop-shadow(0 0 2px orange);
+  }
 }
 
 .danmaku-item.paused {
@@ -95,7 +146,6 @@ const getItemStyle = (item: DanmakuDisplayItem) => {
     transform: translateX(0);
   }
   100% {
-    // 确保完全移出屏幕
     transform: translateX(calc(-100% - 100vw));
   }
 }

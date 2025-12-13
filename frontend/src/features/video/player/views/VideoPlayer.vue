@@ -6,9 +6,7 @@
     />
 
     <div class="main-container">
-      <!-- 左侧主内容区 -->
       <div class="left-column">
-        <!-- 播放器 -->
         <div class="player-wrapper">
           <div class="player-stack">
             <VideoPlayerCore
@@ -24,6 +22,7 @@
 
             <DanmakuDisplay
               :visible="showDanmaku"
+              :filter-low-score="filterLowScore"
               :items="danmakuItems"
               :lanes="10"
               :lane-height="28"
@@ -34,16 +33,15 @@
           </div>
         </div>
 
-        <!-- 弹幕工具栏 -->
         <DanmakuToolbar
           v-model:show-danmaku="showDanmaku"
+          v-model:filter-low-score="filterLowScore"
           :view-count="videoData?.view_count"
           :preset-colors="colorPreset"
           :disabled="!userStore.isLoggedIn"
           :on-send="handleSendDanmaku"
         />
 
-        <!-- 视频信息 -->
         <VideoInfo :video="videoData" :danmaku-count="danmakuItems.length">
           <template #actions>
             <VideoActions
@@ -59,7 +57,6 @@
         </VideoInfo>
       </div>
 
-      <!-- 右侧推荐区 -->
       <div class="right-column">
         <UploaderCard
           :uploader="videoData?.uploader || null"
@@ -95,11 +92,17 @@ import { useUserStore } from "@/shared/stores/user";
 import { useVideoPlayer } from "@/features/video/player/composables/useVideoPlayer";
 import { useVideoInteractions } from "@/features/video/player/composables/useVideoInteractions";
 import { usePlayerState } from "@/features/video/player/composables/usePlayerState";
-import { useDanmaku, DANMAKU_DURATION } from "@/features/video/player/composables/useDanmaku";
+import {
+  useDanmaku,
+  DANMAKU_DURATION,
+} from "@/features/video/player/composables/useDanmaku";
 
 const router = useRouter();
 const userStore = useUserStore();
 const showAuthDialog = ref(false);
+
+// [Update] 新增低分弹幕过滤状态
+const filterLowScore = ref(false);
 
 // 视频数据和推荐
 const { videoData, recommendVideos, videoIdRef } = useVideoPlayer();

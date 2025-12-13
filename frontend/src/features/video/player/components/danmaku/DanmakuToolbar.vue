@@ -5,6 +5,7 @@
         <el-icon><User /></el-icon>
         {{ formatNumber(viewCount) }} 人正在看
       </span>
+
       <div class="switch-wrapper">
         <el-switch
           :model-value="showDanmaku"
@@ -13,6 +14,17 @@
           active-text="弹"
           inactive-text="关"
           style="--el-switch-on-color: #fb7299"
+        />
+      </div>
+
+      <div class="filter-wrapper" title="开启后将隐藏AI评分低于60的弹幕">
+        <el-switch
+          v-model="internalFilterState"
+          inline-prompt
+          active-text="精"
+          inactive-text="全"
+          style="--el-switch-on-color: #e6a23c"
+          @change="handleFilterChange"
         />
       </div>
     </div>
@@ -29,12 +41,14 @@
 </template>
 
 <script setup lang="ts">
+import { ref, watch } from "vue";
 import { User } from "@element-plus/icons-vue";
 import DanmakuInput from "./DanmakuInput.vue";
 import { formatNumber } from "@/features/video/player/utils/videoFormatters";
 
 const props = defineProps<{
   showDanmaku: boolean;
+  filterLowScore?: boolean; // 接收外部传入的过滤状态
   viewCount?: number;
   presetColors: string[];
   disabled: boolean;
@@ -43,12 +57,27 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   "update:showDanmaku": [value: boolean];
+  "update:filterLowScore": [value: boolean]; // 发出过滤状态变更事件
 }>();
 
-// 添加类型安全的处理函数
+// 本地状态同步 (以便 v-model 正常工作)
+const internalFilterState = ref(props.filterLowScore || false);
+watch(
+  () => props.filterLowScore,
+  (val) => {
+    if (val !== undefined) internalFilterState.value = val;
+  }
+);
+
+// 处理弹幕显示开关
 const handleToggle = (value: boolean | string | number) => {
-  // 确保传递的是 boolean 类型
   emit("update:showDanmaku", Boolean(value));
+};
+
+// [修复] 处理低分过滤开关：显式转换类型以解决 TS 报错
+const handleFilterChange = (value: boolean | string | number) => {
+  // Element Plus 的 switch change 事件类型宽泛，这里强制转为 boolean
+  emit("update:filterLowScore", Boolean(value));
 };
 </script>
 
@@ -68,7 +97,7 @@ const handleToggle = (value: boolean | string | number) => {
   .left-controls {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 12px;
     min-width: 140px;
 
     .online-count {
@@ -77,6 +106,12 @@ const handleToggle = (value: boolean | string | number) => {
       display: flex;
       align-items: center;
       gap: 4px;
+    }
+
+    .switch-wrapper,
+    .filter-wrapper {
+      display: flex;
+      align-items: center;
     }
   }
 

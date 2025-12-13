@@ -110,8 +110,11 @@ export interface Danmaku {
   video_time: number;
   color: string;
   created_at: string;
-  // 扩展字段便于前端展示
   is_me?: boolean;
+  // [New] 新增 AI 分析字段
+  ai_score?: number;     // AI 评分 (0-100)
+  ai_category?: string;  // AI 分类
+  is_highlight?: boolean;// 是否为优质/高亮弹幕
 }
 
 export interface DanmakuDisplayItem {
@@ -119,6 +122,10 @@ export interface DanmakuDisplayItem {
   text: string;
   color: string;
   lane: number;
+  initialOffset?: number;
+  // [New] 用于展示层的字段
+  ai_score?: number;
+  is_highlight?: boolean;
 }
 
 export interface DanmakuSendPayload {

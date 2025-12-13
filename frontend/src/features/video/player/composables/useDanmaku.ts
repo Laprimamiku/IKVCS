@@ -83,19 +83,27 @@ export function useDanmaku(videoId: Ref<number | null>, options: UseDanmakuOptio
     wsRef.value = null
   }
 
-  const enqueue = (text: string, color = '#ffffff', initialOffset = 0) => {
+// 修改 enqueue 方法，增加 extra 参数来接收 AI 字段
+  const enqueue = (
+    text: string, 
+    color = '#ffffff', 
+    initialOffset = 0,
+    extra: { ai_score?: number; is_highlight?: boolean } = {} // [New]
+  ) => {
     const lane = Math.floor(Math.random() * MAX_LANES)
     const item: DanmakuDisplayItem = {
       key: `${Date.now()}-${Math.random()}`,
       text,
       color,
       lane,
-      initialOffset 
+      initialOffset,
+      ...extra // [New] 注入 AI 字段
     }
     activeList.value.push(item)
   }
 
-  const handleTimeChange = (time: number, forceSeek = false) => {
+  // 修改 handleTimeChange，在从历史记录加载弹幕时传递 extra 信息
+const handleTimeChange = (time: number, forceSeek = false) => {
     const timeDiff = Math.abs(time - lastTimeRef.value)
     const isSeek = forceSeek || timeDiff > 1.5
 
@@ -112,14 +120,28 @@ export function useDanmaku(videoId: Ref<number | null>, options: UseDanmakuOptio
         const item = historyList.value[backIndex]
         if (item.video_time < startTimeWindow) break 
         const elapsed = (time - item.video_time) * 1000
-        enqueue(item.content, item.color, elapsed)
+        
+        // [修改点 1] 传递 AI 字段 (ai_score, is_highlight)
+        enqueue(item.content, item.color, elapsed, {
+          ai_score: item.ai_score,
+          is_highlight: item.is_highlight
+        })
+        
         backIndex--
       }
+
     } else {
       const list = historyList.value
       while (historyIndex.value < list.length && list[historyIndex.value].video_time <= time) {
         const item = list[historyIndex.value]
-        enqueue(item.content, item.color)
+        
+        // [修改点 2] 正常播放时也传递 AI 字段
+        // 注意：第3个参数 initialOffset 传 0
+        enqueue(item.content, item.color, 0, {
+          ai_score: item.ai_score,
+          is_highlight: item.is_highlight
+        })
+        
         historyIndex.value += 1
       }
     }

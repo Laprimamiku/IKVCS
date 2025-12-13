@@ -77,7 +77,7 @@ class LLMService:
             if clean_content.isdigit() or any(k in clean_content for k in low_value_keywords):
                 return {
                     **self.default_response,
-                    "score": 65,
+                    "score": 50,
                     "category": "情绪表达",
                     "reason": "规则命中: 常见短弹幕",
                     "is_highlight": False
