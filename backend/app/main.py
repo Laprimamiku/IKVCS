@@ -195,7 +195,7 @@ app.mount("/videos", StaticFiles(directory=video_dir), name="videos")
 
 # 注册路由
 # 类比 Spring Boot：相当于在 Application.java 中配置 Controller 扫描路径
-from app.api import auth, users, categories, upload, videos, danmaku, websocket
+from app.api import auth, users, categories, upload, videos, danmaku, websocket, comments, interactions, admin
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["用户"])
@@ -206,7 +206,8 @@ app.include_router(websocket.router, prefix="/api/v1/ws", tags=["WebSocket"])
 app.include_router(danmaku.router, prefix="/api/v1", tags=["弹幕"])
 app.include_router(comments.router, prefix="/api/v1", tags=["评论"]) 
 app.include_router(interactions.router, prefix="/api/v1", tags=["互动"])
-# app.include_router(admin.router, prefix="/api/v1/admin", tags=["管理"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["管理"])
+
 
 @app.get("/")
 async def root():

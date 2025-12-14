@@ -11,7 +11,7 @@ from sqlalchemy import func
 from typing import List
 
 from app.models.video import Category, Video
-from app.schemas.category import CategoryCreateRequest
+from app.schemas.category import CategoryCreate
 from app.repositories.category_repository import CategoryRepository
 from app.core.exceptions import ResourceNotFoundException, ValidationException
 
@@ -50,7 +50,7 @@ class CategoryService:
         return CategoryRepository.get_all_categories(db)
     
     @staticmethod
-    def create_category(db: Session, category_data: CategoryCreateRequest) -> Category:
+    def create_category(db: Session, category_data: CategoryCreate) -> Category:
         """
         创建分类
         

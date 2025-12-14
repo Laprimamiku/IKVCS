@@ -6,7 +6,7 @@ from .common import PageResult, ApiResponse
 # 导出各功能域的 schemas
 from .video import VideoListRequest, VideoUpdateRequest, VideoDetailResponse, VideoListResponse
 from .user import UserRegisterRequest, UserUpdateRequest, UserResponse
-from .category import CategoryCreateRequest, CategoryResponse
+from .category import CategoryCreate, CategoryResponse
 from .upload import (
     UploadInitRequest, UploadInitResponse,
     UploadChunkResponse, UploadFinishRequest,
@@ -35,7 +35,7 @@ __all__ = [
     'UserUpdateRequest',
     'UserResponse',
     # 分类
-    'CategoryCreateRequest',
+    'CategoryCreate',
     'CategoryResponse',
     # 上传
     'UploadInitRequest',

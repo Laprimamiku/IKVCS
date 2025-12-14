@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
+# backend/app/api/interactions.py
+
+# [修改 1] 引入 status
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, status
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -6,8 +9,20 @@ from app.core.dependencies import get_db, get_current_user
 from app.models.user import User
 from app.models.interaction import UserLike, UserCollection
 from app.models.video import Video
-from app.schemas.interaction import LikeCreate, LikeStatus, CollectionCreate, CollectionStatus, CollectionResponse
+
+# [修改 2] 引入 ReportCreate
+from app.schemas.interaction import (
+    LikeCreate, LikeStatus, 
+    CollectionCreate, CollectionStatus, CollectionResponse,
+    ReportCreate 
+)
+# [修改 3] 引入 MessageResponse (通常在 user schema 中)
+from app.schemas.user import MessageResponse
+
 from app.services.cache.redis_service import redis_service
+
+# [修改 4] 引入 ReportRepository
+from app.repositories.report_repository import ReportRepository
 
 router = APIRouter()
 
@@ -66,8 +81,7 @@ def collect_video(
     new_collection = UserCollection(user_id=current_user.id, video_id=data.video_id)
     db.add(new_collection)
     
-    # 3. [修复点] 同步增加视频收藏数
-    # 注意：确保 Video 模型里有 collect_count 字段
+    # 3. 同步增加视频收藏数
     db.query(Video).filter(Video.id == data.video_id).update(
         {Video.collect_count: Video.collect_count + 1}
     )
@@ -89,7 +103,7 @@ def uncollect_video(
     
     if record:
         db.delete(record)
-        # [修复点] 同步减少视频收藏数
+        # 同步减少视频收藏数
         db.query(Video).filter(Video.id == video_id).update(
             {Video.collect_count: Video.collect_count - 1}
         )
@@ -107,10 +121,42 @@ def get_my_collections(
     """获取我的收藏列表"""
     skip = (page - 1) * page_size
     
-    # 使用 joinedload 可能会在 model 定义里配置好
     collections = db.query(UserCollection)\
         .filter(UserCollection.user_id == current_user.id)\
         .order_by(UserCollection.created_at.desc())\
         .offset(skip).limit(page_size).all()
         
     return collections
+
+# ==================== 第三步：举报功能 (新增) ====================
+
+@router.post("/reports", response_model=MessageResponse, status_code=status.HTTP_201_CREATED, summary="提交举报")
+def create_report(
+    report_in: ReportCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    提交举报信息
+    
+    举报对象可以是：
+    - VIDEO: 视频
+    - COMMENT: 评论
+    - DANMAKU: 弹幕
+    
+    提交后会进入管理员后台待处理队列
+    """
+    # 1. 检查是否重复举报（可选）
+    if ReportRepository.exists(db, current_user.id, report_in.target_type, report_in.target_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="您已经举报过该内容，请耐心等待管理员处理"
+        )
+
+    # 2. 验证目标是否存在（可选，为了性能可以跳过，交给管理员审核时发现）
+    # 如果要验证，需要根据 target_type 查询不同的表
+    
+    # 3. 创建举报记录
+    ReportRepository.create(db, report_in, current_user.id)
+    
+    return MessageResponse(message="举报提交成功，我们会尽快处理")
