@@ -23,6 +23,7 @@
       @like="$emit('like')"
       @collect="$emit('collect')"
       @share="$emit('share')"
+      @report="$emit('report')"
     />
 
     <!-- 简介 -->
@@ -61,6 +62,7 @@ defineEmits<{
   (e: "like"): void;
   (e: "collect"): void;
   (e: "share"): void;
+  (e: "report"): void;
 }>();
 
 // 本组件只维护 UI 状态

@@ -131,6 +131,7 @@ export interface DanmakuDisplayItem {
   // [New] 用于展示层的字段
   ai_score?: number;
   is_highlight?: boolean;
+  id?: number; // 弹幕ID，用于举报
 }
 
 export interface DanmakuSendPayload {

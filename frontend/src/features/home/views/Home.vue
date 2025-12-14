@@ -68,6 +68,7 @@ import AuthDialog from "@/features/auth/components/AuthDialog.vue";
 import { getVideoList } from "@/features/video/shared/api/video.api";
 import { getCategories } from "@/features/video/shared/api/category.api";
 import type { Video, Category, PageResult } from "@/shared/types/entity";
+import { cache } from "@/shared/utils/cache";
 
 const router = useRouter();
 
@@ -76,7 +77,7 @@ const videos = ref<Video[]>([]);
 const loading = ref(false);
 const hasMore = ref(true);
 const currentPage = ref(1);
-const pageSize = ref(20);
+const pageSize = ref(12); // 优化：减少初始加载数量，提升首屏速度
 
 // 分类相关状态
 const categories = ref<Category[]>([]);
@@ -97,14 +98,32 @@ const banners = ref([
   },
 ]);
 
-// 加载分类列表
+// 加载分类列表（带缓存）
 const loadCategories = async () => {
+  const cacheKey = 'categories';
+  
+  // 先检查缓存
+  const cached = cache.get<Category[]>(cacheKey);
+  if (cached) {
+    categories.value = cached;
+    return;
+  }
+  
   try {
     const response = await getCategories();
+    let categoryData: Category[] = [];
+    
     if (response && response.data && Array.isArray(response.data)) {
-      categories.value = response.data as Category[];
+      categoryData = response.data as Category[];
     } else if (Array.isArray(response)) {
-      categories.value = response as Category[];
+      categoryData = response as Category[];
+    }
+    
+    categories.value = categoryData;
+    
+    // 缓存分类数据（10分钟，因为分类变化不频繁）
+    if (categoryData.length > 0) {
+      cache.set(cacheKey, categoryData, 10 * 60 * 1000);
     }
   } catch (error) {
     console.error("加载分类失败:", error);

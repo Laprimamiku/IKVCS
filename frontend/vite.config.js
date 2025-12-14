@@ -45,5 +45,28 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ['vue', 'vue-router', 'pinia', 'element-plus', '@element-plus/icons-vue']
+  },
+  build: {
+    // 代码分割优化
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vue-vendor': ['vue', 'vue-router', 'pinia'],
+          'element-plus': ['element-plus', '@element-plus/icons-vue'],
+          'video-player': [
+            './src/features/video/player/views/VideoPlayer.vue',
+            './src/features/video/player/composables/useVideoPlayer.ts'
+          ]
+        }
+      }
+    },
+    // 启用压缩
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true
+      }
+    }
   }
 })

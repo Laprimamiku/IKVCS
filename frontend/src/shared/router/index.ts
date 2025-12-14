@@ -47,6 +47,48 @@ const routes: RouteRecordRaw[] = [
       title: "视频播放",
     },
   },
+  // 管理员路由 - 必须在创建router之前添加
+  {
+    path: '/admin',
+    component: () => import('@/features/admin/layouts/AdminLayout.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+    children: [
+      {
+        path: '',
+        redirect: '/admin/dashboard'
+      },
+      {
+        path: 'dashboard',
+        name: 'AdminDashboard',
+        component: () => import('@/features/admin/views/Dashboard.vue'),
+        meta: { title: '数据中心' }
+      },
+      {
+        path: 'audit',
+        name: 'AdminAudit',
+        component: () => import('@/features/admin/views/VideoAudit.vue'),
+        meta: { title: '视频审核' }
+      },
+      {
+        path: 'reports',
+        name: 'AdminReports',
+        component: () => import('@/features/admin/views/ReportManage.vue'),
+        meta: { title: '举报处理' }
+      },
+      {
+        path: 'users',
+        name: 'AdminUsers',
+        component: () => import('@/features/admin/views/UserManage.vue'),
+        meta: { title: '用户管理' }
+      },
+      {
+        path: 'categories',
+        name: 'AdminCategories',
+        component: () => import('@/features/admin/views/CategoryManage.vue'),
+        meta: { title: '分类管理' }
+      }
+    ]
+  },
 ];
 
 // 创建路由实例
@@ -56,7 +98,7 @@ const router = createRouter({
 });
 
 // 路由守卫（导航前执行）
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   // 设置页面标题
   document.title = to.meta.title ? `${to.meta.title} - IKVCS` : "IKVCS";
 
@@ -67,6 +109,28 @@ router.beforeEach((to, from, next) => {
       // 未登录，跳转到首页（会显示登录弹窗）
       next({ name: "Home" });
       return;
+    }
+    
+    // 检查是否需要管理员权限
+    if (to.meta.requiresAdmin) {
+      // 动态导入 userStore 避免循环依赖
+      const { useUserStore } = await import("@/shared/stores/user");
+      const userStore = useUserStore();
+      
+      // 如果用户信息未加载，先加载
+      if (!userStore.userInfo) {
+        try {
+          await userStore.fetchUserInfo();
+        } catch (error) {
+          console.error('获取用户信息失败:', error);
+        }
+      }
+      
+      // 检查是否是管理员
+      if (!userStore.isAdmin) {
+        next({ name: "Home" });
+        return;
+      }
     }
   }
 

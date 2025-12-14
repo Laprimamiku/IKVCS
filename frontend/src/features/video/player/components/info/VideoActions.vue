@@ -27,6 +27,11 @@
       <el-icon :size="22"><Share /></el-icon>
       <span>分享</span>
     </div>
+
+    <div class="action-item report-btn" @click="$emit('report')">
+      <el-icon :size="22"><Warning /></el-icon>
+      <span>举报</span>
+    </div>
   </div>
 </template>
 
@@ -36,6 +41,7 @@ import {
   StarFilled,
   Share,
   CircleCheckFilled,
+  Warning,
 } from "@element-plus/icons-vue";
 import { Warning as GoodTwo } from "@element-plus/icons-vue";
 import { formatNumber } from "@/features/video/player/utils/videoFormatters";
@@ -51,6 +57,7 @@ defineEmits<{
   like: [];
   collect: [];
   share: [];
+  report: [];
 }>();
 </script>
 
@@ -80,6 +87,15 @@ defineEmits<{
 
     &.active {
       color: #00aeec;
+    }
+
+    &.report-btn {
+      margin-left: auto;
+      color: #9499a0;
+      
+      &:hover {
+        color: #f56c6c;
+      }
     }
   }
 }

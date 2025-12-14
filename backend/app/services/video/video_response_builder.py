@@ -76,7 +76,8 @@ class VideoResponseBuilder:
                     description=video.description,
                     cover_url=video.cover_url,
                     duration=video.duration,
-                    view_count=VideoStatsService.get_merged_view_count(db, video.id),
+                    # 直接传入 video 对象，省去一次数据库查询
+view_count=VideoStatsService.get_view_count_from_model(video),
                     like_count=video.like_count,
                     collect_count=video.collect_count,
                     uploader=UploaderBriefResponse(

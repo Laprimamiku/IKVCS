@@ -59,6 +59,8 @@
         </span>
 
         <span class="action-btn reply-btn" @click="toggleReplyBox"> 回复 </span>
+        
+        <span class="action-btn report-btn" @click="handleReport"> 举报 </span>
       </div>
 
       <!-- 回复输入框 -->
@@ -106,10 +108,11 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { Pointer, StarFilled } from "@element-plus/icons-vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 
 import type { Comment } from "@/shared/types/entity";
 import { toggleCommentLike } from "@/features/video/player/api/comment.api";
+import { createReport } from "@/features/video/player/api/report.api";
 import { useUserStore } from "@/shared/stores/user";
 import CommentInput from "./CommentInput.vue";
 
@@ -183,6 +186,53 @@ const handleLike = async () => {
     ElMessage.error("点赞失败，请重试");
   }
 };
+
+// 处理评论举报
+const handleReport = async () => {
+  if (!userStore.isLoggedIn) {
+    ElMessage.warning("请先登录");
+    return;
+  }
+  
+  try {
+    const { value: reason } = await ElMessageBox.prompt(
+      '请输入举报原因',
+      '举报评论',
+      {
+        confirmButtonText: '提交',
+        cancelButtonText: '取消',
+        inputPlaceholder: '请简要说明举报原因',
+        inputValidator: (value) => {
+          if (!value || value.trim().length === 0) {
+            return '请输入举报原因';
+          }
+          if (value.length > 100) {
+            return '举报原因不能超过100个字符';
+          }
+          return true;
+        }
+      }
+    );
+    
+    const res = await createReport({
+      target_type: 'COMMENT',
+      target_id: props.comment.id,
+      reason: reason.trim(),
+    });
+    
+    if (res.success) {
+      ElMessage.success(res.data?.message || '举报提交成功，我们会尽快处理');
+    } else {
+      ElMessage.error('举报提交失败，请稍后重试');
+    }
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('举报失败:', error);
+      const errorMsg = error?.response?.data?.detail || error?.message || '举报提交失败，请稍后重试';
+      ElMessage.error(errorMsg);
+    }
+  }
+};
 </script>
 
 <style scoped lang="scss">
@@ -254,6 +304,14 @@ const handleLike = async () => {
 
         &.active {
           color: #00aeec;
+        }
+
+        &.report-btn {
+          color: #9499a0;
+          
+          &:hover {
+            color: #f56c6c;
+          }
         }
       }
     }

@@ -56,6 +56,7 @@
           @like="handleLike"
           @collect="handleCollect"
           @share="handleShare"
+          @report="handleVideoReport"
         />
 
         <!-- 评论区 -->
@@ -87,7 +88,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 
 import AppHeader from "@/shared/components/layout/AppHeader.vue";
 import AuthDialog from "@/features/auth/components/AuthDialog.vue";
@@ -107,6 +108,7 @@ import {
   useDanmaku,
   DANMAKU_DURATION,
 } from "@/features/video/player/composables/useDanmaku";
+import { createReport } from "@/features/video/player/api/report.api";
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -173,6 +175,55 @@ const handleFollow = () => {
     return;
   }
   ElMessage.success("关注成功");
+};
+
+// 处理视频举报
+const handleVideoReport = async () => {
+  if (!userStore.isLoggedIn) {
+    showAuthDialog.value = true;
+    return;
+  }
+  
+  if (!videoData.value) return;
+  
+  try {
+    const { value: reason } = await ElMessageBox.prompt(
+      '请输入举报原因',
+      '举报视频',
+      {
+        confirmButtonText: '提交',
+        cancelButtonText: '取消',
+        inputPlaceholder: '请简要说明举报原因',
+        inputValidator: (value) => {
+          if (!value || value.trim().length === 0) {
+            return '请输入举报原因';
+          }
+          if (value.length > 100) {
+            return '举报原因不能超过100个字符';
+          }
+          return true;
+        }
+      }
+    );
+    
+    const res = await createReport({
+      target_type: 'VIDEO',
+      target_id: videoData.value.id,
+      reason: reason.trim(),
+    });
+    
+    if (res.success) {
+      ElMessage.success(res.data?.message || '举报提交成功，我们会尽快处理');
+    } else {
+      ElMessage.error('举报提交失败，请稍后重试');
+    }
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('举报失败:', error);
+      const errorMsg = error?.response?.data?.detail || error?.message || '举报提交失败，请稍后重试';
+      ElMessage.error(errorMsg);
+    }
+  }
 };
 </script>
 

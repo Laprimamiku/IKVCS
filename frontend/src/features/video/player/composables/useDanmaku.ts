@@ -88,7 +88,7 @@ export function useDanmaku(videoId: Ref<number | null>, options: UseDanmakuOptio
     text: string, 
     color = '#ffffff', 
     initialOffset = 0,
-    extra: { ai_score?: number; is_highlight?: boolean } = {} // [New]
+    extra: { ai_score?: number; is_highlight?: boolean; id?: number } = {} // [New] 添加id字段
   ) => {
     const lane = Math.floor(Math.random() * MAX_LANES)
     const item: DanmakuDisplayItem = {
@@ -97,7 +97,7 @@ export function useDanmaku(videoId: Ref<number | null>, options: UseDanmakuOptio
       color,
       lane,
       initialOffset,
-      ...extra // [New] 注入 AI 字段
+      ...extra // [New] 注入 AI 字段和id
     }
     activeList.value.push(item)
   }
@@ -121,10 +121,11 @@ const handleTimeChange = (time: number, forceSeek = false) => {
         if (item.video_time < startTimeWindow) break 
         const elapsed = (time - item.video_time) * 1000
         
-        // [修改点 1] 传递 AI 字段 (ai_score, is_highlight)
+        // [修改点 1] 传递 AI 字段 (ai_score, is_highlight) 和 id
         enqueue(item.content, item.color, elapsed, {
           ai_score: item.ai_score,
-          is_highlight: item.is_highlight
+          is_highlight: item.is_highlight,
+          id: item.id
         })
         
         backIndex--
@@ -135,11 +136,12 @@ const handleTimeChange = (time: number, forceSeek = false) => {
       while (historyIndex.value < list.length && list[historyIndex.value].video_time <= time) {
         const item = list[historyIndex.value]
         
-        // [修改点 2] 正常播放时也传递 AI 字段
+        // [修改点 2] 正常播放时也传递 AI 字段和 id
         // 注意：第3个参数 initialOffset 传 0
         enqueue(item.content, item.color, 0, {
           ai_score: item.ai_score,
-          is_highlight: item.is_highlight
+          is_highlight: item.is_highlight,
+          id: item.id
         })
         
         historyIndex.value += 1
@@ -176,7 +178,11 @@ const handleTimeChange = (time: number, forceSeek = false) => {
       if (res.success && res.data) {
         // [注意]: 这里做了本地回显（立即显示）
         // 所以如果不拦截 WebSocket 推送的自己发的消息，就会导致屏幕上出现两条
-        enqueue(res.data.content, res.data.color)
+        enqueue(res.data.content, res.data.color, 0, {
+          id: res.data.id,
+          ai_score: res.data.ai_score,
+          is_highlight: res.data.is_highlight
+        })
       }
       return res
     },

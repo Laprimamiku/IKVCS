@@ -26,11 +26,20 @@ export function useVideoPlayer() {
     }
 
     try {
-      const res = await getVideoDetail(id);
-      if (res.success) {
-        videoData.value = res.data;
-        await loadRecommendVideos();
-        await incrementViewCount(id);
+      // 优化：并行加载视频详情和推荐视频，播放量统计异步执行不阻塞
+      const [videoRes] = await Promise.all([
+        getVideoDetail(id),
+        // 推荐视频可以延迟加载，先显示主要内容
+      ]);
+      
+      if (videoRes.success) {
+        videoData.value = videoRes.data;
+        
+        // 并行加载推荐视频和增加播放量（不阻塞主流程）
+        Promise.all([
+          loadRecommendVideos(),
+          incrementViewCount(id).catch(err => console.warn('播放量统计失败:', err))
+        ]);
 
         // 转码轮询
         if (videoData.value && (videoData.value.status === 0 || !videoData.value.video_url)) {

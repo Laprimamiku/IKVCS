@@ -129,6 +129,7 @@
  * 3. 表单切换
  */
 import { ref, reactive, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules, FormItemRule } from 'element-plus'
 import { useUserStore } from "@/shared/stores/user"
@@ -147,6 +148,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'success'])
 
 const userStore = useUserStore()
+const router = useRouter()
 const dialogVisible = ref(props.modelValue)
 const isLogin = ref(props.mode === 'login')
 const loading = ref(false)
@@ -275,6 +277,13 @@ const handleLogin = async () => {
     await userStore.login(loginForm.username, loginForm.password)
     ElMessage.success('登录成功！')
     dialogVisible.value = false
+    
+    // 检查是否是管理员，如果是则跳转到管理员页面
+    if (userStore.isAdmin) {
+      // 使用路由名称而不是路径，更可靠
+      router.push({ name: 'AdminDashboard' })
+    }
+    
     emit('success')
   } catch (error) {
     console.error('登录失败:', error)

@@ -7,11 +7,13 @@
 需求：5.5
 """
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, Union
 import logging
 
+from app.models.video import Video
 from app.repositories.video_repository import VideoRepository
-from app.services.cache.redis_service import RedisService
+# [修复 1] 导入全局单例 redis_service，而不是类 RedisService
+from app.services.cache.redis_service import redis_service
 
 logger = logging.getLogger(__name__)
 
@@ -23,19 +25,6 @@ class VideoStatsService:
     def increment_view_count(db: Session, video_id: int) -> bool:
         """
         增加播放量
-        
-        使用 Redis Write-Back 策略：
-        1. 先增加 Redis 中的计数（快速响应）
-        2. 定时任务会将 Redis 数据同步到 MySQL（批量写入）
-        
-        Args:
-            db: 数据库会话
-            video_id: 视频ID
-            
-        Returns:
-            bool: 是否成功
-            
-        需求：5.5（播放量统计）
         """
         try:
             # 先检查视频是否存在
@@ -44,8 +33,7 @@ class VideoStatsService:
                 logger.warning(f"视频不存在：video_id={video_id}")
                 return False
             
-            # 增加 Redis 中的播放量
-            redis_service = RedisService()
+            # [修复 2] 直接使用单例调用，避免重复建立连接
             redis_service.increment_view_count(video_id)
             
             logger.info(f"视频 {video_id} 播放量已增加（Redis）")
@@ -57,16 +45,7 @@ class VideoStatsService:
     @staticmethod
     def get_merged_view_count(db: Session, video_id: int) -> int:
         """
-        获取合并后的播放量（MySQL + Redis 增量）
-        
-        用于显示最新的播放量
-        
-        Args:
-            db: 数据库会话
-            video_id: 视频ID
-            
-        Returns:
-            int: 播放量
+        获取合并后的播放量（兼容旧接口）
         """
         try:
             # 从数据库获取基础播放量
@@ -74,16 +53,25 @@ class VideoStatsService:
             if not video:
                 return 0
             
-            db_count = video.view_count or 0
-            
-            # 从 Redis 获取增量
-            redis_service = RedisService()
-            redis_count = redis_service.get_view_count_from_cache(video_id)
-            
-            # 如果 Redis 有数据，使用 Redis 的值（因为它是最新的）
-            # 否则使用数据库的值
-            return redis_count if redis_count is not None else db_count
+            return VideoStatsService.get_view_count_from_model(video)
         except Exception as e:
             logger.error(f"获取播放量失败：{e}")
             return 0
 
+    @staticmethod
+    def get_view_count_from_model(video: Video) -> int:
+        """
+        [新增] 直接从视频对象获取播放量
+        避免列表查询时的 N+1 数据库查询问题
+        """
+        try:
+            db_count = video.view_count or 0
+            
+            # [修复 3] 使用单例获取 Redis 缓存
+            redis_count = redis_service.get_view_count_from_cache(video.id)
+            
+            # 如果 Redis 有数据，使用 Redis 的值（因为它是最新的）
+            return redis_count if redis_count is not None else db_count
+        except Exception as e:
+            logger.error(f"从模型获取播放量失败：{e}")
+            return video.view_count or 0

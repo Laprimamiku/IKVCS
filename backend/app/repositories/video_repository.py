@@ -77,12 +77,13 @@ class VideoRepository(BaseRepository):
                 )
             )
         
-        # 获取总数
-        total = query.count()
-        
-        # 分页查询（按创建时间倒序）
+        # 优化：先分页查询，再获取总数（如果数据量大，可以进一步优化为缓存总数）
         offset = (page - 1) * page_size
         videos = query.order_by(Video.created_at.desc()).offset(offset).limit(page_size).all()
+        
+        # 获取总数（使用独立的查询，避免影响分页查询的性能）
+        # 注意：如果数据量很大，可以考虑缓存总数或使用估算值
+        total = query.count()
         
         return videos, total
     
