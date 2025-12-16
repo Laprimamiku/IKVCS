@@ -10,6 +10,7 @@
         }"
         :style="getItemStyle(item)"
         @animationend="() => emit('finish', item.key)"
+        @mousedown.stop
         @click.stop="handleDanmakuClick(item)"
       >
         <span v-if="isHighlight(item)" class="hq-icon">🔥</span>
@@ -47,48 +48,51 @@ const handleDanmakuClick = async (item: DanmakuDisplayItem) => {
     ElMessage.warning("请先登录");
     return;
   }
-  
+
   // 如果没有id（可能是实时弹幕还未保存），提示用户
   if (!item.id) {
     ElMessage.warning("该弹幕暂时无法举报，请稍后再试");
     return;
   }
-  
+
   try {
     const { value: reason } = await ElMessageBox.prompt(
       `举报弹幕："${item.text}"`,
-      '举报弹幕',
+      "举报弹幕",
       {
-        confirmButtonText: '提交',
-        cancelButtonText: '取消',
-        inputPlaceholder: '请简要说明举报原因',
+        confirmButtonText: "提交",
+        cancelButtonText: "取消",
+        inputPlaceholder: "请简要说明举报原因",
         inputValidator: (value) => {
           if (!value || value.trim().length === 0) {
-            return '请输入举报原因';
+            return "请输入举报原因";
           }
           if (value.length > 100) {
-            return '举报原因不能超过100个字符';
+            return "举报原因不能超过100个字符";
           }
           return true;
-        }
+        },
       }
     );
-    
+
     const res = await createReport({
-      target_type: 'DANMAKU',
+      target_type: "DANMAKU",
       target_id: item.id,
       reason: reason.trim(),
     });
-    
+
     if (res.success) {
-      ElMessage.success(res.data?.message || '举报提交成功，我们会尽快处理');
+      ElMessage.success(res.data?.message || "举报提交成功，我们会尽快处理");
     } else {
-      ElMessage.error('举报提交失败，请稍后重试');
+      ElMessage.error("举报提交失败，请稍后重试");
     }
   } catch (error: any) {
-    if (error !== 'cancel') {
-      console.error('举报失败:', error);
-      const errorMsg = error?.response?.data?.detail || error?.message || '举报提交失败，请稍后重试';
+    if (error !== "cancel") {
+      console.error("举报失败:", error);
+      const errorMsg =
+        error?.response?.data?.detail ||
+        error?.message ||
+        "举报提交失败，请稍后重试";
       ElMessage.error(errorMsg);
     }
   }
@@ -174,13 +178,17 @@ const getItemStyle = (item: DanmakuDisplayItem) => {
 
   display: flex;
   align-items: center;
-  
+
   // 添加点击提示
+  pointer-events: auto; /* 关键：让每条弹幕可以接收点击 */
   cursor: pointer;
   transition: opacity 0.2s;
-  
+
   &:hover {
     opacity: 0.8;
+    z-index: 999; /* 鼠标悬停时层级最高，防止重叠点错 */
+    border: 1px solid rgba(255, 255, 255, 0.5); /* 增加 hover 边框提示可点击 */
+    background-color: rgba(0, 0, 0, 0.3); /* 增加背景增强可读性 */
   }
 
   /* ===============================

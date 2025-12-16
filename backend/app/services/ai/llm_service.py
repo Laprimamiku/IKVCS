@@ -3,24 +3,32 @@ LLM 智能分析服务
 需求：8.1-8.5, 10.1-10.4, 20.1-20.4
 
 功能：
-提供弹幕和评论的智能评分与分类
-提供异步后台任务处理方法，直接更新数据库
-规则预过滤 + 提示工程模板 + 结果结构化解析
+1. 弹幕 / 评论智能评分与分类
+2. 规则预过滤，减少 LLM Token 消耗
+3. Prompt 模板化
+4. 结果结构化解析
+5. Redis 缓存（内容指纹级别）
+6. 异步后台任务，直接更新数据库
 """
+
 import httpx
 import json
 import logging
-import asyncio
+import hashlib
 from typing import Dict, Any, Optional
 
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.danmaku import Danmaku
 from app.models.comment import Comment
-# 引入新创建的 Prompt 模板
-from app.services.ai.prompts import DANMAKU_SYSTEM_PROMPT, COMMENT_SYSTEM_PROMPT
+from app.services.ai.prompts import (
+    DANMAKU_SYSTEM_PROMPT,
+    COMMENT_SYSTEM_PROMPT
+)
+from app.services.cache.redis_service import redis_service
 
 logger = logging.getLogger(__name__)
+
 
 class LLMService:
     def __init__(self):
@@ -28,8 +36,8 @@ class LLMService:
         self.base_url = settings.LLM_BASE_URL
         self.model = settings.LLM_MODEL
         self.timeout = 30.0
-        
-        # 默认兜底响应
+
+        # 兜底响应（任何异常都会回落到这里）
         self.default_response = {
             "score": 60,
             "category": "普通",
@@ -39,115 +47,155 @@ class LLMService:
             "is_inappropriate": False
         }
 
+    # ==================== 核心分析流程 ====================
+
+    def _get_content_hash(self, content: str) -> str:
+        """计算内容指纹，用于 Redis 缓存"""
+        return hashlib.md5(content.strip().encode("utf-8")).hexdigest()
+
     async def analyze_content(self, content: str, content_type: str) -> Dict[str, Any]:
         """
-        核心分析流程：规则过滤 -> 构建Prompt -> 调用API -> 解析结果
-        """
-        # 1. 规则预过滤 (Rule-based Filtering)
-        # 针对极短或明显无意义的内容，不消耗 LLM Token
-        pre_check = self._rule_based_filter(content, content_type)
-        if pre_check:
-            logger.info(f"Rule hit for content '{content}': {pre_check['reason']}")
-            return pre_check
-
-        # 2. 构建 Prompt (使用模板)
-        messages = self._build_prompt(content, content_type)
-        
-        # 3. 调用 API
-        response_text = await self._call_llm_api(messages)
-        if not response_text:
-            return self.default_response
-            
-        # 4. 解析结果
-        return self._parse_response(response_text, content_type)
-
-    def _rule_based_filter(self, content: str, content_type: str) -> Optional[Dict]:
-        """
-        基于规则的低成本过滤器
+        优化后的分析流程：
+        Redis 缓存 → 规则预过滤 → LLM → 结果缓存
         """
         if not content:
             return self.default_response
 
-        # 常见无意义短语库
-        low_value_keywords = ["666", "111", "233", "哈哈", "打卡", "第一", "前排", "来了"]
-        
-        # 规则1: 纯数字或极短且在词库中 -> 判为普通
+        # 0. Redis Cache Look-aside
+        content_hash = self._get_content_hash(content)
+        cache_key = f"ai:analysis:{content_type}:{content_hash}"
+
+        cached_result = await redis_service.async_redis.get(cache_key)
+        if cached_result:
+            try:
+                logger.info(f"AI Cache Hit: {content[:10]}...")
+                return json.loads(cached_result)
+            except Exception:
+                pass
+
+        # 1. 规则预过滤
+        pre_check = self._rule_based_filter(content, content_type)
+        if pre_check:
+            await redis_service.async_redis.setex(
+                cache_key,
+                86400 * 7,
+                json.dumps(pre_check)
+            )
+            return pre_check
+
+        # 2. 构建 Prompt
+        messages = self._build_prompt(content, content_type)
+
+        # 3. 调用 LLM
+        response_text = await self._call_llm_api(messages)
+        if not response_text:
+            return self.default_response
+
+        # 4. 解析结果
+        result = self._parse_response(response_text, content_type)
+
+        # 5. 写入缓存（7 天）
+        await redis_service.async_redis.setex(
+            cache_key,
+            86400 * 7,
+            json.dumps(result)
+        )
+
+        return result
+
+    # ==================== 规则过滤 ====================
+
+    def _rule_based_filter(self, content: str, content_type: str) -> Optional[Dict[str, Any]]:
+        """
+        低成本规则过滤，避免无意义内容调用 LLM
+        """
         clean_content = content.strip()
+        if not clean_content:
+            return self.default_response
+
+        low_value_keywords = ["666", "111", "233", "哈哈", "打卡", "第一", "前排", "来了"]
+
         if len(clean_content) < 4:
             if clean_content.isdigit() or any(k in clean_content for k in low_value_keywords):
                 return {
                     **self.default_response,
                     "score": 50,
                     "category": "情绪表达",
-                    "reason": "规则命中: 常见短弹幕",
+                    "reason": "规则命中：常见短内容",
                     "is_highlight": False
                 }
-        
+
         return None
 
+    # ==================== Prompt 构建 ====================
+
     def _build_prompt(self, content: str, content_type: str) -> list:
-        """
-        加载 prompts.py 中的模板
-        """
         if content_type == "danmaku":
-            system_content = DANMAKU_SYSTEM_PROMPT
+            system_prompt = DANMAKU_SYSTEM_PROMPT
         else:
-            system_content = COMMENT_SYSTEM_PROMPT
+            system_prompt = COMMENT_SYSTEM_PROMPT
 
         return [
-            {"role": "system", "content": system_content},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"输入内容: {content}"}
         ]
-    
+
+    # ==================== LLM API 调用 ====================
+
     async def _call_llm_api(self, messages: list) -> Optional[str]:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-        
+
         payload = {
             "model": self.model,
             "messages": messages,
-            "temperature": 0.1,  # 降低温度，让 JSON 输出更稳定
-            "max_tokens": 300,   # 限制输出长度
+            "temperature": 0.1,
+            "max_tokens": 300
         }
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
+                resp = await client.post(
                     f"{self.base_url}/chat/completions",
                     json=payload,
                     headers=headers
                 )
-                
-                if response.status_code != 200:
-                    logger.error(f"LLM API Error: {response.status_code} - {response.text}")
+
+                if resp.status_code != 200:
+                    logger.error(f"LLM API Error {resp.status_code}: {resp.text}")
                     return None
-                    
-                data = response.json()
-                return data['choices'][0]['message']['content']
-                
+
+                data = resp.json()
+                return data["choices"][0]["message"]["content"]
+
         except Exception as e:
-            logger.error(f"LLM API Call Failed: {str(e)}")
+            logger.error(f"LLM API Call Failed: {e}")
             return None
-    
+
+    # ==================== 结果解析 ====================
+
     def _parse_response(self, response_text: str, content_type: str) -> Dict[str, Any]:
         try:
-            # 清理 Markdown 标记
-            clean_text = response_text.replace("```json", "").replace("```", "").strip()
+            clean_text = (
+                response_text
+                .replace("```json", "")
+                .replace("```", "")
+                .strip()
+            )
             data = json.loads(clean_text)
-            
+
             result = self.default_response.copy()
             result.update(data)
-            
-            # 类型安全转换
-            result['category'] = str(result.get('category', '普通'))
-            result['label'] = str(result.get('label', '普通'))
-            
+
+            result["category"] = str(result.get("category", "普通"))
+            result["label"] = str(result.get("label", "普通"))
+
             return result
-            
+
         except json.JSONDecodeError:
-            logger.warning(f"JSON Parse Error. Raw: {response_text}")
+            logger.warning(f"JSON Parse Error: {response_text}")
             return self.default_response
 
     # ==================== 异步任务处理 ====================
@@ -156,26 +204,26 @@ class LLMService:
         db = SessionLocal()
         try:
             danmaku = db.query(Danmaku).filter(Danmaku.id == danmaku_id).first()
-            if not danmaku: return
+            if not danmaku:
+                return
 
             result = await self.analyze_content(danmaku.content, "danmaku")
-            
-            # 更新字段
-            danmaku.ai_score = result.get('score', 60)
-            danmaku.ai_category = result.get('category', '普通')
-            
-            # 处理高亮逻辑：AI 认为高亮 OR 分数极高
-            # 注意：数据库目前只有 is_highlight 字段，没有 reason 字段，reason 仅记日志
-            danmaku.is_highlight = result.get('is_highlight', False) or danmaku.ai_score >= 90
-            
-            # 记录详细日志用于调试 Prompt (CoT 的体现)
-            if 'reason' in result:
-                logger.info(f"[AI Analysis] Danmaku {danmaku_id}: Reason='{result['reason']}'")
-            
+
+            danmaku.ai_score = result.get("score", 60)
+            danmaku.ai_category = result.get("category", "普通")
+            danmaku.is_highlight = (
+                result.get("is_highlight", False) or danmaku.ai_score >= 90
+            )
+
+            if "reason" in result:
+                logger.info(
+                    f"[AI] Danmaku {danmaku_id} Reason: {result['reason']}"
+                )
+
             db.commit()
-            
+
         except Exception as e:
-            logger.error(f"Error processing danmaku {danmaku_id}: {e}")
+            logger.error(f"Danmaku Task Error {danmaku_id}: {e}")
             db.rollback()
         finally:
             db.close()
@@ -184,23 +232,27 @@ class LLMService:
         db = SessionLocal()
         try:
             comment = db.query(Comment).filter(Comment.id == comment_id).first()
-            if not comment: return
+            if not comment:
+                return
 
             result = await self.analyze_content(comment.content, "comment")
-            
-            comment.ai_score = result.get('score', 60)
-            comment.ai_label = result.get('label', '普通')
-            
-            if 'reason' in result:
-                logger.info(f"[AI Analysis] Comment {comment_id}: Reason='{result['reason']}'")
-            
+
+            comment.ai_score = result.get("score", 60)
+            comment.ai_label = result.get("label", "普通")
+
+            if "reason" in result:
+                logger.info(
+                    f"[AI] Comment {comment_id} Reason: {result['reason']}"
+                )
+
             db.commit()
-            
+
         except Exception as e:
-            logger.error(f"Error processing comment {comment_id}: {e}")
+            logger.error(f"Comment Task Error {comment_id}: {e}")
             db.rollback()
         finally:
             db.close()
+
 
 # 全局实例
 llm_service = LLMService()
