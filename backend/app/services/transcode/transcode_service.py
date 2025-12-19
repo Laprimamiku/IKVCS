@@ -9,6 +9,7 @@
 import asyncio
 import os
 import logging
+import threading
 from threading import Semaphore
 from sqlalchemy.orm import Session
 
@@ -33,15 +34,26 @@ def _parse_resolutions() -> list:
             parts = item.strip().split(':')
             if len(parts) == 4:
                 resolutions.append((parts[0], parts[1], parts[2], parts[3]))
-    # 默认配置
+    # 默认配置（4种清晰度）
     if not resolutions:
         resolutions = [
+            ("360p", "640x360", "500k", "96k"),
             ("480p", "854x480", "800k", "128k"),
             ("720p", "1280x720", "2000k", "128k"),
+            ("1080p", "1920x1080", "4000k", "192k"),
         ]
     return resolutions
 
+# 解析优先级清晰度（第一阶段转码）
+def _parse_priority_resolutions() -> set:
+    """解析需要优先转码的清晰度"""
+    if settings.TRANSCODE_PRIORITY_RESOLUTIONS:
+        return set(r.strip() for r in settings.TRANSCODE_PRIORITY_RESOLUTIONS.split(','))
+    # 默认优先转码低清晰度
+    return {"360p", "480p"}
+
 RESOLUTIONS = _parse_resolutions()
+PRIORITY_RESOLUTIONS = _parse_priority_resolutions()
 
 
 class TranscodeService:
@@ -121,94 +133,70 @@ class TranscodeService:
                     db.commit()
                     return
                 
-                # 3. 转码多个清晰度
-                logger.info(f"开始多清晰度转码：{len(RESOLUTIONS)} 个清晰度")
+                # 3. 转码多个清晰度（渐进式策略）
+                strategy = getattr(settings, 'TRANSCODE_STRATEGY', 'progressive')
+                logger.info(f"开始多清晰度转码：{len(RESOLUTIONS)} 个清晰度，策略={strategy}")
+                
+                # 分离优先级清晰度和其他清晰度
+                priority_list = []
+                other_list = []
+                for res in RESOLUTIONS:
+                    name = res[0]
+                    if name in PRIORITY_RESOLUTIONS:
+                        priority_list.append(res)
+                    else:
+                        other_list.append(res)
                 
                 transcoded_resolutions = []
-                all_success = True
                 
-                for name, resolution, video_bitrate, audio_bitrate in RESOLUTIONS:
-                    logger.info(f"转码 {name} ({resolution})...")
-                    
-                    # 创建清晰度目录
-                    resolution_dir = os.path.join(output_dir, name)
-                    os.makedirs(resolution_dir, exist_ok=True)
-                    
-                    resolution_output = os.path.join(resolution_dir, "index.m3u8")
-
-                    # 如果该清晰度已经存在产物，直接复用，避免重复耗时
-                    if os.path.exists(resolution_output):
-                        bandwidth = int(video_bitrate.replace('k', '')) * 1000
-                        transcoded_resolutions.append((name, resolution, bandwidth))
-                        logger.info(f"检测到已有转码产物，复用 {name}: {resolution_output}")
-                        continue
-                    
-                    # 构建 FFmpeg 命令
-                    ffmpeg_cmd = FFmpegBuilder.build_ffmpeg_command(
-                        input_path,
-                        resolution_output,
-                        resolution,
-                        video_bitrate,
-                        audio_bitrate
+                # 第一阶段：转码优先级清晰度（快速完成，让用户能立即观看）
+                logger.info(f"第一阶段：转码优先级清晰度 {[r[0] for r in priority_list]}")
+                for name, resolution, video_bitrate, audio_bitrate in priority_list:
+                    result = TranscodeService._transcode_single_resolution(
+                        name, resolution, video_bitrate, audio_bitrate,
+                        input_path, output_dir
                     )
-                    
-                    logger.info(f"FFmpeg 命令 ({name})：{' '.join(ffmpeg_cmd)}")
-                    
-                    # 执行转码
-                    returncode, stderr = TranscodeExecutor.execute_transcode(ffmpeg_cmd)
-                    
-                    if returncode == 0:
-                        logger.info(f"转码成功：{name}")
-                        # 计算带宽（码率转换为 bps）
-                        bandwidth = int(video_bitrate.replace('k', '')) * 1000
-                        transcoded_resolutions.append((name, resolution, bandwidth))
-                    else:
-                        logger.error(f"转码失败：{name}, returncode={returncode}")
-                        if stderr:
-                            error_msg = stderr.decode('utf-8', errors='ignore') if isinstance(stderr, bytes) else str(stderr)
-                            logger.error(f"FFmpeg 错误输出 ({name})：{error_msg}")
-                        all_success = False
-                        # 若失败则提前结束后续耗时分辨率，使用已有清晰度兜底
-                        break
+                    if result:
+                        transcoded_resolutions.append(result)
                 
-                # 4. 生成主播放列表
+                # 如果至少有一个清晰度转码成功，立即生成播放列表并更新状态
                 if transcoded_resolutions:
-                    logger.info(f"生成主播放列表，包含 {len(transcoded_resolutions)} 个清晰度")
-                    master_playlist_content = PlaylistGenerator.build_master_playlist(
-                        video_id,
-                        transcoded_resolutions
+                    logger.info(f"第一阶段完成：成功转码 {len(transcoded_resolutions)} 个清晰度，立即更新播放列表")
+                    TranscodeService._update_playlist_and_status(
+                        db, video, video_id, output_dir, transcoded_resolutions, input_path
                     )
-                    
-                    master_playlist_path = os.path.join(output_dir, "master.m3u8")
-                    with open(master_playlist_path, 'w', encoding='utf-8') as f:
-                        f.write(master_playlist_content)
-                    
-                    logger.info(f"主播放列表已生成：{master_playlist_path}")
                 
-                # 5. 更新视频状态
-                if transcoded_resolutions:
-                    # 至少有一个清晰度转码成功
-                    logger.info(f"转码完成：video_id={video_id}, 成功 {len(transcoded_resolutions)}/{len(RESOLUTIONS)} 个清晰度")
+                # 第二阶段：后台转码其他清晰度（渐进增强，不阻塞用户观看）
+                if strategy == 'progressive' and other_list:
+                    logger.info(f"第二阶段：后台转码其他清晰度 {[r[0] for r in other_list]}")
+                    # 使用线程转码其他清晰度，不阻塞当前流程
+                    thread = threading.Thread(
+                        target=TranscodeService._transcode_other_resolutions_sync,
+                        args=(video_id, other_list, input_path, output_dir),
+                        daemon=True
+                    )
+                    thread.start()
+                    logger.info(f"后台转码线程已启动：video_id={video_id}")
+                elif strategy == 'all':
+                    # 一次性转码所有清晰度（传统方式）
+                    logger.info("策略为 all，继续转码所有清晰度")
+                    for name, resolution, video_bitrate, audio_bitrate in other_list:
+                        result = TranscodeService._transcode_single_resolution(
+                            name, resolution, video_bitrate, audio_bitrate,
+                            input_path, output_dir
+                        )
+                        if result:
+                            transcoded_resolutions.append(result)
                     
-                    # 更新视频 URL 和状态（使用主播放列表）
-                    # 静态文件挂载：/videos -> ./storage/videos
-                    # HLS文件路径：./storage/videos/hls/{video_id}/master.m3u8
-                    # URL路径应该是：/videos/hls/{video_id}/master.m3u8
-                    video.video_url = f"/videos/hls/{video_id}/master.m3u8"
-                    # 当前未实现审核流，转码成功后直接设置为已发布以便前端展示
-                    video.status = 2  # 2=已发布
-                    
-                    # 获取视频时长（使用原始文件）
-                    duration = TranscodeExecutor.get_video_duration(input_path)
-                    if duration > 0:
-                        video.duration = duration
-                    
-                    db.commit()
-                    logger.info(f"视频状态更新为已发布：video_id={video_id}")
-                    
-                else:
-                    # 所有清晰度都转码失败
-                    logger.error(f"所有清晰度转码失败：video_id={video_id}")
+                    # 更新播放列表（包含所有清晰度）
+                    if transcoded_resolutions:
+                        TranscodeService._update_playlist_and_status(
+                            db, video, video_id, output_dir, transcoded_resolutions, input_path
+                        )
+                
+                # 如果第一阶段没有成功转码任何清晰度，标记为失败
+                if not transcoded_resolutions:
+                    logger.error(f"所有优先级清晰度转码失败：video_id={video_id}")
                     video.status = -1  # -1=转码失败
                     db.commit()
             
@@ -226,4 +214,171 @@ class TranscodeService:
             
             finally:
                 db.close()
+    
+    @staticmethod
+    def _transcode_single_resolution(
+        name: str,
+        resolution: str,
+        video_bitrate: str,
+        audio_bitrate: str,
+        input_path: str,
+        output_dir: str
+    ) -> tuple:
+        """
+        转码单个清晰度
+        
+        Returns:
+            tuple: (name, resolution, bandwidth) 如果成功，否则 None
+        """
+        # 创建清晰度目录
+        resolution_dir = os.path.join(output_dir, name)
+        os.makedirs(resolution_dir, exist_ok=True)
+        
+        resolution_output = os.path.join(resolution_dir, "index.m3u8")
+
+        # 如果该清晰度已经存在产物，直接复用，避免重复耗时
+        if os.path.exists(resolution_output):
+            bandwidth = int(video_bitrate.replace('k', '')) * 1000
+            logger.info(f"检测到已有转码产物，复用 {name}: {resolution_output}")
+            return (name, resolution, bandwidth)
+        
+        # 构建 FFmpeg 命令
+        ffmpeg_cmd = FFmpegBuilder.build_ffmpeg_command(
+            input_path,
+            resolution_output,
+            resolution,
+            video_bitrate,
+            audio_bitrate
+        )
+        
+        logger.info(f"FFmpeg 命令 ({name})：{' '.join(ffmpeg_cmd)}")
+        
+        # 执行转码
+        returncode, stderr = TranscodeExecutor.execute_transcode(ffmpeg_cmd)
+        
+        if returncode == 0:
+            logger.info(f"转码成功：{name}")
+            # 计算带宽（码率转换为 bps）
+            bandwidth = int(video_bitrate.replace('k', '')) * 1000
+            return (name, resolution, bandwidth)
+        else:
+            logger.error(f"转码失败：{name}, returncode={returncode}")
+            if stderr:
+                error_msg = stderr.decode('utf-8', errors='ignore') if isinstance(stderr, bytes) else str(stderr)
+                logger.error(f"FFmpeg 错误输出 ({name})：{error_msg}")
+            return None
+    
+    @staticmethod
+    def _update_playlist_and_status(
+        db: Session,
+        video: Video,
+        video_id: int,
+        output_dir: str,
+        transcoded_resolutions: list,
+        input_path: str
+    ):
+        """更新播放列表和视频状态"""
+        # 生成主播放列表
+        logger.info(f"生成主播放列表，包含 {len(transcoded_resolutions)} 个清晰度")
+        master_playlist_content = PlaylistGenerator.build_master_playlist(
+            video_id,
+            transcoded_resolutions
+        )
+        
+        master_playlist_path = os.path.join(output_dir, "master.m3u8")
+        with open(master_playlist_path, 'w', encoding='utf-8') as f:
+            f.write(master_playlist_content)
+        
+        logger.info(f"主播放列表已生成：{master_playlist_path}")
+        
+        # 更新视频 URL 和状态
+        video.video_url = f"/videos/hls/{video_id}/master.m3u8"
+        video.status = 2  # 2=已发布
+        
+        # 获取视频时长（使用原始文件）
+        duration = TranscodeExecutor.get_video_duration(input_path)
+        if duration > 0:
+            video.duration = duration
+        
+        db.commit()
+        logger.info(f"视频状态更新为已发布：video_id={video_id}")
+    
+    @staticmethod
+    def _transcode_other_resolutions_sync(
+        video_id: int,
+        other_resolutions: list,
+        input_path: str,
+        output_dir: str
+    ):
+        """
+        后台转码其他清晰度（渐进增强）- 同步版本
+        不阻塞用户观看，在后台逐步完成高清晰度转码
+        使用线程执行，避免阻塞主流程
+        """
+        db = SessionLocal()
+        try:
+            from app.repositories.video_repository import VideoRepository
+            video = VideoRepository.get_by_id(db, video_id)
+            
+            if not video:
+                logger.error(f"视频不存在，取消后台转码：video_id={video_id}")
+                return
+            
+            logger.info(f"开始后台转码其他清晰度：video_id={video_id}")
+            
+            new_resolutions = []
+            for name, resolution, video_bitrate, audio_bitrate in other_resolutions:
+                result = TranscodeService._transcode_single_resolution(
+                    name, resolution, video_bitrate, audio_bitrate,
+                    input_path, output_dir
+                )
+                if result:
+                    new_resolutions.append(result)
+                    logger.info(f"后台转码成功：{name}")
+            
+            # 如果转码成功，更新播放列表（包含所有清晰度）
+            if new_resolutions:
+                # 读取现有的转码清晰度
+                existing_playlist_path = os.path.join(output_dir, "master.m3u8")
+                existing_resolutions = []
+                
+                # 从现有播放列表解析已转码的清晰度
+                if os.path.exists(existing_playlist_path):
+                    with open(existing_playlist_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        # 简单解析：查找所有已存在的清晰度目录
+                        for res in RESOLUTIONS:
+                            name = res[0]
+                            resolution_dir = os.path.join(output_dir, name)
+                            resolution_output = os.path.join(resolution_dir, "index.m3u8")
+                            if os.path.exists(resolution_output):
+                                bandwidth = int(res[2].replace('k', '')) * 1000
+                                existing_resolutions.append((name, res[1], bandwidth))
+                
+                # 合并所有清晰度（去重）
+                all_resolutions = existing_resolutions + new_resolutions
+                # 去重：按名称去重，保留最新的
+                unique_resolutions = {}
+                for res in all_resolutions:
+                    unique_resolutions[res[0]] = res
+                all_resolutions = list(unique_resolutions.values())
+                # 按清晰度排序（从低到高）
+                resolution_order = {"360p": 1, "480p": 2, "720p": 3, "1080p": 4}
+                all_resolutions.sort(key=lambda x: resolution_order.get(x[0], 99))
+                
+                # 更新播放列表
+                master_playlist_content = PlaylistGenerator.build_master_playlist(
+                    video_id,
+                    all_resolutions
+                )
+                
+                master_playlist_path = os.path.join(output_dir, "master.m3u8")
+                with open(master_playlist_path, 'w', encoding='utf-8') as f:
+                    f.write(master_playlist_content)
+                
+                logger.info(f"播放列表已更新：包含 {len(all_resolutions)} 个清晰度（video_id={video_id}）")
+        except Exception as e:
+            logger.error(f"后台转码失败：video_id={video_id}, error={e}", exc_info=True)
+        finally:
+            db.close()
 

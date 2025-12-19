@@ -151,7 +151,7 @@ class BaseRepository:
             ModelType: 创建的模型对象
             
         使用示例：
-            user = UserRepository.create(db, {"username": "test", "password_hash": "..."})
+            user = UserRepository.create(db, {"username": "example", "password_hash": "hashed_password"})
         """
         if cls.model is None:
             raise ValueError("子类必须设置 model 属性")

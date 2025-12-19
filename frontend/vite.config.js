@@ -23,16 +23,17 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        // 开发环境代理目标，可通过环境变量 VITE_PROXY_TARGET 覆盖
+        target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true
       },
       // 代理 HLS 和上传静态资源，避免抢占 SPA 路由
       '/videos/hls': {
-        target: 'http://localhost:8000',
+        target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true
       },
       '/uploads': {
-        target: 'http://localhost:8000',
+        target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true,
         bypass(req) {
           // HTML 直刷时返回前端入口，避免 404

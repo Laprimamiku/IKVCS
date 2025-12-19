@@ -205,32 +205,49 @@ onMounted(async () => {
 <style lang="scss" scoped>
 .home-page {
   min-height: 100vh;
-  background-color: var(--bg-light);
+  background-color: var(--bg-global);
 }
 
 .main-content {
   max-width: var(--container-max-width);
   margin: 0 auto;
-  padding: var(--spacing-lg);
+  padding: 20px 24px 40px;
 
   @media (max-width: 1400px) {
-    padding: var(--spacing-md);
+    padding: 16px 20px 32px;
   }
 }
 
 .banner-section {
-  margin-bottom: var(--spacing-xl);
+  margin-bottom: 24px;
 }
 
 .video-grid-wrapper {
-  margin-top: var(--spacing-lg);
+  margin-top: 20px;
 }
 
 .load-more-wrapper {
   display: flex;
   justify-content: center;
-  margin-top: var(--spacing-xl);
-  padding: var(--spacing-lg) 0;
+  margin-top: 32px;
+  padding: 24px 0;
+
+  :deep(.el-button) {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #fff;
+    padding: 10px 32px;
+    border-radius: var(--radius-md);
+    font-weight: 500;
+    transition: all 0.2s;
+
+    &:hover {
+      background: var(--primary-hover);
+      border-color: var(--primary-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(250, 114, 152, 0.3);
+    }
+  }
 }
 
 .loading-wrapper {
@@ -238,21 +255,31 @@ onMounted(async () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--spacing-md);
-  padding: var(--spacing-2xl) 0;
-  color: var(--text-secondary);
+  gap: 12px;
+  padding: 48px 0;
+  color: var(--text-tertiary);
   font-size: var(--font-size-sm);
 
   .el-icon {
     font-size: 24px;
     color: var(--primary-color);
+    animation: rotate 1s linear infinite;
+  }
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
 .no-more {
   text-align: center;
-  padding: var(--spacing-xl) 0;
-  color: var(--text-secondary);
+  padding: 32px 0;
+  color: var(--text-tertiary);
   font-size: var(--font-size-sm);
 }
 </style>

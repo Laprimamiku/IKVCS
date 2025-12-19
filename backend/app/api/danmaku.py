@@ -41,14 +41,8 @@ class DanmakuResponse(BaseModel):
 
 # ==================== API Endpoints ====================
 
-# 模拟 LLM 分析任务
-async def analyze_danmaku_content(danmaku_id: int):
-    """后台任务：调用 LLM 分析弹幕内容"""
-    # TODO: 实现真正的 LLM 调用
-    # 1. 获取弹幕内容
-    # 2. 调用 LLMService
-    # 3. 更新数据库中的 ai_score 和 ai_category
-    pass
+# 注意：LLM 分析任务已由 llm_service.process_danmaku_task 实现
+# 此函数已废弃，保留仅为向后兼容
 
 @router.post("/videos/{video_id}/danmakus", response_model=DanmakuResponse)
 async def send_danmaku(

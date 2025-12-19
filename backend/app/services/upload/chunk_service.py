@@ -31,11 +31,37 @@ class ChunkService:
         Raises:
             HTTPException: 索引无效时抛出
         """
-        if chunk_index < 0 or chunk_index >= session.total_chunks:
+        # 确保 chunk_index 是整数
+        if not isinstance(chunk_index, int):
+            try:
+                chunk_index = int(chunk_index)
+            except (ValueError, TypeError):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"分片索引类型错误：{type(chunk_index)}，值：{chunk_index}"
+                )
+        
+        # 确保 total_chunks 是整数
+        total_chunks = session.total_chunks
+        if not isinstance(total_chunks, int):
+            try:
+                total_chunks = int(total_chunks)
+            except (ValueError, TypeError):
+                logger.error(f"总分片数类型错误：{type(total_chunks)}，值：{total_chunks}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"服务器内部错误：总分片数类型错误"
+                )
+        
+        # 验证索引范围
+        if chunk_index < 0 or chunk_index >= total_chunks:
+            logger.error(f"分片索引验证失败：chunk_index={chunk_index} (type: {type(chunk_index)}), total_chunks={total_chunks} (type: {type(total_chunks)})")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"分片索引 {chunk_index} 无效（总分片数：{session.total_chunks}）"
+                detail=f"分片索引 {chunk_index} 无效（总分片数：{total_chunks}）"
             )
+        
+        logger.debug(f"分片索引验证通过：chunk_index={chunk_index}, total_chunks={total_chunks}")
     
     @staticmethod
     def mark_chunk_uploaded(

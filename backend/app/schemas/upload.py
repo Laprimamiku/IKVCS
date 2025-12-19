@@ -60,6 +60,7 @@ class UploadInitResponse(BaseModel):
     """
     file_hash: str = Field(..., description="文件哈希")
     uploaded_chunks: List[int] = Field(default=[], description="已上传分片索引列表")
+    total_chunks: int = Field(..., description="总分片数")
     is_completed: bool = Field(..., description="是否已完成上传")
     video_id: Optional[int] = Field(None, description="视频ID（秒传时返回）")
     message: str = Field(..., description="提示信息")

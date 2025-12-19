@@ -27,16 +27,27 @@ onMounted(async () => {
 </script>
 
 <style lang="scss">
-/* 全局样式 */
+/* 全局样式重置 */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-#app {
-  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
+html, body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--bg-global);
+  font-family: 'PingFang SC', 'HarmonyOS Sans', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color: var(--text-primary);
+}
+
+#app {
+  min-height: 100vh;
+  background-color: var(--bg-global);
 }
 </style>

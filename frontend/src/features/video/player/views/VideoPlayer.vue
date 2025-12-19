@@ -230,17 +230,17 @@ const handleVideoReport = async () => {
 <style lang="scss" scoped>
 .video-player-page {
   min-height: 100vh;
-  background: #f6f7f8;
+  background: var(--bg-global);
   padding-bottom: 40px;
 }
 
 .main-container {
   max-width: 1400px;
   margin: 20px auto 0;
-  padding: 0 20px;
+  padding: 0 24px;
   display: grid;
   grid-template-columns: 1fr 350px;
-  gap: 30px;
+  gap: 24px;
   align-items: start;
 }
 
@@ -253,8 +253,8 @@ const handleVideoReport = async () => {
   aspect-ratio: 16 / 9;
   background: #000;
   position: relative;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius-md);
   overflow: hidden;
 
   .player-stack {
@@ -266,11 +266,15 @@ const handleVideoReport = async () => {
 
 .loading-container {
   padding: 40px;
+  background: var(--bg-white);
+  border-radius: var(--radius-md);
+  margin: 20px 24px;
 }
 
 @media (max-width: 1100px) {
   .main-container {
     grid-template-columns: 1fr;
+    padding: 0 16px;
   }
 
   .right-column {

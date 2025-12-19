@@ -53,7 +53,11 @@ async def get_video_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """查询视频状态（开发测试用）"""
+    """
+    查询视频状态（开发/调试专用接口）
+    
+    注意：此接口仅用于开发和调试，生产环境应通过视频详情接口获取状态
+    """
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise ResourceNotFoundException(resource="视频", resource_id=video_id)
@@ -76,7 +80,18 @@ async def test_transcode(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """触发转码（开发调试用）"""
+    """
+    触发转码（开发/调试专用接口）
+    
+    注意：此接口仅用于开发和调试，生产环境应通过上传流程自动触发转码
+    """
+    # 仅在开发环境允许使用此接口
+    if settings.APP_ENV == "production":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="此接口仅在开发环境可用"
+        )
+    
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise ResourceNotFoundException(resource="视频", resource_id=video_id)

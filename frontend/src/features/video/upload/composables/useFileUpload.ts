@@ -30,6 +30,27 @@ export function useFileUpload() {
       ElMessage.error('视频文件大小不能超过 2GB')
       return false
     }
+    
+    // 验证文件格式
+    const validTypes = [
+      'video/mp4',
+      'video/x-flv',
+      'video/flv',
+      'video/quicktime', // MOV
+      'video/x-msvideo', // AVI
+      'video/x-matroska', // MKV
+      'video/webm'
+    ]
+    const validExtensions = ['.mp4', '.flv', '.mov', '.avi', '.mkv', '.webm']
+    
+    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase()
+    const isValidType = validTypes.includes(file.type) || validExtensions.includes(fileExtension || '')
+    
+    if (!isValidType) {
+      ElMessage.error('视频格式不支持，仅支持 MP4、FLV、MOV、AVI、MKV、WEBM')
+      return false
+    }
+    
     return true
   }
 

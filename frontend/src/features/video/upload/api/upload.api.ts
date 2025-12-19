@@ -20,6 +20,7 @@ export interface InitUploadResponse {
   is_completed: boolean
   video_id?: number
   uploaded_chunks?: number[]
+  total_chunks?: number
 }
 
 export interface FinishUploadData {

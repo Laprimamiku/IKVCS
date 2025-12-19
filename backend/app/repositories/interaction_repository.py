@@ -2,25 +2,25 @@
 互动 Repository（点赞、收藏）
 提供互动相关的数据访问方法
 
-注意：当前 interaction 模型还未完全实现，此 repository 为预留结构
+注意：当前点赞功能已通过 Redis 实现，收藏功能通过 UserCollection 模型实现
+此类保留为未来扩展使用
 """
 from typing import Optional, List
 from sqlalchemy.orm import Session
 
 from app.core.repository import BaseRepository
-
-# TODO: 当 interaction 模型实现后，取消注释并实现真正的 Repository
-# from app.models.interaction import UserLike, UserCollection
+from app.models.interaction import UserCollection
 
 
 class InteractionRepository(BaseRepository):
     """
-    互动 Repository（占位类）
+    互动 Repository
     
-    注意：当前 interaction 模型还未完全实现，此类为占位类
-    当模型实现后，需要取消注释下面的实现代码
+    注意：点赞功能已通过 Redis 实现（见 redis_service），
+    收藏功能通过 UserCollection 模型实现
+    此类保留为未来扩展使用
     """
-    model = None  # 占位，等待模型实现
+    model = None
     
     @classmethod
     def check_like_exists(
@@ -33,6 +33,8 @@ class InteractionRepository(BaseRepository):
         """
         检查用户是否已点赞
         
+        注意：当前点赞功能通过 Redis 实现，此方法保留为未来扩展
+        
         Args:
             db: 数据库会话
             user_id: 用户ID
@@ -42,7 +44,7 @@ class InteractionRepository(BaseRepository):
         Returns:
             bool: 是否已点赞
         """
-        # TODO: 实现点赞检查
+        # 当前通过 Redis 实现，见 redis_service
         return False
     
     @classmethod
@@ -55,6 +57,8 @@ class InteractionRepository(BaseRepository):
         """
         获取用户的点赞列表
         
+        注意：当前点赞功能通过 Redis 实现，此方法保留为未来扩展
+        
         Args:
             db: 数据库会话
             user_id: 用户ID
@@ -63,17 +67,17 @@ class InteractionRepository(BaseRepository):
         Returns:
             List: 点赞列表
         """
-        # TODO: 实现获取点赞列表
+        # 当前通过 Redis 实现，见 redis_service
         return []
 
 
 class CollectionRepository(BaseRepository):
     """
-    收藏 Repository（占位类）
+    收藏 Repository
     
-    注意：当前 interaction 模型还未完全实现，此类为占位类
+    注意：收藏功能已通过 UserCollection 模型实现
     """
-    model = None  # 占位，等待模型实现
+    model = UserCollection
     
     @classmethod
     def check_collection_exists(
@@ -93,8 +97,11 @@ class CollectionRepository(BaseRepository):
         Returns:
             bool: 是否已收藏
         """
-        # TODO: 实现收藏检查
-        return False
+        exists = db.query(UserCollection).filter(
+            UserCollection.user_id == user_id,
+            UserCollection.video_id == video_id
+        ).first()
+        return exists is not None
     
     @classmethod
     def get_user_collections(
@@ -112,5 +119,6 @@ class CollectionRepository(BaseRepository):
         Returns:
             List: 收藏列表
         """
-        # TODO: 实现获取收藏列表
-        return []
+        return db.query(UserCollection).filter(
+            UserCollection.user_id == user_id
+        ).all()

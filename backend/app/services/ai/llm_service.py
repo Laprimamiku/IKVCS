@@ -113,7 +113,9 @@ class LLMService:
         if not clean_content:
             return self.default_response
 
-        low_value_keywords = ["666", "111", "233", "哈哈", "打卡", "第一", "前排", "来了"]
+        # 从配置读取低价值关键词列表
+        keywords_str = settings.AI_LOW_VALUE_KEYWORDS
+        low_value_keywords = [k.strip() for k in keywords_str.split(",") if k.strip()]
 
         if len(clean_content) < 4:
             if clean_content.isdigit() or any(k in clean_content for k in low_value_keywords):

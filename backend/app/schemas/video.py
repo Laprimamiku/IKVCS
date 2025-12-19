@@ -216,7 +216,11 @@ class VideoStatusResponse(BaseModel):
 
 
 class TranscodeTestRequest(BaseModel):
-    """转码测试请求"""
+    """
+    转码测试请求（开发/调试专用）
+    
+    注意：此 Schema 仅用于开发和调试，生产环境应通过上传流程自动触发转码
+    """
     video_id: int
 
     class Config:
@@ -224,7 +228,11 @@ class TranscodeTestRequest(BaseModel):
 
 
 class TranscodeTestResponse(BaseModel):
-    """转码测试响应"""
+    """
+    转码测试响应（开发/调试专用）
+    
+    注意：此 Schema 仅用于开发和调试
+    """
     message: str
     video_id: int
     status: str

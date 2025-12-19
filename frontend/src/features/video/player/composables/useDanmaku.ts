@@ -24,9 +24,25 @@ export function useDanmaku(videoId: Ref<number | null>, options: UseDanmakuOptio
   const colorPreset = ['#ffffff', '#fe0302', '#ff7204', '#ffc402', '#00eaff', '#89d519']
 
   const buildWsUrl = (id: number) => {
-    const httpBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
-    const wsBase = import.meta.env.VITE_WS_BASE_URL || httpBase.replace(/^http/, 'ws')
-    return `${wsBase.replace(/\/$/, '')}/ws/videos/${id}`
+    // 优先使用 WebSocket 专用环境变量
+    const wsBase = import.meta.env.VITE_WS_BASE_URL;
+    if (wsBase) {
+      return `${wsBase.replace(/\/$/, '')}/ws/videos/${id}`;
+    }
+    
+    // 从 HTTP API URL 推导 WebSocket URL
+    const httpBase = import.meta.env.VITE_API_BASE_URL;
+    if (httpBase) {
+      const wsUrl = httpBase.replace(/^http/, 'ws');
+      return `${wsUrl.replace(/\/$/, '')}/ws/videos/${id}`;
+    }
+    
+    // 开发环境默认值（生产环境必须配置环境变量）
+    if (import.meta.env.DEV) {
+      return `ws://localhost:8000/api/v1/ws/videos/${id}`;
+    }
+    
+    throw new Error('VITE_API_BASE_URL 或 VITE_WS_BASE_URL 环境变量未配置');
   }
 
   const loadHistory = async (id: number) => {

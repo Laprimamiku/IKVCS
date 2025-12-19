@@ -80,6 +80,7 @@ async def init_upload(
         return UploadInitResponse(
             file_hash=session.file_hash,
             uploaded_chunks=uploaded_chunks,
+            total_chunks=session.total_chunks,
             is_completed=True,
             video_id=session.video_id,
             message="文件已存在，秒传成功"
@@ -89,6 +90,7 @@ async def init_upload(
     return UploadInitResponse(
         file_hash=session.file_hash,
         uploaded_chunks=uploaded_chunks,
+        total_chunks=session.total_chunks,
         is_completed=False,
         video_id=None,
         message=f"上传会话已创建，已上传 {len(uploaded_chunks)}/{session.total_chunks} 个分片"
@@ -141,7 +143,8 @@ async def upload_chunk(
         db,
         file_hash,
         chunk_index,
-        chunk
+        chunk,
+        current_user.id
     )
     
     return UploadChunkResponse(

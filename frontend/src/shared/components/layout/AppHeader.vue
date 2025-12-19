@@ -98,14 +98,14 @@ const handleLogout = async () => {
   z-index: 1000;
   width: 100%;
   height: 64px;
-  background: #fff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  background: var(--bg-white);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   display: flex;
   justify-content: center;
 
   .header-content {
     width: 100%;
-    max-width: 1600px;
+    max-width: var(--container-max-width);
     padding: 0 24px;
     display: flex;
     align-items: center;
@@ -116,12 +116,18 @@ const handleLogout = async () => {
 .left-entry {
   display: flex;
   align-items: center;
+  gap: 24px;
 
   .logo-container {
     display: flex;
     align-items: center;
     cursor: pointer;
-    margin-right: 20px;
+    text-decoration: none;
+    transition: opacity 0.2s;
+
+    &:hover {
+      opacity: 0.8;
+    }
 
     .bili-logo {
       width: 32px;
@@ -130,23 +136,46 @@ const handleLogout = async () => {
     }
     .logo-text {
       font-size: 20px;
-      font-weight: 800;
+      font-weight: 700;
       color: var(--primary-color);
-      margin-left: 6px;
+      margin-left: 8px;
+      letter-spacing: -0.5px;
     }
   }
 
   .nav-links {
     display: flex;
-    gap: 16px;
+    gap: 20px;
     list-style: none;
 
-    .nav-item a {
-      text-decoration: none;
-      color: var(--text-primary);
-      font-weight: 500;
-      &:hover {
-        color: var(--primary-color);
+    .nav-item {
+      a {
+        text-decoration: none;
+        color: var(--text-primary);
+        font-size: 14px;
+        font-weight: 500;
+        padding: 8px 0;
+        transition: color 0.2s;
+        position: relative;
+
+        &:hover {
+          color: var(--primary-color);
+        }
+
+        &::after {
+          content: '';
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          width: 0;
+          height: 2px;
+          background: var(--primary-color);
+          transition: width 0.2s;
+        }
+
+        &:hover::after {
+          width: 100%;
+        }
       }
     }
   }
@@ -160,39 +189,47 @@ const handleLogout = async () => {
   .search-form {
     display: flex;
     align-items: center;
-    background-color: #f1f2f3;
-    border: 1px solid #e3e5e7;
-    border-radius: 8px;
+    background-color: var(--bg-global);
+    border: 1px solid transparent;
+    border-radius: var(--radius-full);
     transition: all 0.2s;
+    overflow: hidden;
 
     &.is-focus {
-      background-color: #fff;
-      border-color: #c9ccd0;
+      background-color: var(--bg-white);
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 2px rgba(250, 114, 152, 0.1);
     }
 
     .search-input {
       flex: 1;
       border: none;
       background: transparent;
-      padding: 10px 16px;
+      padding: 10px 20px;
       outline: none;
       font-size: 14px;
       color: var(--text-primary);
+
+      &::placeholder {
+        color: var(--text-tertiary);
+      }
     }
 
     .search-btn {
-      width: 40px;
-      height: 32px;
-      margin-right: 4px;
+      width: 48px;
+      height: 40px;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      border-radius: 6px;
+      border-radius: var(--radius-full);
       transition: background 0.2s;
+      color: var(--text-tertiary);
+      margin-right: 4px;
 
       &:hover {
-        background: #e3e5e7;
+        background: var(--border-light);
+        color: var(--primary-color);
       }
     }
   }
@@ -206,18 +243,44 @@ const handleLogout = async () => {
   .upload-btn {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     background: var(--primary-color);
     color: #fff;
     border: none;
-    padding: 8px 24px;
-    border-radius: 8px;
-    font-weight: 600;
+    padding: 8px 20px;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    font-weight: 500;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(250, 114, 152, 0.2);
 
     &:hover {
       background: var(--primary-hover);
+      box-shadow: 0 4px 8px rgba(250, 114, 152, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .el-icon {
+      font-size: 16px;
+    }
+  }
+
+  .user-avatar-wrap {
+    cursor: pointer;
+    transition: transform 0.2s;
+
+    &:hover {
+      transform: scale(1.05);
+    }
+
+    :deep(.el-avatar) {
+      border: 2px solid var(--border-light);
+      transition: border-color 0.2s;
+
+      &:hover {
+        border-color: var(--primary-color);
+      }
     }
   }
 
@@ -226,25 +289,29 @@ const handleLogout = async () => {
     gap: 12px;
 
     button {
-      padding: 6px 16px;
-      border-radius: 6px;
+      padding: 8px 20px;
+      border-radius: var(--radius-md);
       cursor: pointer;
       font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+      border: none;
     }
 
     .login-btn {
-      background: #e3e5e7;
+      background: var(--bg-global);
       color: var(--text-primary);
-      border: none;
+      
       &:hover {
+        background: var(--border-light);
         color: var(--primary-color);
       }
     }
 
     .reg-btn {
       background: transparent;
-      border: none;
-      color: var(--text-regular);
+      color: var(--text-secondary);
+      
       &:hover {
         color: var(--primary-color);
       }

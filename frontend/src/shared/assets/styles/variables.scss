@@ -1,24 +1,51 @@
 :root {
-  --primary-color: #00aeec;
-  --primary-hover: #00b5ff;
-  --text-primary: #18191c;
-  --text-secondary: #61666d;
-  --text-regular: #4e5969;
-  --border-light: #e3e5e7;
-  --bg-white: #ffffff;
+  /* B站配色系统 */
+  --primary-color: #FA7298; /* B站粉 - 主色 */
+  --primary-hover: #FF85B0; /* 主色悬停 */
+  --primary-light: #FA72981A; /* 浅粉色背景 */
+  --secondary-color: #00AEEC; /* B站蓝 - 辅色 */
+  --secondary-hover: #00B5FF;
+  
+  /* 文字颜色 */
+  --text-primary: #18191C; /* 主标题 */
+  --text-secondary: #61666D; /* 正文 */
+  --text-regular: #61666D;
+  --text-tertiary: #9499A0; /* 辅助信息（时间、播放量） */
+  
+  /* 背景颜色 */
+  --bg-global: #F1F2F3; /* 全局背景 */
+  --bg-white: #FFFFFF; /* 容器背景 */
+  --bg-light: #F1F2F3;
+  
+  /* 边框与分割 */
+  --border-light: #E3E5E7;
+  --border-base: #E3E5E7;
+  
+  /* 间距 */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 12px;
   --spacing-lg: 16px;
   --spacing-xl: 24px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
+  --spacing-2xl: 32px;
+  
+  /* 圆角 */
+  --radius-sm: 4px; /* 小按钮/标签 */
+  --radius-md: 6px; /* 标准卡片 */
   --radius-lg: 8px;
+  --radius-full: 999px; /* 搜索框/胶囊按钮 */
+  
+  /* 字体大小 */
   --font-size-sm: 12px;
   --font-size-md: 14px;
   --font-size-lg: 16px;
   --font-size-xl: 18px;
   --font-size-2xl: 20px;
+  
+  /* 过渡动画 */
   --transition-base: 0.2s ease-in-out;
+  
+  /* 容器最大宽度 */
+  --container-max-width: 1600px;
 }
 

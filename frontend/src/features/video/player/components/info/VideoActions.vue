@@ -65,36 +65,49 @@ defineEmits<{
 .video-actions-bar {
   display: flex;
   align-items: center;
-  gap: 32px;
-  padding: 12px 0;
-  border-top: 1px solid #e3e5e7;
-  border-bottom: 1px solid #e3e5e7;
-  margin-bottom: 16px;
+  gap: 24px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light);
+  margin: 16px 0;
 
   .action-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 15px;
-    color: #61666d;
+    gap: 6px;
+    font-size: 14px;
+    color: var(--text-secondary);
     cursor: pointer;
-    transition: color 0.2s;
+    transition: all 0.2s;
     user-select: none;
+    padding: 6px 12px;
+    border-radius: var(--radius-md);
 
     &:hover {
-      color: #00aeec;
+      color: var(--primary-color);
+      background: var(--primary-light);
     }
 
     &.active {
-      color: #00aeec;
+      color: var(--primary-color);
+      background: var(--primary-light);
+      
+      .el-icon {
+        color: var(--primary-color);
+      }
+    }
+
+    .el-icon {
+      transition: color 0.2s;
     }
 
     &.report-btn {
       margin-left: auto;
-      color: #9499a0;
+      color: var(--text-tertiary);
       
       &:hover {
-        color: #f56c6c;
+        color: #F56C6C;
+        background: rgba(245, 108, 108, 0.1);
       }
     }
   }

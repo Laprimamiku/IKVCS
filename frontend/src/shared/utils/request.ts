@@ -8,8 +8,21 @@ interface RequestConfig extends AxiosRequestConfig {
   silent?: boolean;
 }
 
+// 从环境变量读取 API 基础 URL，开发环境提供默认值
+const getBaseURL = (): string => {
+  const envURL = import.meta.env.VITE_API_BASE_URL;
+  if (envURL) {
+    return envURL;
+  }
+  // 开发环境默认值（生产环境必须配置 VITE_API_BASE_URL）
+  if (import.meta.env.DEV) {
+    return 'http://localhost:8000/api/v1';
+  }
+  throw new Error('VITE_API_BASE_URL 环境变量未配置');
+};
+
 const service: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1',
+  baseURL: getBaseURL(),
   timeout: 120000,
   headers: {
     'Content-Type': 'application/json'

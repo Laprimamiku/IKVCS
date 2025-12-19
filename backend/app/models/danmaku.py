@@ -7,7 +7,6 @@ from datetime import datetime
 
 from app.core.database import Base
 
-# TODO: 实现 Danmaku 模型
 class Danmaku(Base):
     __tablename__ = "danmakus"
     

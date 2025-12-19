@@ -53,7 +53,51 @@ class UploadOrchestrationService:
             # 2. 检查断点续传
             existing_session = SessionService.get_session_by_hash(db, upload_data.file_hash)
             if existing_session:
+                # 检查会话是否属于当前用户
+                if existing_session.user_id != user_id:
+                    # 会话不属于当前用户
+                    # 如果文件已完成上传（有 video_id），应该走秒传逻辑
+                    if existing_session.is_completed and existing_session.video_id:
+                        logger.info(
+                            f"文件 {upload_data.file_hash} 已由用户 {existing_session.user_id} 完成上传，"
+                            f"当前用户 {user_id} 触发秒传"
+                        )
+                        # 检查视频是否存在
+                        from app.repositories.video_repository import VideoRepository
+                        video = VideoRepository.get_by_id(db, existing_session.video_id)
+                        if video:
+                            uploaded_chunks = list(range(existing_session.total_chunks))
+                            return existing_session, uploaded_chunks, True
+                        else:
+                            logger.warning(f"视频 {existing_session.video_id} 不存在，但会话标记为已完成")
+                            # 视频不存在，重置会话状态
+                            existing_session.is_completed = False
+                            existing_session.video_id = None
+                            db.commit()
+                    
+                    # 文件未完成且属于其他用户，返回错误
+                    logger.warning(
+                        f"文件 {upload_data.file_hash} 的上传会话属于用户 {existing_session.user_id}，"
+                        f"当前用户 {user_id} 无法创建新会话（主键冲突）"
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=f"该文件正在被其他用户上传中，请稍后重试。如果文件已上传完成，系统会自动触发秒传。"
+                    )
+                
                 logger.info(f"断点续传：文件 {upload_data.file_hash} 未完成上传")
+                
+                # 检查并更新 total_chunks（如果前端传入的值与数据库不一致）
+                # 这可能是由于之前上传时计算错误，或者文件大小发生了变化
+                if existing_session.total_chunks != upload_data.total_chunks:
+                    logger.warning(
+                        f"总分片数不一致：数据库={existing_session.total_chunks}，前端={upload_data.total_chunks}，"
+                        f"使用前端传入的值（更准确）"
+                    )
+                    existing_session.total_chunks = upload_data.total_chunks
+                    db.commit()
+                    db.refresh(existing_session)
+                
                 # 确保 Redis BitMap 存在
                 SessionService.init_redis_bitmap(upload_data.file_hash)
                 # 获取已上传分片
@@ -82,7 +126,8 @@ class UploadOrchestrationService:
         db: Session,
         file_hash: str,
         chunk_index: int,
-        chunk_file: UploadFile
+        chunk_file: UploadFile,
+        user_id: Optional[int] = None
     ) -> int:
         """
         上传分片（编排：会话验证 + 文件存储 + Redis标记 + 数据库更新）
@@ -92,6 +137,7 @@ class UploadOrchestrationService:
             file_hash: 文件哈希
             chunk_index: 分片索引
             chunk_file: 分片文件
+            user_id: 用户ID（可选，用于权限验证）
             
         Returns:
             int: 已上传分片总数
@@ -102,6 +148,13 @@ class UploadOrchestrationService:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"上传会话 {file_hash} 不存在"
+            )
+        
+        # 验证用户权限（如果提供了 user_id）
+        if user_id is not None and session.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="无权操作此上传会话"
             )
         
         if session.is_completed:
@@ -120,6 +173,7 @@ class UploadOrchestrationService:
                 return len(uploaded_chunks)
         
         # 2. 验证分片索引
+        logger.info(f"验证分片索引：chunk_index={chunk_index} (type: {type(chunk_index)}), session.total_chunks={session.total_chunks} (type: {type(session.total_chunks)})")
         ChunkService.validate_chunk_index(session, chunk_index)
         
         # 3. 保存分片文件

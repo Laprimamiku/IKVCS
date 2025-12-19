@@ -178,43 +178,55 @@ watch(
 <style scoped lang="scss">
 .video-comment-section {
   margin-top: 24px;
-  padding: 0 20px; // 保持与页面其他部分对齐
+  padding: 0;
 
   .section-header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     margin-bottom: 20px;
 
     .title {
-      font-size: 20px;
-      margin: 0 24px 0 0;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0;
 
       span {
         font-size: 14px;
-        color: #9499a0;
-        margin-left: 4px;
+        color: var(--text-tertiary);
+        margin-left: 6px;
         font-weight: normal;
       }
     }
 
     .tabs {
+      display: flex;
+      align-items: center;
       font-size: 14px;
-      color: #61666d;
+      color: var(--text-secondary);
 
       .tab-item {
         cursor: pointer;
+        padding: 4px 8px;
+        border-radius: var(--radius-sm);
+        transition: all 0.2s;
+
         &:hover {
-          color: #00aeec;
+          color: var(--primary-color);
+          background: var(--primary-light);
         }
+
         &.active {
-          color: #18191c;
-          font-weight: bold;
+          color: var(--primary-color);
+          font-weight: 500;
+          background: var(--primary-light);
         }
       }
 
       .divider {
-        margin: 0 12px;
-        color: #e3e5e7;
+        margin: 0 8px;
+        color: var(--border-light);
       }
     }
   }
@@ -222,6 +234,15 @@ watch(
   .load-more {
     text-align: center;
     padding: 20px 0;
+
+    :deep(.el-button) {
+      color: var(--text-secondary);
+      font-size: 14px;
+
+      &:hover {
+        color: var(--primary-color);
+      }
+    }
   }
 }
 </style>

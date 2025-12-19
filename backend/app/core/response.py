@@ -37,7 +37,7 @@ class ApiResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "success": True,
-                "data": {"user_id": 1, "username": "test"},
+                "data": {"id": 1, "name": "示例数据"},
                 "message": "操作成功",
                 "status_code": 200
             }

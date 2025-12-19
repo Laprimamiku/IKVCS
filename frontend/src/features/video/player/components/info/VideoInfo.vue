@@ -73,19 +73,19 @@ const isDescCollapsed = ref(true);
 .video-info {
   margin-top: 16px;
   padding-bottom: 20px;
-  border-bottom: 1px solid #e3e5e7;
+  border-bottom: 1px solid var(--border-light);
 
   .video-title {
     font-size: 20px;
-    font-weight: 500;
-    color: #18191c;
+    font-weight: 600;
+    color: var(--text-primary);
     line-height: 28px;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
   }
 
   .video-meta {
     font-size: 13px;
-    color: #9499a0;
+    color: var(--text-tertiary);
     display: flex;
     align-items: center;
     gap: 16px;
@@ -93,15 +93,19 @@ const isDescCollapsed = ref(true);
 
     .meta-item {
       &.warning {
-        color: #e6a23c;
+        color: #FF9500;
+        background: rgba(255, 149, 0, 0.1);
+        padding: 2px 8px;
+        border-radius: var(--radius-sm);
+        font-size: 12px;
       }
     }
   }
 
   .video-desc {
-    font-size: 13px;
-    color: #18191c;
-    line-height: 20px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 22px;
     white-space: pre-wrap;
     margin-top: 12px;
 
@@ -109,20 +113,21 @@ const isDescCollapsed = ref(true);
       display: -webkit-box;
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 2;
-      /* ✅ 新增标准属性以消除警告 */
       line-clamp: 2;
       overflow: hidden;
     }
   }
 
   .toggle-desc {
-    font-size: 12px;
-    color: #9499a0;
+    font-size: 13px;
+    color: var(--text-tertiary);
     margin-top: 8px;
     cursor: pointer;
+    transition: color 0.2s;
+    display: inline-block;
 
     &:hover {
-      color: #00aeec;
+      color: var(--primary-color);
     }
   }
 }

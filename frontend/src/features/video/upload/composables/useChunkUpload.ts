@@ -120,11 +120,27 @@ export function useChunkUpload() {
     if (initData.is_completed && initData.video_id) {
       uploadStatus.value = '秒传成功！'
       uploadDetail.value = '文件已存在，无需重新上传'
-      uploadedChunks.value = chunks
+      // 使用后端返回的 total_chunks（如果可用），否则使用计算值
+      if (initData.total_chunks && initData.total_chunks > 0) {
+        totalChunks.value = initData.total_chunks
+      } else {
+        totalChunks.value = chunks
+      }
+      uploadedChunks.value = totalChunks.value
       uploadComplete.value = true
       uploading.value = false
       ElMessage.success('视频秒传成功！')
       return initData
+    }
+
+    // 如果后端返回了 total_chunks，使用后端的值（更可靠）
+    if (initData.total_chunks && initData.total_chunks > 0) {
+      if (initData.total_chunks !== chunks) {
+        console.warn(
+          `总分片数不一致：前端计算=${chunks}，后端返回=${initData.total_chunks}，使用后端值`
+        )
+      }
+      totalChunks.value = initData.total_chunks
     }
 
     // 获取已上传分片
@@ -143,9 +159,47 @@ export function useChunkUpload() {
   ): Promise<void> => {
     uploadStatus.value = '正在上传视频...'
 
+    // 验证 totalChunks 是否有效
+    if (totalChunks.value <= 0) {
+      throw new Error('总分片数无效，请重新初始化上传')
+    }
+
+    // 计算期望的总分片数（从文件大小）
+    const calculatedChunks = Math.ceil(file.size / CHUNK_SIZE)
+    
+    // 如果计算值和当前值不一致，记录警告但不强制修改
+    // 因为后端可能已经保存了正确的 total_chunks，我们应该信任后端
+    if (calculatedChunks !== totalChunks.value) {
+      console.warn(
+        `总分片数不一致：前端计算值=${calculatedChunks}，当前值=${totalChunks.value}。` +
+        `将使用当前值 ${totalChunks.value}（后端可能已保存正确的值）`
+      )
+    }
+
+    // 确保 uploadedList 中的索引都有效
+    const validUploadedList = uploadedList.filter(idx => idx >= 0 && idx < totalChunks.value)
+    if (validUploadedList.length !== uploadedList.length) {
+      console.warn(
+        `发现无效的已上传分片索引：原始列表=${uploadedList.join(',')}，` +
+        `有效列表=${validUploadedList.join(',')}，总分片数=${totalChunks.value}`
+      )
+    }
+
+    console.log(
+      `开始上传分片：hash=${hash}, totalChunks=${totalChunks.value}, ` +
+      `uploadedList=[${validUploadedList.join(',')}], 需要上传=${totalChunks.value - validUploadedList.length}个`
+    )
+
     for (let i = 0; i < totalChunks.value; i++) {
+      // 验证分片索引有效性（双重检查）
+      if (i < 0 || i >= totalChunks.value) {
+        console.error(`无效的分片索引: ${i}，总分片数: ${totalChunks.value}`)
+        throw new Error(`无效的分片索引: ${i}`)
+      }
+
       // 跳过已上传的分片
-      if (uploadedList.includes(i)) {
+      if (validUploadedList.includes(i)) {
+        console.log(`跳过已上传的分片: ${i}`)
         continue
       }
 
@@ -160,13 +214,24 @@ export function useChunkUpload() {
 
       uploadDetail.value = `正在上传第 ${i + 1} / ${totalChunks.value} 个分片`
 
+      console.log(`准备上传分片 ${i}：start=${start}, end=${end}, size=${chunk.size}`)
+
       try {
         await uploadChunk(hash, i, chunk)
         uploadedChunks.value++
         uploadedBytes.value += chunk.size
-      } catch (error) {
+        console.log(`分片 ${i} 上传成功`)
+      } catch (error: any) {
         console.error(`分片 ${i} 上传失败:`, error)
-        throw new Error(`分片 ${i} 上传失败`)
+        // 如果错误是分片索引无效，提供更详细的错误信息
+        const errorDetail = error?.response?.data?.detail || error?.message || String(error)
+        if (errorDetail.includes('分片索引') || errorDetail.includes('无效')) {
+          throw new Error(
+            `分片索引 ${i} 无效（总分片数：${totalChunks.value}）。` +
+            `错误详情：${errorDetail}。请刷新页面后重试。`
+          )
+        }
+        throw new Error(`分片 ${i} 上传失败: ${errorDetail}`)
       }
     }
   }
@@ -309,20 +374,40 @@ export function useChunkUpload() {
     uploadStartTime.value = Date.now()
 
     try {
+      // 重新计算总分片数（确保正确）
+      const chunks = Math.ceil(file.size / CHUNK_SIZE)
+      totalChunks.value = chunks
+
       // 获取已上传分片
       const progressRes = await getUploadProgress(fileHash.value)
       
       // 处理响应：request 拦截器返回 { success: true, data: {...} }
-      let progressData: { uploaded_chunks: number[] }
+      let progressData: { uploaded_chunks: number[], total_chunks?: number }
       if ((progressRes as any)?.success && (progressRes as any)?.data) {
-        progressData = (progressRes as any).data as { uploaded_chunks: number[] }
+        progressData = (progressRes as any).data as { uploaded_chunks: number[], total_chunks?: number }
       } else {
-        progressData = (progressRes as unknown) as { uploaded_chunks: number[] }
+        progressData = (progressRes as unknown) as { uploaded_chunks: number[], total_chunks?: number }
+      }
+
+      // 如果后端返回了 total_chunks，使用后端的值（更可靠）
+      if (progressData.total_chunks && progressData.total_chunks > 0) {
+        totalChunks.value = progressData.total_chunks
       }
 
       const uploadedList = progressData.uploaded_chunks || []
       uploadedChunks.value = uploadedList.length
       uploadedBytes.value = uploadedChunks.value * CHUNK_SIZE
+
+      // 验证：确保 uploadedList 中的所有索引都小于 totalChunks
+      const invalidChunks = uploadedList.filter(idx => idx < 0 || idx >= totalChunks.value)
+      if (invalidChunks.length > 0) {
+        console.warn(`发现无效的分片索引: ${invalidChunks.join(', ')}，将忽略`)
+        // 过滤掉无效的分片索引
+        const validList = uploadedList.filter(idx => idx >= 0 && idx < totalChunks.value)
+        uploadedList.length = 0
+        uploadedList.push(...validList)
+        uploadedChunks.value = uploadedList.length
+      }
 
       // 继续上传
       await uploadChunks(file, fileHash.value, uploadedList)

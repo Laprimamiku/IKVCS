@@ -77,14 +77,25 @@ const getCoverUrl = (coverUrl: string | undefined): string => {
   display: flex;
   flex-direction: column;
   cursor: pointer;
+  transition: transform 0.2s;
+
+  &:hover {
+    transform: translateY(-2px);
+  }
 
   .card-cover {
     position: relative;
     width: 100%;
     padding-top: 56.25%; // 16:9 比例
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     overflow: hidden;
-    background-color: #f1f2f3;
+    background-color: var(--bg-global);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: box-shadow 0.2s;
+
+    &:hover {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    }
 
     img {
       position: absolute;
@@ -93,12 +104,12 @@ const getCoverUrl = (coverUrl: string | undefined): string => {
       width: 100%;
       height: 100%;
       object-fit: cover;
-      transition: transform 0.2s ease-in-out;
+      transition: transform 0.3s ease-out;
     }
 
     // 悬停时图片微放大
     &:hover img {
-      transform: scale(1.05); // 不那么夸张
+      transform: scale(1.05);
     }
 
     .stats-bar {
@@ -106,35 +117,52 @@ const getCoverUrl = (coverUrl: string | undefined): string => {
       bottom: 0;
       left: 0;
       right: 0;
-      height: 32px;
-      padding: 0 8px;
-      background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.7));
+      height: 36px;
+      padding: 0 10px;
+      background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.6) 100%);
       display: flex;
       align-items: center;
       justify-content: space-between;
       color: #fff;
       font-size: 12px;
+      font-weight: 500;
 
       .left {
         display: flex;
-        gap: 10px;
+        gap: 12px;
+        align-items: center;
+
         .stat-item {
           display: flex;
           align-items: center;
           gap: 4px;
+          opacity: 0.9;
+
+          .el-icon {
+            font-size: 14px;
+          }
         }
+      }
+
+      .duration {
+        background: rgba(0, 0, 0, 0.6);
+        padding: 2px 6px;
+        border-radius: var(--radius-sm);
+        font-weight: 500;
+        letter-spacing: 0.5px;
       }
     }
   }
 
   .card-info {
     margin-top: 10px;
+    padding: 0 2px;
 
     .title {
-      font-size: 15px;
-      color: #18191c;
-      line-height: 22px;
-      height: 44px; // 限制两行高度
+      font-size: 14px;
+      color: var(--text-primary);
+      line-height: 20px;
+      height: 40px; // 限制两行高度
       overflow: hidden;
       text-overflow: ellipsis;
       display: -webkit-box;
@@ -142,7 +170,7 @@ const getCoverUrl = (coverUrl: string | undefined): string => {
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       font-weight: 500;
-      margin-bottom: 4px;
+      margin-bottom: 6px;
       transition: color 0.2s;
 
       // 悬停标题变色
@@ -155,16 +183,28 @@ const getCoverUrl = (coverUrl: string | undefined): string => {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      color: #9499a0;
-      font-size: 13px;
+      color: var(--text-tertiary);
+      font-size: 12px;
 
       .up-name {
         display: flex;
         align-items: center;
         gap: 4px;
+        text-decoration: none;
+        color: var(--text-tertiary);
+        transition: color 0.2s;
+
+        .el-icon {
+          font-size: 14px;
+        }
+
         &:hover {
           color: var(--primary-color);
         }
+      }
+
+      .date {
+        color: var(--text-tertiary);
       }
     }
   }

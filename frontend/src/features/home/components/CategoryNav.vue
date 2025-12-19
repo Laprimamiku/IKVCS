@@ -31,61 +31,68 @@ defineEmits<{
   background: var(--bg-white);
   border-bottom: 1px solid var(--border-light);
   position: sticky;
-  top: var(--header-height);
-  z-index: calc(var(--z-index-sticky) - 1);
+  top: 64px;
+  z-index: 999;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 
 .nav-wrapper {
   max-width: var(--container-max-width);
   margin: 0 auto;
-  padding: 0 var(--spacing-lg);
+  padding: 0 24px;
   display: flex;
-  gap: var(--spacing-2xl);
+  gap: 32px;
   overflow-x: auto;
   scrollbar-width: none;
-}
+  -ms-overflow-style: none;
 
-.nav-wrapper::-webkit-scrollbar {
-  display: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-md) 0;
-  font-size: var(--font-size-base);
-  color: var(--text-regular);
+  gap: 6px;
+  padding: 14px 0;
+  font-size: 14px;
+  color: var(--text-secondary);
   cursor: pointer;
   position: relative;
   white-space: nowrap;
-  transition: color var(--transition-fast);
-}
+  transition: color 0.2s;
+  font-weight: 400;
 
-.nav-item:hover {
-  color: var(--primary-color);
-}
+  .el-icon {
+    font-size: 16px;
+  }
 
-.nav-item.is-active {
-  color: var(--primary-color);
-  font-weight: 500;
-}
+  &:hover {
+    color: var(--primary-color);
+  }
 
-.nav-item.is-active::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--primary-color);
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  &.is-active {
+    color: var(--primary-color);
+    font-weight: 500;
+
+    &::after {
+      content: "";
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--primary-color);
+      border-radius: 2px 2px 0 0;
+    }
+  }
 }
 
 @media (max-width: 768px) {
   .nav-wrapper {
-    padding: 0 var(--spacing-md);
-    gap: var(--spacing-lg);
+    padding: 0 16px;
+    gap: 20px;
   }
 }
 </style>

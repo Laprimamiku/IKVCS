@@ -1,9 +1,9 @@
 <template>
   <div class="danmaku-toolbar">
     <div class="left-controls">
-      <span class="online-count">
+      <span class="online-count" v-if="viewCount !== undefined && viewCount !== null">
         <el-icon><User /></el-icon>
-        {{ formatNumber(viewCount) }} 人正在看
+        {{ formatNumber(viewCount) }} 播放
       </span>
 
       <div class="switch-wrapper">
