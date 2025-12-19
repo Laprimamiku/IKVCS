@@ -30,10 +30,25 @@ class Settings(BaseSettings):
     # LLM API 配置
     LLM_API_KEY: str  # 必需，从 .env 读取
     LLM_BASE_URL: str = "https://api.openai.com/v1"  # 默认值，可通过环境变量覆盖
-    LLM_MODEL: str = "gpt-3.5-turbo"  # 默认值，可通过环境变量覆盖
+    LLM_MODEL: str = "glm-4-flash"  # 默认值，可通过环境变量覆盖
+    
+    # 本地 LLM 配置 (大小模型协同)
+    LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1" # 默认 Ollama 地址
+    LOCAL_LLM_MODEL: str = "qwen2.5:0.5b" # 默认使用 0.5B 模型
+    LOCAL_LLM_THRESHOLD_LOW: int = 30  # 本地模型低分置信区间下限
+    LOCAL_LLM_THRESHOLD_HIGH: int = 80 # 本地模型高分置信区间上限
+    
+    # Embedding API 配置
+    EMBEDDING_MODEL: str = "embedding-3-pro"  # Embedding 模型名称，默认值可通过环境变量覆盖
     
     # AI 分析配置
     AI_LOW_VALUE_KEYWORDS: str = "666,111,233,哈哈,打卡,第一,前排,来了"  # 低价值关键词列表（逗号分隔）
+    
+    # AI 语义缓存配置（Layer 2）
+    AI_SEMANTIC_CACHE_TTL: int = 604800  # 语义缓存过期时间（秒），默认7天
+    AI_SEMANTIC_CACHE_THRESHOLD: float = 0.95  # 语义相似度阈值（0-1），当前为预留参数
+    AI_VECTOR_DIMENSION: int = 64  # 用于构造缓存Key的向量维度数（取前N维）
+    AI_VECTOR_QUANTIZATION_PRECISION: int = 3  # 向量量化精度（小数位数）
     
     # 文件存储配置
     STORAGE_ROOT: str = "./storage"  # 统一存储根目录
