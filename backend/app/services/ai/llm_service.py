@@ -31,6 +31,21 @@ from app.services.ai.embedding_service import embedding_service
 
 logger = logging.getLogger(__name__)
 
+# 延迟导入多智能体服务（避免循环依赖和导入错误）
+_multi_agent_service = None
+
+def _get_multi_agent_service():
+    """延迟加载多智能体服务"""
+    global _multi_agent_service
+    if _multi_agent_service is None:
+        try:
+            from app.services.ai.multi_agent_service import multi_agent_service
+            _multi_agent_service = multi_agent_service
+        except ImportError as e:
+            logger.debug(f"多智能体服务未找到: {e}，将使用单一 LLM")
+            _multi_agent_service = None
+    return _multi_agent_service
+
 
 class LLMService:
     def __init__(self):
@@ -120,6 +135,50 @@ class LLMService:
                 except Exception:
                     # 解析失败不影响主流程，只打印日志
                     logger.warning("AI Semantic Cache Parse Error")
+
+        # 1.5 Layer 2.5 - 多智能体陪审团（可选）
+        # 说明：如果启用多智能体，使用多专家协作分析
+        # 否则降级到单一 LLM 分析
+        if getattr(settings, "MULTI_AGENT_ENABLED", False):
+            multi_agent = _get_multi_agent_service()
+            if multi_agent:
+                try:
+                    logger.info(f"使用多智能体分析: {content[:10]}...")
+                    result = await multi_agent.analyze_with_jury(content, content_type)
+                    
+                    # 写入缓存（语义缓存 + 精确缓存）
+                    try:
+                        # 生成 embedding（用于语义缓存，如果之前没有）
+                        if embedding is None:
+                            embedding = await embedding_service.get_text_embedding(content)
+                        
+                        sem_prefix = f"ai:semcache:{content_type}"
+                        
+                        if embedding is not None:
+                            await redis_service.save_vector_result(
+                                cache_key_prefix=sem_prefix,
+                                embedding=embedding,
+                                result_json=json.dumps(result),
+                                ttl=settings.AI_SEMANTIC_CACHE_TTL,
+                            )
+                        
+                        # 写入精确缓存
+                        await redis_service.async_redis.setex(
+                            exact_cache_key,
+                            settings.AI_SEMANTIC_CACHE_TTL,
+                            json.dumps(result),
+                        )
+                        logger.debug(f"多智能体结果已写入缓存: {content[:10]}...")
+                    except Exception as e:
+                        logger.warning(f"多智能体结果缓存写入失败: {e}")
+                    
+                    return result
+                    
+                except Exception as e:
+                    logger.warning(f"多智能体分析失败，降级到单一 LLM: {e}")
+                    # 继续执行单一 LLM 流程
+            else:
+                logger.debug("多智能体服务不可用，降级到单一 LLM")
 
         # 2. 构建 Prompt
         messages = self._build_prompt(content, content_type)

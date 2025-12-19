@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     AI_VECTOR_DIMENSION: int = 64  # 用于构造缓存Key的向量维度数（取前N维）
     AI_VECTOR_QUANTIZATION_PRECISION: int = 3  # 向量量化精度（小数位数）
     
+    # AI 多智能体配置（Layer 2.5）
+    MULTI_AGENT_ENABLED: bool = False  # 是否启用多智能体陪审团（True/False默认关闭）  
+    MULTI_AGENT_CONFLICT_THRESHOLD: float = 0.2  # 冲突阈值（分数差异超过20%视为冲突）
+    
     # 文件存储配置
     STORAGE_ROOT: str = "./storage"  # 统一存储根目录
     

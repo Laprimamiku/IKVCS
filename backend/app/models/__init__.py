@@ -14,6 +14,13 @@ from app.models.danmaku import Danmaku
 from app.models.comment import Comment
 from app.models.report import Report
 
+# AI 相关模型（可选）
+try:
+    from app.models.ai_agent_analysis import AgentAnalysis
+    _has_agent_analysis = True
+except ImportError:
+    _has_agent_analysis = False
+
 # 导出所有模型（方便导入）
 __all__ = [
     "User",
@@ -24,3 +31,6 @@ __all__ = [
     "Comment",
     "Report",
 ]
+
+if _has_agent_analysis:
+    __all__.append("AgentAnalysis")
