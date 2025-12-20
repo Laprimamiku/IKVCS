@@ -51,7 +51,7 @@ class SelfCorrectionService:
         db = SessionLocal()
         try:
             # 1. 查询修正记录
-            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            cutoff_date = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
             query = db.query(AICorrection).filter(
                 AICorrection.created_at >= cutoff_date
             )

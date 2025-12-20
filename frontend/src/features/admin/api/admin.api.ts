@@ -1,4 +1,4 @@
-import request from '@/shared/utils/request';
+import { request } from '@/shared/utils/request';
 import type { User } from '@/shared/types/entity';
 
 // ==================== 数据类型定义 ====================
@@ -76,4 +76,55 @@ export const adminApi = {
   createCategory: (data: any) => request.post('/admin/categories', data),
   updateCategory: (id: number, data: any) => request.put(`/admin/categories/${id}`, data),
   deleteCategory: (id: number) => request.delete(`/admin/categories/${id}`),
+};
+
+// ==========================================
+// AI 治理相关接口 (新增)
+// ==========================================
+
+export interface PromptVersion {
+  id: number;
+  prompt_type: string;
+  prompt_content: string;
+  update_reason: string;
+  updated_by: number;
+  created_at: string;
+}
+
+export interface ErrorPatternAnalysis {
+  error_patterns: any;
+  suggestions: string; // Markdown
+  sample_count: number;
+  analysis_date: string;
+}
+
+export interface CorrectionRecord {
+  id: number;
+  content: string;
+  original_result: any;
+  corrected_result: any;
+  correction_reason: string;
+  created_at: string;
+}
+
+export const adminAiApi = {
+  // 获取 Prompt 版本历史
+  getPromptVersions: (params: { prompt_type?: string; limit?: number }) => {
+    return request.get<{ items: PromptVersion[]; total: number }>('/admin/ai/prompt-versions', { params });
+  },
+
+  // 触发自我纠错分析
+  analyzeErrors: (data: { days: number; content_type?: string }) => {
+    return request.post<ErrorPatternAnalysis>('/admin/ai/self-correction/analyze', data);
+  },
+
+  // 应用 Prompt 更新
+  updatePrompt: (data: { prompt_type: string; new_prompt: string; update_reason: string }) => {
+    return request.post('/admin/ai/self-correction/update-prompt', data);
+  },
+
+  // 获取人工修正记录
+  getCorrections: (params: { page: number; page_size: number; content_type?: string }) => {
+    return request.get<{ items: CorrectionRecord[]; total: number }>('/admin/ai/corrections', { params });
+  }
 };

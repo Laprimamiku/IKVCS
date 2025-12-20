@@ -2,7 +2,11 @@
   <div class="video-item">
     <!-- 视频封面 -->
     <div class="video-cover" @click="$emit('view', video.id)">
-      <img v-if="video.cover_url" :src="getCoverUrl(video.cover_url)" alt="封面" />
+      <img
+        v-if="video.cover_url"
+        :src="getCoverUrl(video.cover_url)"
+        alt="封面"
+      />
       <div v-else class="cover-placeholder">
         <el-icon :size="48"><VideoPlay /></el-icon>
       </div>
@@ -36,13 +40,29 @@
           <el-icon><View /></el-icon>
           查看
         </el-button>
-        <el-button size="small" type="primary" @click.stop="$emit('edit', video)">
+        <el-button
+          size="small"
+          type="primary"
+          @click.stop="$emit('edit', video)"
+        >
           <el-icon><Edit /></el-icon>
           编辑
         </el-button>
-        <el-button size="small" type="danger" @click.stop="$emit('delete', video)">
+        <el-button
+          size="small"
+          type="danger"
+          @click.stop="$emit('delete', video)"
+        >
           <el-icon><Delete /></el-icon>
           删除
+        </el-button>
+        <el-button
+          size="small"
+          type="warning"
+          @click.stop="$router.push(`/center/analysis/${video.id}`)"
+        >
+          <el-icon><MagicStick /></el-icon>
+          分析
         </el-button>
       </div>
     </div>
@@ -50,47 +70,54 @@
 </template>
 
 <script setup lang="ts">
-import { View, Star, Collection, VideoPlay, Edit, Delete } from '@element-plus/icons-vue'
-import type { Video } from "@/shared/types/entity"
-import { formatDuration, formatNumber } from "@/shared/utils/formatters"
-
+import {
+  View,
+  Star,
+  Collection,
+  VideoPlay,
+  Edit,
+  Delete,
+  MagicStick,
+} from "@element-plus/icons-vue";
+import type { Video } from "@/shared/types/entity";
+import { formatDuration, formatNumber } from "@/shared/utils/formatters";
 
 defineProps<{
-  video: Video
-}>()
+  video: Video;
+}>();
 
 defineEmits<{
-  view: [id: number]
-  edit: [video: Video]
-  delete: [video: Video]
-}>()
+  view: [id: number];
+  edit: [video: Video];
+  delete: [video: Video];
+}>();
 
 const getStatusText = (status?: number): string => {
   const map: Record<number, string> = {
-    0: '转码中',
-    1: '审核中',
-    2: '已发布',
-    3: '已拒绝'
-  }
-  return map[status ?? -1] || '未知'
-}
+    0: "转码中",
+    1: "审核中",
+    2: "已发布",
+    3: "已拒绝",
+  };
+  return map[status ?? -1] || "未知";
+};
 
 const getStatusClass = (status?: number): string => {
   const map: Record<number, string> = {
-    0: 'status-transcoding',
-    1: 'status-reviewing',
-    2: 'status-published',
-    3: 'status-rejected'
-  }
-  return map[status ?? -1] || ''
-}
+    0: "status-transcoding",
+    1: "status-reviewing",
+    2: "status-published",
+    3: "status-rejected",
+  };
+  return map[status ?? -1] || "";
+};
 
 // 获取封面URL，添加时间戳防止缓存（API层已处理URL，这里只需添加时间戳）
 const getCoverUrl = (coverUrl: string | undefined): string => {
-  if (!coverUrl) return ''
+  if (!coverUrl) return "";
   // 添加时间戳防止缓存
-  return `${coverUrl}?t=${Date.now()}`
-}
+  return `${coverUrl}?t=${Date.now()}`;
+};
 </script>
 
 <style lang="scss" scoped>
@@ -216,4 +243,3 @@ const getCoverUrl = (coverUrl: string | undefined): string => {
   }
 }
 </style>
-

@@ -53,7 +53,7 @@
         <button
           v-if="userStore.isLoggedIn"
           class="upload-btn"
-          @click="$router.push('/video-center')"
+          @click="handleVideoCenterClick"
         >
           <el-icon><VideoCamera /></el-icon>
           <span>视频中心</span>
@@ -88,6 +88,21 @@ const handleBlur = () => {
 const handleLogout = async () => {
   await userStore.logout();
   location.reload();
+};
+
+const handleVideoCenterClick = () => {
+  // 检查是否已登录
+  if (!userStore.isLoggedIn) {
+    // 如果未登录，触发登录事件
+    emit('login');
+    return;
+  }
+  
+  // 使用命名路由进行跳转，更可靠
+  router.push({ name: 'VideoCenter' }).catch((error) => {
+    // 如果路由跳转失败（例如路由守卫阻止），记录错误
+    console.error('跳转到视频中心失败:', error);
+  });
 };
 </script>
 

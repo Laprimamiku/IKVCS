@@ -16,6 +16,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
+from sqlalchemy import func, case
+
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
@@ -25,6 +27,8 @@ from app.core.transaction import transaction
 from app.core.config import settings
 from app.models.user import User
 from app.models.video import Video
+from app.models.danmaku import Danmaku
+from app.models.comment import Comment
 from app.schemas.video import (
     VideoListRequest,
     VideoListResponse,
@@ -464,3 +468,54 @@ async def collect_video(
         # 获取最新收藏数
         video = db.query(Video).filter(Video.id == video_id).first()
         return {"is_collected": True, "collect_count": video.collect_count if video else 0}
+    
+@router.get("/{video_id}/ai-analysis", summary="获取视频AI分析报告")
+async def get_video_ai_analysis(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # 1. 鉴权：只有作者能看
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(404, "视频不存在")
+    if video.uploader_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(403, "无权查看此报告")
+
+    # 2. 统计弹幕情感分布 (基于 ai_score)
+    # score < 40: 负面/争议
+    # 40 <= score <= 75: 中性/普通
+    # score > 75: 正面/优质
+    # 使用 CASE WHEN 语法兼容 MySQL（PostgreSQL 的 FILTER 语法 MySQL 不支持）
+    danmaku_stats = db.query(
+        func.sum(case((Danmaku.ai_score < 40, 1), else_=0)).label("negative"),
+        func.sum(case((Danmaku.ai_score.between(40, 75), 1), else_=0)).label("neutral"),
+        func.sum(case((Danmaku.ai_score > 75, 1), else_=0)).label("positive")
+    ).filter(Danmaku.video_id == video_id).first()
+
+    # 3. 获取风险/高亮内容
+    risks = db.query(Danmaku).filter(
+        Danmaku.video_id == video_id,
+        Danmaku.ai_score < 30  # 假设低于30分为风险
+    ).order_by(desc(Danmaku.created_at)).limit(5).all()
+
+    # 4. 获取陪审团数据 (从 AgentAnalysis 表获取最近一条记录)
+    # 这里做个简单模拟，实际应关联查询 ai_agent_analysis 表
+    # 如果你想做得更细致，可以查 AgentAnalysis 表
+    
+    return {
+        "sentiment": {
+            "positive": danmaku_stats.positive or 0,
+            "neutral": danmaku_stats.neutral or 0,
+            "negative": danmaku_stats.negative or 0
+        },
+        "risks": [
+            {
+                "content": d.content,
+                "reason": "AI低分预警", 
+                "score": d.ai_score,
+                "time": d.created_at
+            } for d in risks
+        ],
+        "summary": f"共分析 {(danmaku_stats.positive or 0) + (danmaku_stats.neutral or 0) + (danmaku_stats.negative or 0)} 条互动，整体氛围{(danmaku_stats.positive or 0) > (danmaku_stats.negative or 0) and '积极' or '需关注'}。"
+    }

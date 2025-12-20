@@ -34,6 +34,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: "视频中心", requiresAuth: true },
   },
   {
+    path: '/center/analysis/:videoId?', // 可选参数视频ID
+    name: 'SmartAnalysis',
+    component: () => import('@/features/video/center/views/SmartAnalysis.vue'),
+    meta: { title: '智能分析', requiresAuth: true }
+  },
+  {
     path: "/search",
     name: "Search",
     component: () => import("@/features/search/views/Search.vue"),
@@ -86,7 +92,13 @@ const routes: RouteRecordRaw[] = [
         name: 'AdminCategories',
         component: () => import('@/features/admin/views/CategoryManage.vue'),
         meta: { title: '分类管理' }
-      }
+      },
+      {
+        path: 'ai',
+        name: 'AIGovernance',
+        component: () => import('@/features/admin/views/AIGovernance.vue'),
+        meta: { title: 'AI 进化控制台', requiresAuth: true, requiresAdmin: true }
+      },
     ]
   },
 ];

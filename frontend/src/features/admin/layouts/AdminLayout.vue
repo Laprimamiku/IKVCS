@@ -29,6 +29,15 @@
         >
           <i class="iconfont icon-category"></i> 分类管理
         </router-link>
+
+        <router-link
+          to="/admin/ai"
+          class="nav-item"
+          :class="{ active: $route.path.startsWith('/admin/ai') }"
+        >
+          <i class="icon-brain"></i> <span>AI 进化控制台</span>
+        </router-link>
+
         <div class="nav-divider"></div>
         <router-link to="/" class="nav-item">
           <i class="iconfont icon-home"></i> 返回主站

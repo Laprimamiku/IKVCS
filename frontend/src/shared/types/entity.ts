@@ -25,6 +25,21 @@ export interface UserBrief {
   role?: string;
 }
 
+// 用户完整信息（包含时间字段）
+export interface UserInfo {
+  id: number;
+  username: string;
+  nickname: string;
+  avatar?: string;
+  intro?: string;
+  role: string;
+  created_at: string;
+  last_login_time?: string;
+}
+
+// [Fix] 添加 User 类型别名，解决 admin.api.ts 的引用错误
+export type User = UserInfo;
+
 // 视频信息
 export interface Video {
   id: number;
@@ -70,18 +85,6 @@ export interface RecommendVideo {
   cover: string;
   uploader: string;
   views: number;
-}
-
-// 用户完整信息（包含时间字段）
-export interface UserInfo {
-  id: number;
-  username: string;
-  nickname: string;
-  avatar?: string;
-  intro?: string;
-  role: string;
-  created_at: string;
-  last_login_time?: string;
 }
 
 // 视频查询参数

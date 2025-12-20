@@ -54,11 +54,9 @@ export function uploadVideoSubtitle(videoId: number, file: File) {
 }
 
 /**
- * 获取我的视频列表
+ * 获取我的视频列表 (后台管理用)
  */
-import type { MyVideosQueryParams } from "@/shared/types/entity";
-
-export async function getMyVideos(params: MyVideosQueryParams) {
+export async function getMyVideos(params: { page: number; page_size: number; status?: number }) {
   const response = await request.get<PageResult<Video>>('/videos/my', { params });
   if (response.success && response.data) {
     response.data.items = processVideoList(response.data.items);
@@ -100,14 +98,33 @@ export function toggleVideoCollect(videoId: number) {
 export async function getMyCollections(params: { page: number; page_size: number }) {
   const response = await request.get<PageResult<Video>>('/users/me/favorites', { params });
   if (response.success && response.data) {
-    // 假设 apiHelpers 里的处理函数也适用于收藏列表
-    // response.data.items = processVideoList(response.data.items);
-    // 这里简单处理封面图路径
-    response.data.items.forEach(v => {
-      if (v.cover_url && !v.cover_url.startsWith('http')) {
-        v.cover_url = import.meta.env.VITE_API_BASE_URL + v.cover_url;
-      }
-    });
+    // 同样处理视频列表格式
+    response.data.items = processVideoList(response.data.items);
   }
   return response;
 }
+
+/**
+ * [New] 获取视频 AI 智能分析报告
+ */
+export function getAnalysis(videoId: number) {
+  return request.get<any>(`/videos/${videoId}/ai-analysis`);
+}
+
+// ==========================================
+// 统一导出对象 (修复 SmartAnalysis.vue 报错)
+// ==========================================
+export const videoApi = {
+  getVideoList,
+  getVideoDetail,
+  incrementViewCount,
+  uploadVideoCover,
+  uploadVideoSubtitle,
+  getMyVideos,
+  updateVideo,
+  deleteVideo,
+  toggleVideoLike,
+  toggleVideoCollect,
+  getMyCollections,
+  getAnalysis // 包含新增的分析接口
+};
