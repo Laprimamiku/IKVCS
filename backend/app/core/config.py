@@ -50,10 +50,17 @@ class Settings(BaseSettings):
     AI_VECTOR_DIMENSION: int = 64  # 用于构造缓存Key的向量维度数（取前N维）
     AI_VECTOR_QUANTIZATION_PRECISION: int = 3  # 向量量化精度（小数位数）
     
-    # AI 多智能体配置（Layer 2.5）
+    # AI 大小模型协同配置（Layer 2.5）
+    LOCAL_LLM_ENABLED: bool = False
+    LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1"
+    LOCAL_LLM_MODEL: str = "qwen2.5:0.5b-instruct"
+    LOCAL_LLM_THRESHOLD_HIGH: int = 80
+    LOCAL_LLM_THRESHOLD_LOW: int = 30
+    LOCAL_LLM_TIMEOUT: float = 5.0
+
+    # AI 多智能体配置（Layer 3.1-3.4）
     MULTI_AGENT_ENABLED: bool = False  # 是否启用多智能体陪审团（True/False默认关闭）  
     MULTI_AGENT_CONFLICT_THRESHOLD: float = 0.2  # 冲突阈值（分数差异超过20%视为冲突）
-    
 
     # AI 反馈式自我纠错配置（Layer 4）
     SELF_CORRECTION_ENABLED: bool = False  # 是否启用反馈式自我纠错

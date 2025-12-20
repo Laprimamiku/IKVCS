@@ -7,8 +7,9 @@ LLM 智能分析服务
 2. 规则预过滤，减少 LLM Token 消耗
 3. Prompt 模板化
 4. 结果结构化解析
-5. Redis 缓存（内容指纹级别）
-6. 异步后台任务，直接更新数据库
+5. Redis 精确缓存 + 语义缓存
+6. 本地小模型 + 云端大模型协同
+7. 异步后台任务，直接更新数据库
 """
 
 import httpx
@@ -22,30 +23,35 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.danmaku import Danmaku
 from app.models.comment import Comment
+from app.models.ai_training_sample import AiTrainingSample
 from app.services.ai.prompts import (
     DANMAKU_SYSTEM_PROMPT,
     COMMENT_SYSTEM_PROMPT
 )
 from app.services.cache.redis_service import redis_service
 from app.services.ai.embedding_service import embedding_service
+from app.services.ai.local_model_service import local_model_service
 
 logger = logging.getLogger(__name__)
 
-# 延迟导入多智能体服务（避免循环依赖和导入错误）
+# ==================== 多智能体延迟加载 ====================
+
 _multi_agent_service = None
 
+
 def _get_multi_agent_service():
-    """延迟加载多智能体服务"""
     global _multi_agent_service
     if _multi_agent_service is None:
         try:
             from app.services.ai.multi_agent_service import multi_agent_service
             _multi_agent_service = multi_agent_service
         except ImportError as e:
-            logger.debug(f"多智能体服务未找到: {e}，将使用单一 LLM")
+            logger.debug(f"多智能体服务不可用: {e}")
             _multi_agent_service = None
     return _multi_agent_service
 
+
+# ==================== LLM Service ====================
 
 class LLMService:
     def __init__(self):
@@ -54,7 +60,6 @@ class LLMService:
         self.model = settings.LLM_MODEL
         self.timeout = 30.0
 
-        # 兜底响应（任何异常都会回落到这里）
         self.default_response = {
             "score": 60,
             "category": "普通",
@@ -64,53 +69,47 @@ class LLMService:
             "is_inappropriate": False
         }
 
-    # ==================== 核心分析流程 ====================
+    # ==================== 工具方法 ====================
 
     def _get_content_hash(self, content: str) -> str:
-        """计算内容指纹，用于 Redis 缓存"""
         return hashlib.md5(content.strip().encode("utf-8")).hexdigest()
+
+    # ==================== 核心分析流程 ====================
 
     async def analyze_content(self, content: str, content_type: str) -> Dict[str, Any]:
         """
-        优化后的分析流程：
-        Redis 缓存 → 规则预过滤 → LLM → 结果缓存
+        智能内容分析（三层架构 + 本地小模型协同）
+
+        Layer 1   : 规则过滤
+        Layer 1.5 : 精确缓存（MD5）
+        Layer 2   : 语义缓存（Embedding）
+        Layer 2.5 : 本地小模型（Local LLM）
+        Layer 3   : 云端大模型（Cloud LLM）
         """
         if not content:
             return self.default_response
 
-        # 0. Layer 1 - 规则预过滤（本地正则）
+        # ==================== Layer 1: 规则过滤 ====================
         pre_check = self._rule_based_filter(content, content_type)
         if pre_check:
             return pre_check
 
-        # 0.5 Layer 1.5 - 精确内容指纹缓存（MD5）
-        # 说明：
-        # - 用于处理「完全相同文本」的重复调用场景
-        # - 不依赖向量检索，命中则直接返回结果，完全避免 Embedding / LLM 再次调用
+        # ==================== Layer 1.5: 精确缓存 ====================
         content_hash = self._get_content_hash(content)
         exact_cache_key = f"ai:analysis:{content_type}:{content_hash}"
 
         try:
-            exact_cached = await redis_service.async_redis.get(exact_cache_key)
-            if exact_cached:
-                try:
-                    logger.info(f"AI Exact Cache Hit: {content[:10]}...")
-                    return json.loads(exact_cached)
-                except Exception:
-                    logger.warning("AI Exact Cache Parse Error")
+            cached = await redis_service.async_redis.get(exact_cache_key)
+            if cached:
+                logger.info(f"AI Exact Cache Hit: {content[:10]}...")
+                return json.loads(cached)
         except Exception as e:
-            # 精确缓存失败不影响主流程，只记录日志
-            logger.warning(f"AI Exact Cache Read Failed: {e}")
+            logger.warning(f"Exact cache read failed: {e}")
 
-        # 1. Layer 2 - 语义缓存（Embedding + Redis）
-        # 1.1 生成 Embedding 向量
-        # 说明：如果向量生成失败，不中断流程，直接进入 LLM 调用
+        # ==================== Layer 2: 语义缓存 ====================
         embedding = await embedding_service.get_text_embedding(content)
-
-        # 为不同内容类型设置不同的缓存前缀，避免互相污染
         sem_prefix = f"ai:semcache:{content_type}"
 
-        # 如果拿到了向量，则尝试用语义缓存命中
         if embedding is not None:
             sem_cached = await redis_service.search_similar_vector(
                 cache_key_prefix=sem_prefix,
@@ -119,81 +118,82 @@ class LLMService:
             )
             if sem_cached:
                 try:
-                    logger.info(f"AI Semantic Cache Hit: {content[:10]}...")
                     result = json.loads(sem_cached)
-                    # 重要：命中语义缓存时，也要写入精确缓存（MD5），确保下次能直接命中精确缓存
-                    try:
-                        await redis_service.async_redis.setex(
-                            exact_cache_key,
-                            settings.AI_SEMANTIC_CACHE_TTL,
-                            json.dumps(result),
-                        )
-                        logger.debug(f"AI Exact Cache Written (from semantic cache): {content[:10]}...")
-                    except Exception:
-                        logger.warning("AI Exact Cache Write Failed (from semantic cache)")
+                    await redis_service.async_redis.setex(
+                        exact_cache_key,
+                        settings.AI_SEMANTIC_CACHE_TTL,
+                        json.dumps(result),
+                    )
+                    logger.info(f"AI Semantic Cache Hit: {content[:10]}...")
                     return result
                 except Exception:
-                    # 解析失败不影响主流程，只打印日志
-                    logger.warning("AI Semantic Cache Parse Error")
+                    logger.warning("Semantic cache parse error")
 
-        # 1.5 Layer 2.5 - 多智能体陪审团（可选）
-        # 说明：如果启用多智能体，使用多专家协作分析
-        # 否则降级到单一 LLM 分析
-        if getattr(settings, "MULTI_AGENT_ENABLED", False):
-            multi_agent = _get_multi_agent_service()
-            if multi_agent:
-                try:
-                    logger.info(f"使用多智能体分析: {content[:10]}...")
-                    result = await multi_agent.analyze_with_jury(content, content_type)
-                    
-                    # 写入缓存（语义缓存 + 精确缓存）
-                    try:
-                        # 生成 embedding（用于语义缓存，如果之前没有）
-                        if embedding is None:
-                            embedding = await embedding_service.get_text_embedding(content)
-                        
-                        sem_prefix = f"ai:semcache:{content_type}"
-                        
-                        if embedding is not None:
-                            await redis_service.save_vector_result(
-                                cache_key_prefix=sem_prefix,
-                                embedding=embedding,
-                                result_json=json.dumps(result),
-                                ttl=settings.AI_SEMANTIC_CACHE_TTL,
-                            )
-                        
-                        # 写入精确缓存
-                        await redis_service.async_redis.setex(
-                            exact_cache_key,
-                            settings.AI_SEMANTIC_CACHE_TTL,
-                            json.dumps(result),
+        # ==================== Layer 2.5: 本地小模型 ====================
+        local_result = None
+        should_use_cloud = True
+
+        if settings.LOCAL_LLM_ENABLED:
+            try:
+                local_result = await local_model_service.predict(content, content_type)
+                if local_result:
+                    confidence = local_result.get("confidence", 0.0)
+                    threshold = settings.LOCAL_LLM_THRESHOLD_HIGH / 100.0
+
+                    logger.info(
+                        f"[LocalLLM] score={local_result.get('score')} conf={confidence:.2f}"
+                    )
+
+                    if confidence >= threshold:
+                        logger.info("✅ 本地模型高置信度命中，跳过云端")
+
+                        final_result = {
+                            "score": local_result["score"],
+                            "category": local_result["category"],
+                            "label": local_result["label"],
+                            "reason": local_result.get("reason", "本地模型分析"),
+                        }
+
+                        await self._save_training_sample(
+                            content, local_result, "local_hit"
                         )
-                        logger.debug(f"多智能体结果已写入缓存: {content[:10]}...")
-                    except Exception as e:
-                        logger.warning(f"多智能体结果缓存写入失败: {e}")
-                    
-                    return result
-                    
-                except Exception as e:
-                    logger.warning(f"多智能体分析失败，降级到单一 LLM: {e}")
-                    # 继续执行单一 LLM 流程
-            else:
-                logger.debug("多智能体服务不可用，降级到单一 LLM")
+                        await self._save_cache(
+                            content, content_type, final_result, embedding
+                        )
+                        return final_result
 
-        # 2. 构建 Prompt
+            except Exception as e:
+                logger.error(f"Local LLM failed, downgrade: {e}")
+
+        # ==================== Layer 3: 云端大模型 ====================
         messages = self._build_prompt(content, content_type)
-
-        # 3. 调用 LLM
         response_text = await self._call_llm_api(messages)
         if not response_text:
             return self.default_response
 
-        # 4. 解析结果
         result = self._parse_response(response_text, content_type)
 
-        # 5. Layer 2 - 将本次 LLM 结果写入缓存（语义缓存 + 精确内容缓存）
+        if local_result:
+            await self._save_training_sample(content, local_result, "local_low_conf")
+            await self._save_training_sample(content, result, "cloud_final")
+
+        await self._save_cache(content, content_type, result, embedding)
+        return result
+
+    # ==================== 缓存辅助 ====================
+
+    async def _save_cache(
+        self,
+        content: str,
+        content_type: str,
+        result: Dict[str, Any],
+        embedding
+    ):
         try:
-            # 5.1 写入语义缓存：只有在 embedding 存在时才写入，保证 Key 构造一致
+            content_hash = self._get_content_hash(content)
+            exact_cache_key = f"ai:analysis:{content_type}:{content_hash}"
+            sem_prefix = f"ai:semcache:{content_type}"
+
             if embedding is not None:
                 await redis_service.save_vector_result(
                     cache_key_prefix=sem_prefix,
@@ -202,105 +202,91 @@ class LLMService:
                     ttl=settings.AI_SEMANTIC_CACHE_TTL,
                 )
 
-            # 5.2 写入精确内容指纹缓存（MD5）
             await redis_service.async_redis.setex(
                 exact_cache_key,
                 settings.AI_SEMANTIC_CACHE_TTL,
                 json.dumps(result),
             )
-        except Exception:
-            # 缓存写入失败不影响主流程
-            logger.warning("AI Cache Save Failed")
-
-        return result
+        except Exception as e:
+            logger.warning(f"Cache save failed: {e}")
 
     # ==================== 规则过滤 ====================
 
-    def _rule_based_filter(self, content: str, content_type: str) -> Optional[Dict[str, Any]]:
-        """
-        低成本规则过滤，避免无意义内容调用 LLM
-        """
-        clean_content = content.strip()
-        if not clean_content:
+    def _rule_based_filter(
+        self, content: str, content_type: str
+    ) -> Optional[Dict[str, Any]]:
+        clean = content.strip()
+        if not clean:
             return self.default_response
 
-        # MODIFIED: Layer 1 - 本地正则规则
-        # 1. 纯数字 (e.g., "666", "2333")
-        if re.match(r'^\d+$', clean_content):
+        if re.match(r"^\d+$", clean):
             return {
                 **self.default_response,
                 "score": 45,
                 "category": "灌水",
                 "label": "复读",
                 "reason": "规则命中：纯数字",
-                "is_highlight": False
             }
 
-        # 2. 纯 Emoji / 符号 (如果内容不包含任何中英文数字)
-        # [\u4e00-\u9fa5] 汉字, [a-zA-Z0-9] 字母数字
-        if not re.search(r'[\u4e00-\u9fa5a-zA-Z0-9]', clean_content):
+        if not re.search(r"[\u4e00-\u9fa5a-zA-Z0-9]", clean):
             return {
                 **self.default_response,
                 "score": 50,
                 "category": "情绪表达",
                 "label": "表情",
-                "reason": "规则命中：纯表情/符号",
-                "is_highlight": False
+                "reason": "规则命中：纯符号/表情",
             }
 
-        # 3. 超短文本 (< 2 chars)
-        if len(clean_content) < 2:
+        if len(clean) < 2:
             return {
                 **self.default_response,
                 "score": 40,
                 "category": "无意义",
                 "label": "过短",
                 "reason": "规则命中：内容过短",
-                "is_highlight": False
             }
 
-        # 从配置读取低价值关键词列表
-        keywords_str = settings.AI_LOW_VALUE_KEYWORDS
-        low_value_keywords = [k.strip() for k in keywords_str.split(",") if k.strip()]
-
-        # 关键词匹配
-        if any(k in clean_content for k in low_value_keywords):
+        keywords = [
+            k.strip()
+            for k in settings.AI_LOW_VALUE_KEYWORDS.split(",")
+            if k.strip()
+        ]
+        if any(k in clean for k in keywords):
             return {
                 **self.default_response,
                 "score": 50,
                 "category": "情绪表达",
-                "reason": "规则命中：常见关键词",
-                "is_highlight": False
+                "reason": "规则命中：低价值关键词",
             }
 
         return None
 
-    # ==================== Prompt 构建 ====================
+    # ==================== Prompt ====================
 
     def _build_prompt(self, content: str, content_type: str) -> list:
-        if content_type == "danmaku":
-            system_prompt = DANMAKU_SYSTEM_PROMPT
-        else:
-            system_prompt = COMMENT_SYSTEM_PROMPT
-
+        system_prompt = (
+            DANMAKU_SYSTEM_PROMPT
+            if content_type == "danmaku"
+            else COMMENT_SYSTEM_PROMPT
+        )
         return [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"输入内容: {content}"}
+            {"role": "user", "content": f"输入内容: {content}"},
         ]
 
-    # ==================== LLM API 调用 ====================
+    # ==================== LLM API ====================
 
     async def _call_llm_api(self, messages: list) -> Optional[str]:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         payload = {
             "model": self.model,
             "messages": messages,
-            "temperature": 0.3,  # MODIFIED: 适度提高以处理多样化表达
-            "max_tokens": 512    # MODIFIED: 增加输出长度限制
+            "temperature": 0.3,
+            "max_tokens": 512,
         }
 
         try:
@@ -308,45 +294,60 @@ class LLMService:
                 resp = await client.post(
                     f"{self.base_url}/chat/completions",
                     json=payload,
-                    headers=headers
+                    headers=headers,
                 )
-
                 if resp.status_code != 200:
                     logger.error(f"LLM API Error {resp.status_code}: {resp.text}")
                     return None
-
-                data = resp.json()
-                return data["choices"][0]["message"]["content"]
-
+                return resp.json()["choices"][0]["message"]["content"]
         except Exception as e:
-            logger.error(f"LLM API Call Failed: {e}")
+            logger.error(f"LLM API call failed: {e}")
             return None
 
-    # ==================== 结果解析 ====================
+    # ==================== 解析 ====================
 
-    def _parse_response(self, response_text: str, content_type: str) -> Dict[str, Any]:
+    def _parse_response(
+        self, response_text: str, content_type: str
+    ) -> Dict[str, Any]:
         try:
-            clean_text = (
-                response_text
-                .replace("```json", "")
-                .replace("```", "")
-                .strip()
-            )
-            data = json.loads(clean_text)
-
+            clean = response_text.replace("```json", "").replace("```", "").strip()
+            data = json.loads(clean)
             result = self.default_response.copy()
             result.update(data)
-
-            result["category"] = str(result.get("category", "普通"))
-            result["label"] = str(result.get("label", "普通"))
-
             return result
-
-        except json.JSONDecodeError:
-            logger.warning(f"JSON Parse Error: {response_text}")
+        except Exception:
+            logger.warning(f"JSON parse error: {response_text}")
             return self.default_response
 
-    # ==================== 异步任务处理 ====================
+    # ==================== 训练样本 ====================
+
+    async def _save_training_sample(
+        self, content: str, result: Dict[str, Any], source_tag: str
+    ):
+        try:
+            db = SessionLocal()
+            try:
+                model_name = (
+                    settings.LLM_MODEL
+                    if source_tag == "cloud_final"
+                    else settings.LOCAL_LLM_MODEL
+                )
+                sample = AiTrainingSample(
+                    content=content,
+                    ai_score=result.get("score", 0),
+                    ai_category=result.get("category", "unknown"),
+                    ai_label=result.get("label", "unknown"),
+                    source_model=model_name,
+                    local_confidence=result.get("confidence", 1.0),
+                )
+                db.add(sample)
+                db.commit()
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Save training sample failed: {e}")
+
+    # ==================== 异步任务 ====================
 
     async def process_danmaku_task(self, danmaku_id: int):
         db = SessionLocal()
@@ -356,22 +357,14 @@ class LLMService:
                 return
 
             result = await self.analyze_content(danmaku.content, "danmaku")
-
             danmaku.ai_score = result.get("score", 60)
             danmaku.ai_category = result.get("category", "普通")
             danmaku.is_highlight = (
                 result.get("is_highlight", False) or danmaku.ai_score >= 90
             )
-
-            if "reason" in result:
-                logger.info(
-                    f"[AI] Danmaku {danmaku_id} Reason: {result['reason']}"
-                )
-
             db.commit()
-
         except Exception as e:
-            logger.error(f"Danmaku Task Error {danmaku_id}: {e}")
+            logger.error(f"Danmaku task error: {e}")
             db.rollback()
         finally:
             db.close()
@@ -384,23 +377,16 @@ class LLMService:
                 return
 
             result = await self.analyze_content(comment.content, "comment")
-
             comment.ai_score = result.get("score", 60)
             comment.ai_label = result.get("label", "普通")
-
-            if "reason" in result:
-                logger.info(
-                    f"[AI] Comment {comment_id} Reason: {result['reason']}"
-                )
-
             db.commit()
-
         except Exception as e:
-            logger.error(f"Comment Task Error {comment_id}: {e}")
+            logger.error(f"Comment task error: {e}")
             db.rollback()
         finally:
             db.close()
 
 
-# 全局实例
+# ==================== 全局实例 ====================
+
 llm_service = LLMService()

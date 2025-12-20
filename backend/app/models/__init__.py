@@ -13,6 +13,7 @@ from app.models.upload import UploadSession
 from app.models.danmaku import Danmaku
 from app.models.comment import Comment
 from app.models.report import Report
+from app.models.ai_training_sample import AiTrainingSample
 
 # AI 相关模型（可选）
 try:
