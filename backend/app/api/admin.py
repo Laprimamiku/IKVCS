@@ -498,3 +498,193 @@ async def category_stats(
         .all()
     )
     return [{"name": name, "count": count} for name, count in results]
+
+
+
+# =========================
+# AI反馈式自我纠错管理 (新增)
+# =========================
+
+from app.models.ai_correction import AICorrection, AIPromptVersion
+from app.services.ai.self_correction_service import self_correction_service
+from pydantic import BaseModel
+
+# Schema定义
+class CorrectionCreateRequest(BaseModel):
+    """创建修正记录请求"""
+    content: str
+    content_type: str  # "comment" 或 "danmaku"
+    original_result: dict
+    corrected_result: dict
+    correction_reason: str
+
+
+class CorrectionResponse(BaseModel):
+    """修正记录响应"""
+    id: int
+    content: str
+    content_type: str
+    original_result: dict
+    corrected_result: dict
+    correction_reason: str
+    corrected_by: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class ErrorAnalysisRequest(BaseModel):
+    """错误分析请求"""
+    days: int = 7
+    content_type: Optional[str] = None  # "comment", "danmaku" 或 None
+
+
+class PromptUpdateRequest(BaseModel):
+    """Prompt更新请求"""
+    prompt_type: str  # "COMMENT" 或 "DANMAKU"
+    new_prompt: str
+    update_reason: str
+
+
+@router.post("/ai/corrections", response_model=CorrectionResponse, summary="提交AI修正记录")
+async def create_correction(
+    correction_in: CorrectionCreateRequest,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """管理员提交AI分析修正记录"""
+    try:
+        correction = AICorrection(
+            content=correction_in.content,
+            content_type=correction_in.content_type,
+            original_result=correction_in.original_result,
+            corrected_result=correction_in.corrected_result,
+            correction_reason=correction_in.correction_reason,
+            corrected_by=current_admin.id
+        )
+        
+        db.add(correction)
+        db.commit()
+        db.refresh(correction)
+        
+        logger.info(f"管理员 {current_admin.username} 提交了AI修正记录: {correction.id}")
+        
+        return correction
+        
+    except Exception as e:
+        logger.error(f"创建修正记录失败: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="创建修正记录失败")
+
+
+@router.get("/ai/corrections", summary="获取修正记录列表")
+async def get_corrections(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    content_type: Optional[str] = Query(None, description="内容类型过滤"),
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin)
+):
+    """获取AI修正记录列表"""
+    try:
+        query = db.query(AICorrection)
+        
+        if content_type:
+            query = query.filter(AICorrection.content_type == content_type)
+        
+        total = query.count()
+        offset = (page - 1) * page_size
+        
+        corrections = (
+            query.order_by(AICorrection.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+            .all()
+        )
+        
+        return {
+            "items": corrections,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": math.ceil(total / page_size)
+        }
+        
+    except Exception as e:
+        logger.error(f"获取修正记录失败: {e}")
+        raise HTTPException(status_code=500, detail="获取修正记录失败")
+
+
+@router.post("/ai/self-correction/analyze", summary="触发自我纠错分析")
+async def trigger_self_correction_analysis(
+    request: ErrorAnalysisRequest,
+    current_admin: User = Depends(get_current_admin)
+):
+    """触发AI自我纠错分析"""
+    try:
+        logger.info(f"管理员 {current_admin.username} 触发自我纠错分析")
+        
+        result = await self_correction_service.analyze_errors(
+            days=request.days,
+            content_type=request.content_type
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"自我纠错分析失败: {e}")
+        raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
+
+
+@router.post("/ai/self-correction/update-prompt", response_model=MessageResponse, summary="更新System Prompt")
+async def update_system_prompt(
+    request: PromptUpdateRequest,
+    current_admin: User = Depends(get_current_admin)
+):
+    """应用优化建议，更新System Prompt"""
+    try:
+        success = await self_correction_service.update_system_prompt(
+            prompt_type=request.prompt_type,
+            new_prompt=request.new_prompt,
+            update_reason=request.update_reason,
+            updated_by=current_admin.id
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Prompt更新失败")
+        
+        logger.info(f"管理员 {current_admin.username} 更新了 {request.prompt_type} Prompt")
+        
+        return MessageResponse(
+            message=f"System Prompt已更新并记录版本历史。注意：需要手动更新prompts.py文件以生效。"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新System Prompt失败: {e}")
+        raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
+
+
+@router.get("/ai/prompt-versions", summary="获取Prompt版本历史")
+async def get_prompt_versions(
+    prompt_type: Optional[str] = Query(None, description="Prompt类型过滤"),
+    limit: int = Query(50, ge=1, le=100),
+    current_admin: User = Depends(get_current_admin)
+):
+    """查询Prompt版本历史"""
+    try:
+        versions = self_correction_service.get_prompt_versions(
+            prompt_type=prompt_type,
+            limit=limit
+        )
+        
+        return {
+            "items": versions,
+            "total": len(versions)
+        }
+        
+    except Exception as e:
+        logger.error(f"获取Prompt版本历史失败: {e}")
+        raise HTTPException(status_code=500, detail="获取版本历史失败")

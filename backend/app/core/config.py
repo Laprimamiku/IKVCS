@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     MULTI_AGENT_ENABLED: bool = False  # 是否启用多智能体陪审团（True/False默认关闭）  
     MULTI_AGENT_CONFLICT_THRESHOLD: float = 0.2  # 冲突阈值（分数差异超过20%视为冲突）
     
+
+    # AI 反馈式自我纠错配置（Layer 4）
+    SELF_CORRECTION_ENABLED: bool = False  # 是否启用反馈式自我纠错
+    SELF_CORRECTION_MIN_SAMPLES: int = 10  # 触发分析的最小样本数量
+    SELF_CORRECTION_AUTO_UPDATE: bool = False  # 是否自动更新Prompt（建议手动审核）
+    SELF_CORRECTION_ANALYSIS_DAYS: int = 7  # 默认分析最近N天的错误
+
+
+
     # 文件存储配置
     STORAGE_ROOT: str = "./storage"  # 统一存储根目录
     
