@@ -1,51 +1,214 @@
+/* ================= Bilibili Design System (2024) ================= */
+
 :root {
-  /* B站配色系统 */
-  --primary-color: #FA7298; /* B站粉 - 主色 */
-  --primary-hover: #FF85B0; /* 主色悬停 */
-  --primary-light: #FA72981A; /* 浅粉色背景 */
-  --secondary-color: #00AEEC; /* B站蓝 - 辅色 */
-  --secondary-hover: #00B5FF;
+  /* === Brand Colors === */
+  --bili-pink: #FB7299;           /* Primary Bilibili Pink */
+  --bili-pink-hover: #FC8BAB;     /* Pink hover state */
+  --bili-pink-active: #E5678A;    /* Pink active/pressed state */
+  --bili-pink-light: #FFF1F4;     /* Light pink background */
+  --bili-pink-gradient: linear-gradient(135deg, #FB7299 0%, #FF9AB5 100%);
   
-  /* 文字颜色 */
-  --text-primary: #18191C; /* 主标题 */
-  --text-secondary: #61666D; /* 正文 */
-  --text-regular: #61666D;
-  --text-tertiary: #9499A0; /* 辅助信息（时间、播放量） */
+  --bili-blue: #00AEEC;           /* Bilibili Blue (secondary) */
+  --bili-blue-hover: #00C0FF;     /* Blue hover */
+  --bili-blue-light: #E3F8FF;     /* Light blue background */
   
-  /* 背景颜色 */
-  --bg-global: #F1F2F3; /* 全局背景 */
-  --bg-white: #FFFFFF; /* 容器背景 */
-  --bg-light: #F1F2F3;
+  /* === Semantic Colors === */
+  --primary-color: var(--bili-pink);
+  --primary-hover: var(--bili-pink-hover);
+  --primary-active: var(--bili-pink-active);
+  --primary-light: var(--bili-pink-light);
+  --primary-gradient: var(--bili-pink-gradient);
   
-  /* 边框与分割 */
-  --border-light: #E3E5E7;
-  --border-base: #E3E5E7;
+  --secondary-color: var(--bili-blue);
+  --secondary-hover: var(--bili-blue-hover);
+  --secondary-light: var(--bili-blue-light);
   
-  /* 间距 */
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 12px;
-  --spacing-lg: 16px;
-  --spacing-xl: 24px;
-  --spacing-2xl: 32px;
-  
-  /* 圆角 */
-  --radius-sm: 4px; /* 小按钮/标签 */
-  --radius-md: 6px; /* 标准卡片 */
+  --success-color: #00B578;       /* Success green */
+  --success-light: #E8F9F2;
+  --warning-color: #FF9500;       /* Warning orange */
+  --warning-light: #FFF7E6;
+  --danger-color: #FF4D4F;        /* Danger red */
+  --danger-light: #FFF1F0;
+  --info-color: #1890FF;          /* Info blue */
+  --info-light: #E6F7FF;
+
+  /* === Text Colors === */
+  --text-primary: #18191C;        /* Main text - near black */
+  --text-secondary: #61666D;      /* Secondary text */
+  --text-tertiary: #9499A0;       /* Tertiary/placeholder text */
+  --text-quaternary: #C9CCD0;     /* Disabled text */
+  --text-white: #FFFFFF;
+  --text-link: var(--bili-blue);
+  --text-link-hover: #00C0FF;
+
+  /* === Background Colors === */
+  --bg-global: #F1F2F3;           /* Page background (Bilibili signature gray) */
+  --bg-white: #FFFFFF;            /* Card/container background */
+  --bg-gray-1: #F6F7F8;           /* Subtle gray background */
+  --bg-gray-2: #E7E8EA;           /* Darker gray background */
+  --bg-hover: #F6F7F8;            /* Hover state background */
+  --bg-active: #EDEEF0;           /* Active state background */
+  --bg-input: #F1F2F3;            /* Input field background */
+  --bg-mask: rgba(0, 0, 0, 0.5);  /* Modal overlay */
+  --bg-mask-light: rgba(0, 0, 0, 0.3);
+  --bg-tooltip: rgba(0, 0, 0, 0.75);
+
+  /* === Border Colors === */
+  --border-color: #E3E5E7;        /* Default border */
+  --border-light: #F1F2F3;        /* Light border */
+  --border-dark: #C9CCD0;         /* Dark border */
+  --border-focus: var(--bili-blue);
+  --divider-color: #E3E5E7;       /* Divider lines */
+
+  /* === Shadow System === */
+  --shadow-none: none;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-base: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.15);
+  --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.04);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.2);
+
+  /* === Border Radius === */
+  --radius-none: 0;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
   --radius-lg: 8px;
-  --radius-full: 999px; /* 搜索框/胶囊按钮 */
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-round: 9999px;         /* Pill shape */
+  --radius-circle: 50%;
+
+  /* === Spacing System (8px base) === */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* === Typography === */
+  --font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, 
+                 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 
+                 '微软雅黑', Arial, sans-serif;
+  --font-family-mono: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 
+                      'Fira Mono', 'Droid Sans Mono', 'Consolas', monospace;
   
-  /* 字体大小 */
-  --font-size-sm: 12px;
-  --font-size-md: 14px;
+  /* Font Sizes */
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-md: 15px;
   --font-size-lg: 16px;
   --font-size-xl: 18px;
   --font-size-2xl: 20px;
+  --font-size-3xl: 24px;
+  --font-size-4xl: 28px;
+  --font-size-5xl: 32px;
   
-  /* 过渡动画 */
-  --transition-base: 0.2s ease-in-out;
+  /* Line Heights */
+  --line-height-tight: 1.25;
+  --line-height-snug: 1.375;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.625;
+  --line-height-loose: 2;
   
-  /* 容器最大宽度 */
-  --container-max-width: 1600px;
+  /* Font Weights */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* === Layout === */
+  --header-height: 64px;
+  --sidebar-width: 200px;
+  --sidebar-collapsed-width: 64px;
+  --container-max-width: 1800px;
+  --container-wide: 2200px;
+  --content-padding: 24px;
+  --content-padding-mobile: 16px;
+  --card-padding: 16px;
+  --card-padding-lg: 20px;
+
+  /* === Z-Index Scale === */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+  --z-toast: 1080;
+
+  /* === Transitions === */
+  --transition-fast: 0.1s ease;
+  --transition-base: 0.2s ease;
+  --transition-slow: 0.3s ease;
+  --transition-slower: 0.4s ease;
+  --transition-bounce: 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --transition-smooth: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* === Breakpoints (for reference in JS) === */
+  --breakpoint-xs: 480px;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+
+  /* === Video Player Specific === */
+  --player-control-height: 48px;
+  --danmaku-font-size: 25px;
+  --danmaku-speed: 8s;
+  
+  /* === Component Specific === */
+  --video-card-ratio: 56.25%;     /* 16:9 aspect ratio */
+  --avatar-size-xs: 24px;
+  --avatar-size-sm: 32px;
+  --avatar-size-md: 40px;
+  --avatar-size-lg: 48px;
+  --avatar-size-xl: 64px;
+  --avatar-size-2xl: 80px;
+  
+  /* === Button Heights === */
+  --btn-height-xs: 24px;
+  --btn-height-sm: 28px;
+  --btn-height-md: 32px;
+  --btn-height-lg: 36px;
+  --btn-height-xl: 40px;
 }
 
+/* === Dark Mode Variables === */
+[data-theme="dark"] {
+  --text-primary: #E3E5E7;
+  --text-secondary: #A2A7AE;
+  --text-tertiary: #757A81;
+  --text-quaternary: #505459;
+  
+  --bg-global: #17181A;
+  --bg-white: #222325;
+  --bg-gray-1: #2B2C2F;
+  --bg-gray-2: #3A3B3E;
+  --bg-hover: #2B2C2F;
+  --bg-active: #3A3B3E;
+  --bg-input: #2B2C2F;
+  
+  --border-color: #3A3B3E;
+  --border-light: #2B2C2F;
+  --border-dark: #505459;
+  --divider-color: #3A3B3E;
+  
+  --shadow-base: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+}

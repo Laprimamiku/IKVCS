@@ -21,9 +21,15 @@
           {{ pendingCorrections }} <span class="unit">例</span>
         </div>
         <div class="action">
-          <button @click="triggerAnalysis" :disabled="analyzing">
+          <el-button 
+            type="primary" 
+            size="small"
+            @click="triggerAnalysis" 
+            :disabled="analyzing"
+            :loading="analyzing"
+          >
             {{ analyzing ? "分析中..." : "✨ 触发元分析" }}
-          </button>
+          </el-button>
         </div>
       </div>
     </div>
@@ -67,9 +73,13 @@
         <div v-if="analysisResult" class="analysis-result">
           <div class="result-header">
             <h3>🔍 错误模式元分析报告</h3>
-            <button class="close-btn" @click="analysisResult = null">
+            <el-button 
+              type="info" 
+              size="small"
+              @click="analysisResult = null"
+            >
               关闭
-            </button>
+            </el-button>
           </div>
 
           <div class="analysis-content">
@@ -86,12 +96,12 @@
               class="prompt-editor"
             ></textarea>
             <div class="btn-group">
-              <button class="secondary" @click="analysisResult = null">
+              <el-button @click="analysisResult = null">
                 放弃
-              </button>
-              <button class="primary" @click="applyOptimization">
+              </el-button>
+              <el-button type="primary" @click="applyOptimization">
                 🚀 应用此进化
-              </button>
+              </el-button>
             </div>
           </div>
         </div>

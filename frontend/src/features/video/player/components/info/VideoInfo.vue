@@ -1,133 +1,245 @@
 <template>
-  <div class="video-info">
-    <!-- 标题 -->
+  <div class="video-info-container">
     <h1 class="video-title" :title="video.title">
       {{ video.title }}
     </h1>
 
-    <!-- 基础元信息 -->
-    <div class="video-meta">
-      <span class="meta-item"> {{ formatNumber(video.view_count) }} 播放 </span>
-      <span class="meta-item">
-        {{ formatDate(video.created_at) }}
+    <div class="video-data-row">
+      <span class="view-data" title="播放量">
+        <el-icon><VideoPlay /></el-icon>&nbsp;{{
+          formatNumber(video.view_count)
+        }}
       </span>
-      <span class="meta-item warning" v-if="video.status === 0"> 转码中 </span>
+      <span class="danmaku-data" title="弹幕数">
+        <el-icon><ChatDotRound /></el-icon>&nbsp;{{
+          formatNumber(danmakuCount)
+        }}
+      </span>
+      <span class="upload-time">
+        {{ formatDateTime(video.created_at) }}
+      </span>
+      <span v-if="video.status === 0" class="status-tag warning">
+        <el-icon><Warning /></el-icon> 转码中
+      </span>
     </div>
 
-    <!-- ✅ 互动区：中转 props & events -->
-    <VideoActions
-      :is-liked="isLiked"
-      :is-collected="isCollected"
-      :like-count="likeCount"
-      :collect-count="collectCount"
-      @like="$emit('like')"
-      @collect="$emit('collect')"
-      @share="$emit('share')"
-      @report="$emit('report')"
-    />
+    <div class="divider"></div>
 
-    <!-- 简介 -->
-    <div class="video-desc" :class="{ collapsed: isDescCollapsed }">
-      {{ video.description || "这个人很懒，什么都没有写~" }}
+    <div class="toolbar-container">
+      <div class="toolbar-left">
+        <div
+          class="tool-item"
+          :class="{ active: isLiked }"
+          @click="$emit('like')"
+        >
+          <el-icon v-if="isLiked"><Select /></el-icon>
+          <el-icon v-else><Pointer /></el-icon>
+          <span class="text">{{
+            likeCount > 0 ? formatNumber(likeCount) : "点赞"
+          }}</span>
+        </div>
+
+        <div class="tool-item" @click="handleCoin">
+          <el-icon><Coin /></el-icon>
+          <span class="text">投币</span>
+        </div>
+
+        <div
+          class="tool-item"
+          :class="{ active: isCollected }"
+          @click="$emit('collect')"
+        >
+          <el-icon><Star /></el-icon>
+          <span class="text">{{
+            collectCount > 0 ? formatNumber(collectCount) : "收藏"
+          }}</span>
+        </div>
+
+        <div class="tool-item" @click="$emit('share')">
+          <el-icon><Share /></el-icon>
+          <span class="text">分享</span>
+        </div>
+      </div>
+
+      <div class="toolbar-right">
+        <div class="tool-item text-only" @click="$emit('report')">
+          <span class="text">举报</span>
+        </div>
+      </div>
     </div>
 
-    <div class="toggle-desc" @click="isDescCollapsed = !isDescCollapsed">
-      {{ isDescCollapsed ? "展开更多" : "收起" }}
+    <div class="desc-container">
+      <div class="desc-text" :class="{ 'is-collapsed': isDescCollapsed }">
+        {{ video.description || "-" }}
+      </div>
+      <div class="toggle-btn" @click="isDescCollapsed = !isDescCollapsed">
+        {{ isDescCollapsed ? "展开更多" : "收起" }}
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from "vue";
+import { ElMessage } from "element-plus";
 import type { Video } from "@/shared/types/entity";
-import { formatNumber, formatDate } from "@/shared/utils/formatters";
-import VideoActions from "./VideoActions.vue";
+import { formatNumber } from "@/shared/utils/formatters";
+import {
+  VideoPlay,
+  ChatDotRound,
+  Warning,
+  Pointer,
+  Star,
+  Share,
+  Coin,
+  Select,
+} from "@element-plus/icons-vue";
 
-/**
- * Props：全部来自 VideoPlayer
- * VideoInfo 不维护任何业务状态
- */
 defineProps<{
   video: Video;
+  danmakuCount: number;
   isLiked: boolean;
   isCollected: boolean;
   likeCount: number;
   collectCount: number;
 }>();
 
-/**
- * Emits：原样向上抛
- */
-defineEmits<{
+const emit = defineEmits<{
   (e: "like"): void;
   (e: "collect"): void;
   (e: "share"): void;
   (e: "report"): void;
 }>();
 
-// 本组件只维护 UI 状态
 const isDescCollapsed = ref(true);
+
+const formatDateTime = (str: string) => {
+  return new Date(str)
+    .toLocaleString("zh-CN", { hour12: false })
+    .replace(/\//g, "-");
+};
+
+const handleCoin = () => {
+  ElMessage.success("投币成功！(模拟)");
+};
 </script>
 
 <style lang="scss" scoped>
-.video-info {
-  margin-top: 16px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--border-light);
+.video-info-container {
+  padding-top: 20px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border-color);
 
   .video-title {
     font-size: 20px;
     font-weight: 600;
     color: var(--text-primary);
     line-height: 28px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
   }
 
-  .video-meta {
-    font-size: 13px;
-    color: var(--text-tertiary);
+  .video-data-row {
     display: flex;
     align-items: center;
-    gap: 16px;
+    color: var(--text-tertiary);
+    font-size: 13px;
+    gap: 20px;
+
+    .el-icon {
+      font-size: 16px;
+      margin-right: 4px;
+      vertical-align: text-bottom;
+    }
+
+    .status-tag.warning {
+      color: var(--warning-color);
+      background: #fff0e6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--divider-color);
+    margin: 16px 0;
+  }
+
+  /* 互动工具栏 */
+  .toolbar-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin-bottom: 16px;
 
-    .meta-item {
-      &.warning {
-        color: #FF9500;
-        background: rgba(255, 149, 0, 0.1);
-        padding: 2px 8px;
-        border-radius: var(--radius-sm);
+    .toolbar-left {
+      display: flex;
+      gap: 32px; /* 间距拉大 */
+    }
+
+    .tool-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-size: 14px;
+      transition: all 0.2s;
+
+      .el-icon {
+        font-size: 24px;
+      } /* 图标做大 */
+
+      &:hover {
+        color: var(--primary-color);
+      }
+
+      &.active {
+        color: var(--primary-color);
+      }
+
+      &.text-only {
         font-size: 12px;
+        color: var(--text-tertiary);
+        &:hover {
+          color: var(--text-secondary);
+        }
       }
     }
   }
 
-  .video-desc {
+  .desc-container {
     font-size: 14px;
-    color: var(--text-secondary);
-    line-height: 22px;
-    white-space: pre-wrap;
-    margin-top: 12px;
+    line-height: 24px;
 
-    &.collapsed {
-      display: -webkit-box;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
-      line-clamp: 2;
-      overflow: hidden;
+    .desc-text {
+      white-space: pre-wrap;
+      color: var(--text-primary);
+      &.is-collapsed {
+        height: 72px; /* 3行高度 */
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        line-clamp: 3;
+        -webkit-box-orient: vertical;
+      }
     }
-  }
 
-  .toggle-desc {
-    font-size: 13px;
-    color: var(--text-tertiary);
-    margin-top: 8px;
-    cursor: pointer;
-    transition: color 0.2s;
-    display: inline-block;
-
-    &:hover {
-      color: var(--primary-color);
+    .toggle-btn {
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--text-tertiary);
+      cursor: pointer;
+      &:hover {
+        color: var(--primary-color);
+      }
     }
   }
 }

@@ -4,7 +4,12 @@ import { fileURLToPath, URL } from 'node:url'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue({
+      // Enable reactive transform for better performance
+      reactivityTransform: true,
+    }),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
@@ -14,20 +19,20 @@ export default defineConfig({
   css: {
     preprocessorOptions: {
       scss: {
-        // 如果需要全局 SCSS 变量，可以在这里配置
-        // additionalData: `@import "@/assets/styles/variables.scss";`
+        // Global SCSS variables are imported via index.scss
+        // additionalData removed to prevent circular imports
       }
-    }
+    },
+    // CSS code splitting
+    devSourcemap: true,
   },
   server: {
     port: 5173,
     proxy: {
       '/api': {
-        // 开发环境代理目标，可通过环境变量 VITE_PROXY_TARGET 覆盖
         target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true
       },
-      // 代理 HLS 和上传静态资源，避免抢占 SPA 路由
       '/videos/hls': {
         target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true
@@ -36,7 +41,6 @@ export default defineConfig({
         target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true,
         bypass(req) {
-          // HTML 直刷时返回前端入口，避免 404
           if (req.headers.accept && req.headers.accept.includes('text/html')) {
             return '/index.html'
           }
@@ -44,30 +48,98 @@ export default defineConfig({
       }
     }
   },
+  // Pre-bundle dependencies for faster dev startup
   optimizeDeps: {
-    include: ['vue', 'vue-router', 'pinia', 'element-plus', '@element-plus/icons-vue']
+    include: [
+      'vue', 
+      'vue-router', 
+      'pinia', 
+      'element-plus', 
+      '@element-plus/icons-vue',
+      'axios',
+      'hls.js'
+    ],
+    // Exclude large dependencies that don't need pre-bundling
+    exclude: ['@vueuse/core']
   },
   build: {
-    // 代码分割优化
+    // Target modern browsers for smaller bundle
+    target: 'es2020',
+    // Chunk size warning limit
+    chunkSizeWarningLimit: 1000,
+    // CSS code splitting
+    cssCodeSplit: true,
+    // Source maps for production (disable for smaller build)
+    sourcemap: false,
+    // Rollup options for code splitting
     rollupOptions: {
       output: {
+        // Manual chunks for better caching
         manualChunks: {
+          // Vue core libraries
           'vue-vendor': ['vue', 'vue-router', 'pinia'],
-          'element-plus': ['element-plus', '@element-plus/icons-vue'],
-          'video-player': [
-            './src/features/video/player/views/VideoPlayer.vue',
-            './src/features/video/player/composables/useVideoPlayer.ts'
-          ]
+          // Element Plus UI library
+          'element-plus': ['element-plus'],
+          'element-icons': ['@element-plus/icons-vue'],
+          // Video player related
+          'video-libs': ['hls.js'],
+          // Utility libraries
+          'utils': ['axios', 'dayjs'],
+        },
+        // Asset file naming for better caching
+        chunkFileNames: 'assets/js/[name]-[hash].js',
+        entryFileNames: 'assets/js/[name]-[hash].js',
+        assetFileNames: (assetInfo) => {
+          const info = assetInfo.name.split('.')
+          const ext = info[info.length - 1]
+          if (/\.(png|jpe?g|gif|svg|webp|ico)$/.test(assetInfo.name)) {
+            return 'assets/images/[name]-[hash][extname]'
+          }
+          if (/\.(woff2?|eot|ttf|otf)$/.test(assetInfo.name)) {
+            return 'assets/fonts/[name]-[hash][extname]'
+          }
+          if (/\.css$/.test(assetInfo.name)) {
+            return 'assets/css/[name]-[hash][extname]'
+          }
+          return 'assets/[name]-[hash][extname]'
         }
+      },
+      // Tree shaking for smaller bundle
+      treeshake: {
+        moduleSideEffects: 'no-external',
+        propertyReadSideEffects: false,
       }
     },
-    // 启用压缩
+    // Minification options
     minify: 'terser',
     terserOptions: {
       compress: {
+        // Remove console.log in production
         drop_console: true,
-        drop_debugger: true
+        drop_debugger: true,
+        // Pure function annotations for better tree shaking
+        pure_funcs: ['console.log', 'console.info', 'console.debug'],
+      },
+      mangle: {
+        // Mangle property names for smaller bundle
+        properties: false,
+      },
+      format: {
+        // Remove comments
+        comments: false,
       }
-    }
+    },
+    // Report compressed size
+    reportCompressedSize: true,
+  },
+  // Preview server options
+  preview: {
+    port: 4173,
+    strictPort: true,
+  },
+  // Define global constants
+  define: {
+    __VUE_OPTIONS_API__: true,
+    __VUE_PROD_DEVTOOLS__: false,
   }
 })

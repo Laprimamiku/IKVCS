@@ -2,9 +2,9 @@
   <div class="audit-page">
     <div class="page-header">
       <h2>待审核视频</h2>
-      <button class="refresh-btn" @click="loadData">
+      <el-button class="refresh-btn" @click="loadData">
         <i class="iconfont icon-refresh"></i> 刷新
-      </button>
+      </el-button>
     </div>
 
     <div class="video-grid" v-if="videos.length > 0">
@@ -21,15 +21,16 @@
             <span class="time">{{ formatDate(video.created_at) }}</span>
           </div>
           <div class="actions">
-            <button class="btn reject" @click="handleAudit(video.id, 'reject')">
+            <el-button type="danger" size="small" @click="handleAudit(video.id, 'reject')">
               拒绝
-            </button>
-            <button
-              class="btn approve"
+            </el-button>
+            <el-button
+              type="success" 
+              size="small"
               @click="handleAudit(video.id, 'approve')"
             >
               通过
-            </button>
+            </el-button>
           </div>
         </div>
       </div>
@@ -55,7 +56,7 @@
           <h4>{{ previewVideo.title }}</h4>
           <p>{{ previewVideo.description }}</p>
         </div>
-        <button class="close-btn" @click="previewVideo = null">×</button>
+        <el-button class="close-btn" @click="previewVideo = null" circle>×</el-button>
       </div>
     </div>
   </div>

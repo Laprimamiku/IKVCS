@@ -26,7 +26,7 @@ export function useVideoPlayer() {
     }
 
     try {
-      // 优化：并行加载视频详情和推荐视频，播放量统计异步执行不阻塞
+      // 优化：并行加载视频详情和推荐视频
       const [videoRes] = await Promise.all([
         getVideoDetail(id),
         // 推荐视频可以延迟加载，先显示主要内容
@@ -35,11 +35,8 @@ export function useVideoPlayer() {
       if (videoRes.success) {
         videoData.value = videoRes.data;
         
-        // 并行加载推荐视频和增加播放量（不阻塞主流程）
-        Promise.all([
-          loadRecommendVideos(),
-          incrementViewCount(id).catch(err => console.warn('播放量统计失败:', err))
-        ]);
+        // 并行加载推荐视频（播放量统计移到播放时处理）
+        loadRecommendVideos();
 
         // 转码轮询
         if (videoData.value && (videoData.value.status === 0 || !videoData.value.video_url)) {

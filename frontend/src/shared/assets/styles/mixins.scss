@@ -1,2 +1,581 @@
-// placeholder for global mixins; extend as needed
+/* ================= Bilibili Style Mixins ================= */
 
+/* === Responsive Breakpoints === */
+$breakpoint-xs: 480px;
+$breakpoint-sm: 640px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 1024px;
+$breakpoint-xl: 1280px;
+$breakpoint-2xl: 1536px;
+
+@mixin xs {
+  @media (max-width: #{$breakpoint-xs}) {
+    @content;
+  }
+}
+
+@mixin sm {
+  @media (max-width: #{$breakpoint-sm}) {
+    @content;
+  }
+}
+
+@mixin md {
+  @media (max-width: #{$breakpoint-md}) {
+    @content;
+  }
+}
+
+@mixin lg {
+  @media (max-width: #{$breakpoint-lg}) {
+    @content;
+  }
+}
+
+@mixin xl {
+  @media (max-width: #{$breakpoint-xl}) {
+    @content;
+  }
+}
+
+@mixin min-xs {
+  @media (min-width: #{$breakpoint-xs + 1}) {
+    @content;
+  }
+}
+
+@mixin min-sm {
+  @media (min-width: #{$breakpoint-sm + 1}) {
+    @content;
+  }
+}
+
+@mixin min-md {
+  @media (min-width: #{$breakpoint-md + 1}) {
+    @content;
+  }
+}
+
+@mixin min-lg {
+  @media (min-width: #{$breakpoint-lg + 1}) {
+    @content;
+  }
+}
+
+@mixin min-xl {
+  @media (min-width: #{$breakpoint-xl + 1}) {
+    @content;
+  }
+}
+
+/* === Flexbox Utilities === */
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@mixin flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@mixin flex-start {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+@mixin flex-end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+@mixin flex-column {
+  display: flex;
+  flex-direction: column;
+}
+
+@mixin flex-column-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* === Text Utilities === */
+@mixin text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@mixin text-ellipsis-lines($lines: 2) {
+  display: -webkit-box;
+  -webkit-line-clamp: $lines;
+  line-clamp: $lines;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@mixin text-break {
+  word-wrap: break-word;
+  word-break: break-all;
+}
+
+/* === Bilibili Card Styles === */
+@mixin bili-card {
+  background: var(--bg-white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  transition: var(--transition-base);
+  
+  &:hover {
+    box-shadow: var(--shadow-card-hover);
+  }
+}
+
+@mixin bili-card-hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+}
+
+/* === Bilibili Button Styles === */
+@mixin bili-btn-base {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: var(--transition-base);
+  user-select: none;
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+@mixin bili-btn-primary {
+  @include bili-btn-base;
+  background: var(--primary-color);
+  color: var(--text-white);
+  
+  &:hover:not(:disabled) {
+    background: var(--primary-hover);
+  }
+  
+  &:active:not(:disabled) {
+    background: var(--primary-active);
+  }
+}
+
+@mixin bili-btn-secondary {
+  @include bili-btn-base;
+  background: var(--bg-gray-1);
+  color: var(--text-primary);
+  
+  &:hover:not(:disabled) {
+    background: var(--bg-gray-2);
+  }
+}
+
+@mixin bili-btn-outline {
+  @include bili-btn-base;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  
+  &:hover:not(:disabled) {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+  }
+}
+
+@mixin bili-btn-text {
+  @include bili-btn-base;
+  background: transparent;
+  color: var(--text-secondary);
+  
+  &:hover:not(:disabled) {
+    color: var(--primary-color);
+    background: var(--primary-light);
+  }
+}
+
+@mixin bili-btn-icon {
+  @include bili-btn-base;
+  background: transparent;
+  color: var(--text-tertiary);
+  padding: var(--space-2);
+  border-radius: var(--radius-circle);
+  
+  &:hover:not(:disabled) {
+    color: var(--primary-color);
+    background: var(--bg-hover);
+  }
+}
+
+/* === Bilibili Input Styles === */
+@mixin bili-input {
+  width: 100%;
+  height: var(--btn-height-lg);
+  padding: 0 var(--space-4);
+  background: var(--bg-input);
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  transition: var(--transition-base);
+  outline: none;
+  
+  &::placeholder {
+    color: var(--text-tertiary);
+  }
+  
+  &:hover {
+    background: var(--bg-white);
+    border-color: var(--border-color);
+  }
+  
+  &:focus {
+    background: var(--bg-white);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px var(--primary-light);
+  }
+}
+
+@mixin bili-search-input {
+  @include bili-input;
+  border-radius: var(--radius-round);
+  padding-right: var(--space-12);
+}
+
+/* === Video Card Cover === */
+@mixin video-cover {
+  position: relative;
+  width: 100%;
+  padding-top: var(--video-card-ratio);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-gray-1);
+  
+  img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--transition-slow);
+  }
+  
+  &:hover img {
+    transform: scale(1.05);
+  }
+}
+
+@mixin video-cover-mask {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
+  pointer-events: none;
+}
+
+@mixin video-stats-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-white);
+  font-size: var(--font-size-xs);
+  z-index: 1;
+}
+
+/* === Avatar Styles === */
+@mixin bili-avatar($size: 40px) {
+  width: $size;
+  height: $size;
+  border-radius: var(--radius-circle);
+  overflow: hidden;
+  flex-shrink: 0;
+  
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+/* === Scrollbar Styles === */
+@mixin bili-scrollbar {
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: var(--radius-round);
+    
+    &:hover {
+      background: var(--text-tertiary);
+    }
+  }
+}
+
+@mixin bili-scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* === Skeleton Loading === */
+@mixin skeleton-base {
+  background: linear-gradient(
+    90deg,
+    var(--bg-gray-1) 25%,
+    var(--bg-gray-2) 50%,
+    var(--bg-gray-1) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* === Hover Effects === */
+@mixin hover-lift {
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+  
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+@mixin hover-scale {
+  transition: transform var(--transition-base);
+  
+  &:hover {
+    transform: scale(1.02);
+  }
+}
+
+@mixin hover-brightness {
+  transition: filter var(--transition-base);
+  
+  &:hover {
+    filter: brightness(1.1);
+  }
+}
+
+/* === Focus Styles === */
+@mixin focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+}
+
+/* === Dropdown/Popover === */
+@mixin bili-dropdown {
+  background: var(--bg-white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-dropdown);
+  border: 1px solid var(--border-light);
+  padding: var(--space-2);
+  z-index: var(--z-dropdown);
+}
+
+@mixin bili-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  
+  &:hover {
+    background: var(--bg-hover);
+    color: var(--primary-color);
+  }
+}
+
+/* === Badge/Tag === */
+@mixin bili-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+  height: 20px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+@mixin bili-tag {
+  @include bili-badge;
+  background: var(--bg-gray-1);
+  color: var(--text-secondary);
+  
+  &.primary {
+    background: var(--primary-light);
+    color: var(--primary-color);
+  }
+  
+  &.success {
+    background: var(--success-light);
+    color: var(--success-color);
+  }
+  
+  &.warning {
+    background: var(--warning-light);
+    color: var(--warning-color);
+  }
+  
+  &.danger {
+    background: var(--danger-light);
+    color: var(--danger-color);
+  }
+}
+
+/* === Tooltip === */
+@mixin bili-tooltip {
+  position: absolute;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-tooltip);
+  color: var(--text-white);
+  font-size: var(--font-size-xs);
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+  z-index: var(--z-tooltip);
+  pointer-events: none;
+}
+
+/* === Divider === */
+@mixin bili-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--divider-color);
+  margin: var(--space-4) 0;
+}
+
+@mixin bili-divider-vertical {
+  width: 1px;
+  height: 16px;
+  background: var(--divider-color);
+  margin: 0 var(--space-3);
+}
+
+/* === Container === */
+@mixin bili-container {
+  width: 100%;
+  max-width: var(--container-max-width);
+  margin: 0 auto;
+  padding: 0 var(--content-padding);
+  
+  @include md {
+    padding: 0 var(--content-padding-mobile);
+  }
+}
+
+/* === Grid Layouts === */
+@mixin video-grid($columns: 5, $gap: 20px) {
+  display: grid;
+  grid-template-columns: repeat($columns, 1fr);
+  gap: $gap;
+  
+  @include xl {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  
+  @include lg {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  
+  @include md {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+  
+  @include sm {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+/* === Animations === */
+@mixin fade-in {
+  animation: fadeIn var(--transition-base) ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@mixin slide-up {
+  animation: slideUp var(--transition-base) ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@mixin scale-in {
+  animation: scaleIn var(--transition-base) ease-out;
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

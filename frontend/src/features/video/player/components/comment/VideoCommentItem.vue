@@ -1,105 +1,127 @@
 <template>
-  <div class="comment-item">
-    <!-- 头像 -->
-    <div class="user-avatar">
-      <el-avatar
-        :size="40"
+  <div class="bili-comment-item">
+    <!-- User Avatar -->
+    <div class="avatar-col">
+      <img
         :src="comment.user.avatar || '/default-avatar.png'"
+        alt="avatar"
+        class="user-avatar"
       />
     </div>
 
-    <div class="content-container">
-      <!-- 用户信息 -->
-      <div class="user-info">
-        <span class="nickname" :class="{ 'is-uploader': isUploader }">
+    <!-- Content Column -->
+    <div class="content-col">
+      <!-- User Info Row -->
+      <div class="user-row">
+        <span class="username" :class="{ 'is-uploader': isUploader }">
           {{ comment.user.nickname }}
         </span>
-
-        <div class="ai-tags" v-if="comment.ai_score">
-          <el-tag
-            v-if="comment.ai_score >= 85"
-            size="small"
-            effect="dark"
-            color="#FFD700"
-            class="ai-tag high-quality"
-          >
-            🔥 优质
-          </el-tag>
-
-          <el-tag
-            v-else-if="comment.ai_label && comment.ai_label !== '普通'"
-            size="small"
-            effect="plain"
-            type="info"
-            class="ai-tag"
+        
+        <!-- UP主标识 -->
+        <span v-if="isUploader" class="up-badge">UP主</span>
+        
+        <!-- AI Quality Tags -->
+        <div class="ai-badges" v-if="comment.ai_score">
+          <span v-if="comment.ai_score >= 85" class="ai-badge premium">
+            <i class="badge-icon">✨</i>
+            优质评论
+          </span>
+          <span 
+            v-else-if="comment.ai_label && comment.ai_label !== '普通'" 
+            class="ai-badge normal"
           >
             {{ comment.ai_label }}
-          </el-tag>
+          </span>
         </div>
       </div>
 
-      <!-- 评论内容 -->
-      <p class="text-content">
-        {{ comment.content }}
-      </p>
+      <!-- Comment Content -->
+      <p class="comment-text">{{ comment.content }}</p>
 
-      <!-- 操作栏 -->
-      <div class="action-footer">
-        <span class="time">{{ formatDate(comment.created_at) }}</span>
+      <!-- Action Row -->
+      <div class="action-row">
+        <span class="publish-time">{{ formatDate(comment.created_at) }}</span>
 
-        <span
+        <!-- Like Button -->
+        <button 
           class="action-btn like-btn"
           :class="{ active: localIsLiked }"
           @click="handleLike"
         >
-          <el-icon>
-            <component :is="localIsLiked ? StarFilled : Pointer" />
-          </el-icon>
-          {{ localLikeCount || "点赞" }}
-        </span>
+          <span class="btn-icon">{{ localIsLiked ? '👍' : '👍' }}</span>
+          <span class="btn-text">{{ localLikeCount || '' }}</span>
+        </button>
 
-        <span class="action-btn reply-btn" @click="toggleReplyBox"> 回复 </span>
-        
-        <span class="action-btn report-btn" @click="handleReport"> 举报 </span>
+        <!-- Dislike Button (visual only) -->
+        <button class="action-btn dislike-btn">
+          <span class="btn-icon">👎</span>
+        </button>
+
+        <!-- Reply Button -->
+        <button class="action-btn reply-btn" @click="toggleReplyBox">
+          <span class="btn-icon">💬</span>
+          <span class="btn-text">回复</span>
+        </button>
+
+        <!-- More Actions -->
+        <button class="action-btn more-btn" @click="handleReport">
+          <span class="btn-icon">⚠️</span>
+          <span class="btn-text">举报</span>
+        </button>
       </div>
 
-      <!-- 回复输入框 -->
-      <div v-if="showReplyBox">
-        <CommentInput
-          :is-reply="true"
-          :loading="submitting"
-          :placeholder="`回复 @${comment.user.nickname}:`"
-          @submit="handleReplySubmit"
-        />
-      </div>
+      <!-- Reply Input Box -->
+      <transition name="expand">
+        <div v-if="showReplyBox" class="reply-input-wrap">
+          <CommentInput
+            :is-reply="true"
+            :loading="submitting"
+            :placeholder="`回复 @${comment.user.nickname}：`"
+            @submit="handleReplySubmit"
+          />
+        </div>
+      </transition>
 
-      <!-- 子评论 -->
-      <div
-        class="sub-comments"
-        v-if="comment.replies && comment.replies.length > 0"
+      <!-- Sub Comments / Replies -->
+      <div 
+        v-if="comment.replies && comment.replies.length > 0" 
+        class="replies-container"
       >
         <div
-          v-for="reply in comment.replies"
+          v-for="reply in displayedReplies"
           :key="reply.id"
-          class="sub-comment-item"
+          class="reply-item"
         >
-          <div class="sub-user-info">
-            <span class="sub-nickname">{{ reply.user.nickname }}</span>
-
-            <span
-              v-if="reply.ai_label && reply.ai_label !== '普通'"
-              class="mini-ai-tag"
-            >
-              {{ reply.ai_label }}
-            </span>
-
-            ：<span class="sub-content">{{ reply.content }}</span>
-          </div>
-
-          <div class="sub-footer">
-            <span class="time">{{ formatDate(reply.created_at) }}</span>
+          <img
+            :src="reply.user.avatar || '/default-avatar.png'"
+            alt="avatar"
+            class="reply-avatar"
+          />
+          <div class="reply-content">
+            <div class="reply-header">
+              <span class="reply-username">{{ reply.user.nickname }}</span>
+              <span v-if="reply.ai_label && reply.ai_label !== '普通'" class="reply-ai-tag">
+                {{ reply.ai_label }}
+              </span>
+            </div>
+            <p class="reply-text">{{ reply.content }}</p>
+            <div class="reply-footer">
+              <span class="reply-time">{{ formatDate(reply.created_at) }}</span>
+              <button class="reply-action">👍 {{ reply.like_count || '' }}</button>
+              <button class="reply-action">回复</button>
+            </div>
           </div>
         </div>
+
+        <!-- Show More Replies -->
+        <button 
+          v-if="comment.replies.length > 3 && !showAllReplies"
+          class="show-more-replies"
+          @click="showAllReplies = true"
+        >
+          <span>共 {{ comment.replies.length }} 条回复</span>
+          <i class="arrow">▼</i>
+        </button>
       </div>
     </div>
   </div>
@@ -107,9 +129,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { Pointer, StarFilled } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-
 import type { Comment } from "@/shared/types/entity";
 import { toggleCommentLike } from "@/features/video/player/api/comment.api";
 import { createReport } from "@/features/video/player/api/report.api";
@@ -127,24 +147,52 @@ const emit = defineEmits<{
 
 const userStore = useUserStore();
 
-// 回复
+// Reply state
 const showReplyBox = ref(false);
 const submitting = ref(false);
+const showAllReplies = ref(false);
 
-// 点赞本地状态
+// Like state (optimistic update)
 const localIsLiked = ref(!!props.comment.is_liked);
 const localLikeCount = ref(props.comment.like_count || 0);
 
+// Computed
 const isUploader = computed(() => props.comment.user_id === props.uploaderId);
 
+const displayedReplies = computed(() => {
+  if (!props.comment.replies) return [];
+  return showAllReplies.value 
+    ? props.comment.replies 
+    : props.comment.replies.slice(0, 3);
+});
+
+// Format date
 const formatDate = (dateStr: string) => {
-  return new Date(dateStr).toLocaleDateString();
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return `${minutes}分钟前`;
+  if (hours < 24) return `${hours}小时前`;
+  if (days < 7) return `${days}天前`;
+  
+  return date.toLocaleDateString('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+  });
 };
 
+// Toggle reply box
 const toggleReplyBox = () => {
   showReplyBox.value = !showReplyBox.value;
 };
 
+// Submit reply
 const handleReplySubmit = async (content: string) => {
   submitting.value = true;
   try {
@@ -155,7 +203,7 @@ const handleReplySubmit = async (content: string) => {
   }
 };
 
-// 点赞逻辑（乐观更新 + 后端状态同步）
+// Like handler (optimistic update)
 const handleLike = async () => {
   if (!userStore.isLoggedIn) {
     ElMessage.warning("请先登录");
@@ -165,29 +213,27 @@ const handleLike = async () => {
   const prevState = localIsLiked.value;
   const prevCount = localLikeCount.value;
 
-  // 乐观更新
+  // Optimistic update
   localIsLiked.value = !localIsLiked.value;
   localLikeCount.value += localIsLiked.value ? 1 : -1;
 
   try {
     const response = await toggleCommentLike(props.comment.id);
-    // 使用后端返回的最新状态
     if (response.success && response.data) {
       localIsLiked.value = response.data.is_liked;
       localLikeCount.value = response.data.like_count;
-      // 同步更新 comment 对象
       props.comment.is_liked = response.data.is_liked;
       props.comment.like_count = response.data.like_count;
     }
   } catch (e) {
-    // 回滚乐观更新
+    // Rollback
     localIsLiked.value = prevState;
     localLikeCount.value = prevCount;
     ElMessage.error("点赞失败，请重试");
   }
 };
 
-// 处理评论举报
+// Report handler
 const handleReport = async () => {
   if (!userStore.isLoggedIn) {
     ElMessage.warning("请先登录");
@@ -203,12 +249,8 @@ const handleReport = async () => {
         cancelButtonText: '取消',
         inputPlaceholder: '请简要说明举报原因',
         inputValidator: (value) => {
-          if (!value || value.trim().length === 0) {
-            return '请输入举报原因';
-          }
-          if (value.length > 100) {
-            return '举报原因不能超过100个字符';
-          }
+          if (!value || value.trim().length === 0) return '请输入举报原因';
+          if (value.length > 100) return '举报原因不能超过100个字符';
           return true;
         }
       }
@@ -221,134 +263,338 @@ const handleReport = async () => {
     });
     
     if (res.success) {
-      ElMessage.success(res.data?.message || '举报提交成功，我们会尽快处理');
+      ElMessage.success(res.data?.message || '举报提交成功');
     } else {
-      ElMessage.error('举报提交失败，请稍后重试');
+      ElMessage.error('举报提交失败');
     }
   } catch (error: any) {
     if (error !== 'cancel') {
       console.error('举报失败:', error);
-      const errorMsg = error?.response?.data?.detail || error?.message || '举报提交失败，请稍后重试';
-      ElMessage.error(errorMsg);
+      ElMessage.error(error?.response?.data?.detail || '举报提交失败');
     }
   }
 };
 </script>
 
 <style scoped lang="scss">
-.comment-item {
+.bili-comment-item {
   display: flex;
-  gap: 16px;
-  padding: 16px 0;
-  border-bottom: 1px solid #f1f2f3;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--border-light);
+  transition: background var(--transition-base);
 
-  .content-container {
-    flex: 1;
+  &:hover {
+    background: var(--bg-hover);
+    margin: 0 calc(var(--space-3) * -1);
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+    border-radius: var(--radius-md);
+  }
 
-    .user-info {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
+  &:last-child {
+    border-bottom: none;
+  }
+}
 
-      .nickname {
-        font-size: 13px;
-        color: #61666d;
-        font-weight: 500;
-        cursor: pointer;
+/* Avatar */
+.avatar-col {
+  flex-shrink: 0;
+}
 
-        &.is-uploader {
-          color: #ff6699;
-        }
-      }
+.user-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-circle);
+  object-fit: cover;
+  cursor: pointer;
+  transition: transform var(--transition-base);
 
-      .ai-tags {
-        display: flex;
-        gap: 6px;
+  &:hover {
+    transform: scale(1.05);
+  }
+}
 
-        .ai-tag {
-          border: none;
+/* Content */
+.content-col {
+  flex: 1;
+  min-width: 0;
+}
 
-          &.high-quality {
-            color: #5a3a00;
-            font-weight: bold;
-          }
-        }
-      }
-    }
+/* User Row */
+.user-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
 
-    .text-content {
-      font-size: 15px;
-      color: #18191c;
-      line-height: 24px;
-      margin: 0 0 8px;
-      white-space: pre-wrap;
-    }
+.username {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--transition-base);
 
-    .action-footer {
-      display: flex;
-      align-items: center;
-      gap: 20px;
-      font-size: 13px;
-      color: #9499a0;
+  &:hover {
+    color: var(--primary-color);
+  }
 
-      .action-btn {
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 4px;
+  &.is-uploader {
+    color: var(--primary-color);
+  }
+}
 
-        &:hover {
-          color: #00aeec;
-        }
+.up-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-1);
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-white);
+  background: var(--primary-gradient);
+  border-radius: var(--radius-xs);
+}
 
-        &.active {
-          color: #00aeec;
-        }
+/* AI Badges */
+.ai-badges {
+  display: flex;
+  gap: var(--space-1);
+}
 
-        &.report-btn {
-          color: #9499a0;
-          
-          &:hover {
-            color: #f56c6c;
-          }
-        }
-      }
-    }
+.ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 var(--space-1);
+  font-size: 10px;
+  border-radius: var(--radius-xs);
 
-    .sub-comments {
-      margin-top: 12px;
-      background: #f9f9f9;
-      padding: 12px;
-      border-radius: 4px;
+  .badge-icon {
+    font-style: normal;
+  }
 
-      .sub-comment-item {
-        margin-bottom: 8px;
-        font-size: 13px;
-        line-height: 20px;
+  &.premium {
+    color: #B8860B;
+    background: linear-gradient(135deg, #FFF8DC 0%, #FFE4B5 100%);
+    border: 1px solid #FFD700;
+  }
 
-        .sub-nickname {
-          color: #61666d;
-          font-weight: 500;
-          cursor: pointer;
-        }
+  &.normal {
+    color: var(--text-tertiary);
+    background: var(--bg-gray-1);
+  }
+}
 
-        .mini-ai-tag {
-          font-size: 10px;
-          background: #e3e5e7;
-          color: #9499a0;
-          padding: 0 2px;
-          border-radius: 2px;
-          margin: 0 2px;
-        }
+/* Comment Text */
+.comment-text {
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  line-height: var(--line-height-relaxed);
+  margin: 0 0 var(--space-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
-        .sub-footer {
-          margin-top: 2px;
-          font-size: 12px;
-          color: #9499a0;
-        }
-      }
+/* Action Row */
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+.publish-time {
+  color: var(--text-quaternary);
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-tertiary);
+  transition: all var(--transition-base);
+
+  .btn-icon {
+    font-size: var(--font-size-sm);
+    opacity: 0.7;
+    transition: opacity var(--transition-base);
+  }
+
+  .btn-text {
+    font-size: var(--font-size-xs);
+  }
+
+  &:hover {
+    background: var(--bg-gray-1);
+    color: var(--text-secondary);
+
+    .btn-icon {
+      opacity: 1;
     }
   }
+
+  &.active {
+    color: var(--primary-color);
+
+    .btn-icon {
+      opacity: 1;
+    }
+  }
+
+  &.like-btn.active {
+    color: var(--primary-color);
+  }
+}
+
+/* Reply Input */
+.reply-input-wrap {
+  margin-top: var(--space-3);
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--primary-light);
+}
+
+/* Replies Container */
+.replies-container {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-gray-1);
+  border-radius: var(--radius-md);
+}
+
+.reply-item {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid var(--border-light);
+  }
+}
+
+.reply-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-circle);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.reply-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.reply-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+
+.reply-username {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--primary-color);
+  }
+}
+
+.reply-ai-tag {
+  font-size: 10px;
+  color: var(--text-quaternary);
+  background: var(--bg-gray-2);
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+}
+
+.reply-text {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  line-height: var(--line-height-normal);
+  margin: 0 0 var(--space-1);
+  word-break: break-word;
+}
+
+.reply-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--text-quaternary);
+}
+
+.reply-action {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+
+  &:hover {
+    color: var(--primary-color);
+  }
+}
+
+.reply-time {
+  color: var(--text-quaternary);
+}
+
+/* Show More Replies */
+.show-more-replies {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  padding: var(--space-1) 0;
+  background: none;
+  border: none;
+  font-size: var(--font-size-xs);
+  color: var(--secondary-color);
+  cursor: pointer;
+  transition: color var(--transition-base);
+
+  .arrow {
+    font-size: 10px;
+    font-style: normal;
+    transition: transform var(--transition-base);
+  }
+
+  &:hover {
+    color: var(--secondary-hover);
+
+    .arrow {
+      transform: translateY(2px);
+    }
+  }
+}
+
+/* Transitions */
+.expand-enter-active,
+.expand-leave-active {
+  transition: all var(--transition-base);
+  overflow: hidden;
+}
+
+.expand-enter-from,
+.expand-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+
+.expand-enter-to,
+.expand-leave-from {
+  max-height: 200px;
 }
 </style>

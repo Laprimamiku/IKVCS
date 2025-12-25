@@ -1,4 +1,7 @@
+/* ================= Bilibili Design System Entry Point ================= */
+
+/* Import order matters - variables first, then mixins, then global styles */
 @import "./variables.scss";
 @import "./mixins.scss";
 @import "./global.scss";
-
+@import "./animations.scss";

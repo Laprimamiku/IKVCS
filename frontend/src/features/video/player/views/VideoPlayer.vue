@@ -1,16 +1,16 @@
 <template>
-  <div class="video-player-page">
+  <div class="bili-video-page">
     <AppHeader
       @login="showAuthDialog = true"
       @register="showAuthDialog = true"
     />
 
-    <div class="main-container" v-if="videoData">
-      <!-- 左侧主内容区 -->
-      <div class="left-column">
-        <!-- 播放器 -->
-        <div class="player-wrapper">
-          <div class="player-stack">
+    <div class="page-content" v-if="videoData">
+      <!-- Main Content Area -->
+      <div class="main-section">
+        <!-- Player Container -->
+        <div class="player-container">
+          <div class="player-box">
             <VideoPlayerCore
               ref="playerRef"
               :video-url="videoData.video_url"
@@ -33,52 +33,135 @@
               @finish="finishDanmaku"
             />
           </div>
+
+          <!-- Danmaku Toolbar -->
+          <DanmakuToolbar
+            v-model:show-danmaku="showDanmaku"
+            v-model:filter-low-score="filterLowScore"
+            :view-count="videoData.view_count"
+            :preset-colors="colorPreset"
+            :disabled="!userStore.isLoggedIn"
+            :on-send="handleSendDanmaku"
+          />
         </div>
 
-        <!-- 弹幕工具栏 -->
-        <DanmakuToolbar
-          v-model:show-danmaku="showDanmaku"
-          v-model:filter-low-score="filterLowScore"
-          :view-count="videoData.view_count"
-          :preset-colors="colorPreset"
-          :disabled="!userStore.isLoggedIn"
-          :on-send="handleSendDanmaku"
-        />
+        <!-- Video Info Section -->
+        <div class="video-info-section">
+          <h1 class="video-title">{{ videoData.title }}</h1>
+          
+          <div class="video-stats">
+            <div class="stats-left">
+              <span class="stat-item">
+                <el-icon><VideoPlay /></el-icon>
+                {{ formatNumber(videoData.view_count) }}播放
+              </span>
+              <span class="stat-item">
+                <el-icon><ChatDotRound /></el-icon>
+                {{ formatNumber(danmakuItems.length) }}弹幕
+              </span>
+              <span class="stat-item">
+                {{ formatDate(videoData.created_at) }}
+              </span>
+            </div>
+            <div class="stats-right">
+              <span class="video-bvid">BV{{ videoData.id }}</span>
+            </div>
+          </div>
 
-        <!-- 视频信息 + 互动 -->
-        <VideoInfo
-          :video="videoData"
-          :danmaku-count="danmakuItems.length"
-          :is-liked="isLiked"
-          :is-collected="isCollected"
-          :like-count="likeCount"
-          :collect-count="collectCount"
-          @like="handleLike"
-          @collect="handleCollect"
-          @share="handleShare"
-          @report="handleVideoReport"
-        />
+          <!-- Action Buttons (Bilibili Style) -->
+          <div class="action-bar">
+            <div class="action-item like-btn" :class="{ active: isLiked }" @click="handleLike">
+              <div class="action-icon">
+                <el-icon :size="20"><ThumbsUp /></el-icon>
+              </div>
+              <span class="action-text">{{ formatNumber(likeCount) }}</span>
+            </div>
+            
+            <div class="action-item collect-btn" :class="{ active: isCollected }" @click="handleCollect">
+              <div class="action-icon">
+                <el-icon :size="20"><Star /></el-icon>
+              </div>
+              <span class="action-text">{{ formatNumber(collectCount) }}</span>
+            </div>
+            
+            <div class="action-item share-btn" @click="handleShare">
+              <div class="action-icon">
+                <el-icon :size="20"><Share /></el-icon>
+              </div>
+              <span class="action-text">分享</span>
+            </div>
+            
+            <div class="action-item more-btn" @click="showMoreActions = !showMoreActions">
+              <div class="action-icon">
+                <el-icon :size="20"><More /></el-icon>
+              </div>
+            </div>
+          </div>
 
-        <!-- 评论区 -->
-        <VideoCommentSection
-          :video-id="videoData.id"
-          :uploader-id="videoData.uploader.id"
-        />
+          <!-- Video Description -->
+          <div class="video-desc" :class="{ expanded: descExpanded }">
+            <div class="desc-content">
+              {{ videoData.description || '暂无简介' }}
+            </div>
+            <div class="desc-toggle" v-if="videoData.description?.length > 100" @click="descExpanded = !descExpanded">
+              {{ descExpanded ? '收起' : '展开' }}
+              <el-icon><ArrowDown v-if="!descExpanded" /><ArrowUp v-else /></el-icon>
+            </div>
+          </div>
+
+          <!-- Tags -->
+          <div class="video-tags" v-if="videoData.category">
+            <span class="tag">{{ videoData.category.name }}</span>
+          </div>
+        </div>
+
+        <!-- Comment Section -->
+        <div class="comment-section">
+          <VideoCommentSection
+            :video-id="videoData.id"
+            :uploader-id="videoData.uploader.id"
+          />
+        </div>
       </div>
 
-      <!-- 右侧推荐区 -->
-      <div class="right-column">
-        <UploaderCard :uploader="videoData.uploader" @follow="handleFollow" />
-        <RecommendList
-          :videos="recommendVideos"
-          @select="handleRecommendClick"
-        />
-      </div>
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <!-- Uploader Card -->
+        <div class="uploader-card">
+          <div class="uploader-header">
+            <el-avatar :src="videoData.uploader.avatar" :size="48">
+              {{ videoData.uploader.nickname?.charAt(0) }}
+            </el-avatar>
+            <div class="uploader-info">
+              <div class="uploader-name">{{ videoData.uploader.nickname }}</div>
+              <div class="uploader-fans">{{ formatNumber(videoData.uploader.fans_count || 0) }}粉丝</div>
+            </div>
+          </div>
+          <el-button class="follow-btn" :class="{ followed: isFollowed }" @click="handleFollow">
+            {{ isFollowed ? '已关注' : '+ 关注' }}
+          </el-button>
+        </div>
+
+        <!-- Recommend Videos -->
+        <div class="recommend-section">
+          <div class="section-title">相关推荐</div>
+          <RecommendList
+            :videos="recommendVideos"
+            @select="handleRecommendClick"
+          />
+        </div>
+      </aside>
     </div>
 
-    <!-- 加载 / 异常状态 -->
-    <div v-else class="loading-container">
-      <el-skeleton animated />
+    <!-- Loading State -->
+    <div v-else class="loading-state">
+      <div class="loading-player">
+        <div class="skeleton-box"></div>
+      </div>
+      <div class="loading-info">
+        <div class="skeleton-title"></div>
+        <div class="skeleton-meta"></div>
+      </div>
     </div>
 
     <AuthDialog v-model="showAuthDialog" />
@@ -86,17 +169,42 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, defineComponent, h } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
+import {
+  VideoPlay,
+  ChatDotRound,
+  Star,
+  Share,
+  More,
+  ArrowDown,
+  ArrowUp,
+  CircleCheckFilled,
+} from "@element-plus/icons-vue";
+
+// 自定义点赞图标组件
+const ThumbsUp = defineComponent({
+  name: 'ThumbsUp',
+  render() {
+    return h('svg', {
+      viewBox: '0 0 24 24',
+      fill: 'currentColor',
+      width: '1em',
+      height: '1em'
+    }, [
+      h('path', {
+        d: 'M18.77 11h-4.23l1.52-4.94C16.38 5.03 15.54 4 14.38 4c-.58 0-1.14.24-1.52.65L7.8 10H4c-.55 0-1 .45-1 1v8c0 .55.45 1 1 1h3.5c.28 0 .5-.22.5-.5 0-.12-.05-.23-.13-.33L11 17h6.27c.73 0 1.35-.44 1.62-1.09l1.78-4.32c.34-.82-.07-1.75-.9-1.59z'
+      })
+    ]);
+  }
+});
 
 import AppHeader from "@/shared/components/layout/AppHeader.vue";
 import AuthDialog from "@/features/auth/components/AuthDialog.vue";
 import VideoPlayerCore from "@/features/video/player/components/core/VideoPlayerCore.vue";
 import DanmakuDisplay from "@/features/video/player/components/danmaku/DanmakuDisplay.vue";
 import DanmakuToolbar from "@/features/video/player/components/danmaku/DanmakuToolbar.vue";
-import VideoInfo from "@/features/video/player/components/info/VideoInfo.vue";
-import UploaderCard from "@/features/video/player/components/info/UploaderCard.vue";
 import RecommendList from "@/features/video/player/components/recommend/RecommendList.vue";
 import VideoCommentSection from "@/features/video/player/components/comment/VideoCommentSection.vue";
 
@@ -108,29 +216,50 @@ import {
   useDanmaku,
   DANMAKU_DURATION,
 } from "@/features/video/player/composables/useDanmaku";
-import { createReport } from "@/features/video/player/api/report.api";
+import { incrementViewCount } from "@/features/video/shared/api/video.api";
 
 const router = useRouter();
 const userStore = useUserStore();
 const showAuthDialog = ref(false);
-
-// 弹幕过滤
+const showMoreActions = ref(false);
+const descExpanded = ref(false);
+const isFollowed = ref(false);
 const filterLowScore = ref(false);
+const hasPlayStarted = ref(false); // 记录是否已经开始播放过
 
-// 1️⃣ 视频数据
+// Video data
 const { videoData, recommendVideos, videoIdRef } = useVideoPlayer();
 
-// 2️⃣ 播放器状态
+// Player state
 const {
   currentTime,
   isPlaying,
   showDanmaku,
-  handlePlay,
+  handlePlay: originalHandlePlay,
   handlePause,
   handleTimeUpdate,
 } = usePlayerState();
 
-// 3️⃣ ✅ 视频互动（关键合并点）
+// 增强播放处理，首次播放时增加播放量
+const handlePlay = async () => {
+  originalHandlePlay();
+  
+  // 只在首次播放时增加播放量
+  if (!hasPlayStarted.value && videoIdRef.value) {
+    hasPlayStarted.value = true;
+    try {
+      await incrementViewCount(videoIdRef.value);
+      // 更新本地播放量显示
+      if (videoData.value) {
+        videoData.value.view_count = (videoData.value.view_count || 0) + 1;
+      }
+    } catch (error) {
+      console.warn('播放量统计失败:', error);
+    }
+  }
+};
+
+// Video interactions
 const {
   isLiked,
   isCollected,
@@ -141,7 +270,7 @@ const {
   handleShare,
 } = useVideoInteractions(videoData);
 
-// 4️⃣ 弹幕系统
+// Danmaku system
 const {
   activeList: danmakuItems,
   colorPreset,
@@ -152,6 +281,21 @@ const {
   currentTime,
 });
 
+// Format helpers
+const formatNumber = (num: number): string => {
+  if (!num) return "0";
+  if (num >= 100000000) return (num / 100000000).toFixed(1) + "亿";
+  if (num >= 10000) return (num / 10000).toFixed(1) + "万";
+  return num.toString();
+};
+
+const formatDate = (dateStr: string): string => {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+// Event handlers
 const handleSendDanmaku = async (content: string, color: string) => {
   if (!videoIdRef.value) return false;
   try {
@@ -174,111 +318,517 @@ const handleFollow = () => {
     showAuthDialog.value = true;
     return;
   }
-  ElMessage.success("关注成功");
-};
-
-// 处理视频举报
-const handleVideoReport = async () => {
-  if (!userStore.isLoggedIn) {
-    showAuthDialog.value = true;
-    return;
-  }
-  
-  if (!videoData.value) return;
-  
-  try {
-    const { value: reason } = await ElMessageBox.prompt(
-      '请输入举报原因',
-      '举报视频',
-      {
-        confirmButtonText: '提交',
-        cancelButtonText: '取消',
-        inputPlaceholder: '请简要说明举报原因',
-        inputValidator: (value) => {
-          if (!value || value.trim().length === 0) {
-            return '请输入举报原因';
-          }
-          if (value.length > 100) {
-            return '举报原因不能超过100个字符';
-          }
-          return true;
-        }
-      }
-    );
-    
-    const res = await createReport({
-      target_type: 'VIDEO',
-      target_id: videoData.value.id,
-      reason: reason.trim(),
-    });
-    
-    if (res.success) {
-      ElMessage.success(res.data?.message || '举报提交成功，我们会尽快处理');
-    } else {
-      ElMessage.error('举报提交失败，请稍后重试');
-    }
-  } catch (error: any) {
-    if (error !== 'cancel') {
-      console.error('举报失败:', error);
-      const errorMsg = error?.response?.data?.detail || error?.message || '举报提交失败，请稍后重试';
-      ElMessage.error(errorMsg);
-    }
-  }
+  isFollowed.value = !isFollowed.value;
+  ElMessage.success(isFollowed.value ? "关注成功" : "已取消关注");
 };
 </script>
 
 <style lang="scss" scoped>
-.video-player-page {
+.bili-video-page {
   min-height: 100vh;
   background: var(--bg-global);
-  padding-bottom: 40px;
 }
 
-.main-container {
-  max-width: 1400px;
-  margin: 20px auto 0;
-  padding: 0 24px;
+.page-content {
   display: grid;
   grid-template-columns: 1fr 350px;
-  gap: 24px;
-  align-items: start;
+  gap: var(--space-5);
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-5);
 }
 
-.left-column {
+/* Main Section */
+.main-section {
   min-width: 0;
 }
 
-.player-wrapper {
+/* Player Container - B站风格 */
+.player-container {
+  background: #000;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  margin-bottom: var(--space-4);
+}
+
+.player-box {
+  position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
   background: #000;
-  position: relative;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-
-  .player-stack {
-    width: 100%;
-    height: 100%;
-    position: relative;
-  }
 }
 
-.loading-container {
-  padding: 40px;
+/* Video Info Section - B站风格 */
+.video-info-section {
   background: var(--bg-white);
-  border-radius: var(--radius-md);
-  margin: 20px 24px;
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-card);
+  margin-bottom: var(--space-4);
 }
 
-@media (max-width: 1100px) {
-  .main-container {
-    grid-template-columns: 1fr;
-    padding: 0 16px;
-  }
+.video-title {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  line-height: 1.3;
+  margin: 0 0 var(--space-4);
+}
 
-  .right-column {
-    margin-top: 20px;
+.video-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--divider-color);
+  
+  .stats-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+  }
+  
+  .stat-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--text-tertiary);
+    font-size: var(--font-size-sm);
+    
+    .el-icon {
+      font-size: 16px;
+      color: var(--text-quaternary);
+    }
+  }
+  
+  .video-bvid {
+    color: var(--text-tertiary);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    transition: var(--transition-fast);
+    
+    &:hover {
+      color: var(--bili-pink);
+      background: var(--bili-pink-light);
+    }
+  }
+}
+
+/* Action Bar - B站风格优化 */
+.action-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--divider-color);
+}
+
+.action-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  
+  .action-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-circle);
+    background: var(--bg-gray-1);
+    color: var(--text-secondary);
+    transition: var(--transition-base);
+  }
+  
+  .action-text {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-medium);
+  }
+  
+  &:hover {
+    background: var(--bg-hover);
+    
+    .action-icon {
+      background: var(--bg-gray-2);
+    }
+  }
+  
+  // 点赞按钮特殊样式
+  &.like-btn {
+    &:hover {
+      .action-icon {
+        background: var(--bili-pink-light);
+        color: var(--bili-pink);
+      }
+      .action-text {
+        color: var(--bili-pink);
+      }
+    }
+    
+    &.active {
+      .action-icon {
+        background: var(--bili-pink);
+        color: var(--text-white);
+      }
+      .action-text {
+        color: var(--bili-pink);
+      }
+    }
+  }
+  
+  // 收藏按钮特殊样式
+  &.collect-btn {
+    &:hover {
+      .action-icon {
+        background: var(--warning-light);
+        color: var(--warning-color);
+      }
+      .action-text {
+        color: var(--warning-color);
+      }
+    }
+    
+    &.active {
+      .action-icon {
+        background: var(--warning-color);
+        color: var(--text-white);
+      }
+      .action-text {
+        color: var(--warning-color);
+      }
+    }
+  }
+  
+  // 分享按钮特殊样式
+  &.share-btn {
+    &:hover {
+      .action-icon {
+        background: var(--bili-blue-light);
+        color: var(--bili-blue);
+      }
+      .action-text {
+        color: var(--bili-blue);
+      }
+    }
+  }
+  
+  // 更多按钮
+  &.more-btn {
+    margin-left: auto;
+    
+    .action-icon {
+      width: 32px;
+      height: 32px;
+    }
+  }
+}
+
+/* Video Description */
+.video-desc {
+  padding: var(--space-4) 0;
+  
+  .desc-content {
+    font-size: var(--font-size-base);
+    color: var(--text-secondary);
+    line-height: 1.6;
+    max-height: 60px;
+    overflow: hidden;
+    transition: max-height var(--transition-slow);
+  }
+  
+  &.expanded .desc-content {
+    max-height: 500px;
+  }
+  
+  .desc-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: var(--space-2);
+    color: var(--bili-blue);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    
+    &:hover {
+      color: var(--bili-pink);
+    }
+  }
+}
+
+/* Video Tags */
+.video-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  
+  .tag {
+    padding: var(--space-1) var(--space-3);
+    background: var(--bg-gray-1);
+    border-radius: var(--radius-round);
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition-fast);
+    
+    &:hover {
+      background: var(--bili-pink-light);
+      color: var(--bili-pink);
+    }
+  }
+}
+
+/* Comment Section */
+.comment-section {
+  background: var(--bg-white);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-card);
+}
+
+/* Sidebar */
+.sidebar {
+  position: sticky;
+  top: calc(var(--header-height) + var(--space-4));
+  height: fit-content;
+}
+
+/* Uploader Card - B站风格 */
+.uploader-card {
+  background: var(--bg-white);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-card);
+  margin-bottom: var(--space-4);
+  
+  .uploader-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+  }
+  
+  .uploader-info {
+    flex: 1;
+    
+    .uploader-name {
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
+      margin-bottom: var(--space-1);
+      cursor: pointer;
+      
+      &:hover {
+        color: var(--bili-pink);
+      }
+    }
+    
+    .uploader-fans {
+      font-size: var(--font-size-sm);
+      color: var(--text-tertiary);
+    }
+  }
+  
+  .follow-btn {
+    width: 100%;
+    height: 40px;
+    background: var(--bili-pink);
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--text-white);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: var(--transition-base);
+    
+    &:hover {
+      background: var(--bili-pink-hover);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+    }
+    
+    &.followed {
+      background: var(--bg-gray-1);
+      color: var(--text-secondary);
+      
+      &:hover {
+        background: var(--bg-gray-2);
+        transform: none;
+        box-shadow: none;
+      }
+    }
+  }
+}
+
+/* Recommend Section - B站风格 */
+.recommend-section {
+  background: var(--bg-white);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-card);
+  
+  .section-title {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin-bottom: var(--space-4);
+    padding-bottom: var(--space-2);
+    border-bottom: 2px solid var(--bili-pink);
+    position: relative;
+    
+    &::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      width: 30px;
+      height: 2px;
+      background: var(--bili-pink);
+    }
+  }
+}
+
+/* Loading State */
+.loading-state {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-6);
+  
+  .loading-player {
+    aspect-ratio: 16 / 9;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    
+    .skeleton-box {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--bg-gray-1) 25%, var(--bg-gray-2) 50%, var(--bg-gray-1) 75%);
+      background-size: 200% 100%;
+      animation: skeleton-loading 1.5s infinite;
+    }
+  }
+  
+  .loading-info {
+    background: var(--bg-white);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    margin-top: var(--space-4);
+    
+    .skeleton-title {
+      height: 24px;
+      width: 60%;
+      background: linear-gradient(90deg, var(--bg-gray-1) 25%, var(--bg-gray-2) 50%, var(--bg-gray-1) 75%);
+      background-size: 200% 100%;
+      animation: skeleton-loading 1.5s infinite;
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-3);
+    }
+    
+    .skeleton-meta {
+      height: 16px;
+      width: 40%;
+      background: linear-gradient(90deg, var(--bg-gray-1) 25%, var(--bg-gray-2) 50%, var(--bg-gray-1) 75%);
+      background-size: 200% 100%;
+      animation: skeleton-loading 1.5s infinite;
+      border-radius: var(--radius-sm);
+    }
+  }
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Responsive */
+@media (max-width: 1100px) {
+  .page-content {
+    grid-template-columns: 1fr;
+    padding: var(--space-3);
+  }
+  
+  .sidebar {
+    position: static;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+  }
+  
+  .uploader-card {
+    margin-bottom: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-content {
+    padding: 0;
+    gap: 0;
+  }
+  
+  .player-container {
+    border-radius: 0;
+    margin-bottom: 0;
+  }
+  
+  .video-info-section,
+  .comment-section {
+    border-radius: 0;
+    margin-bottom: 0;
+    border-top: 8px solid var(--bg-global);
+  }
+  
+  .sidebar {
+    grid-template-columns: 1fr;
+    padding: 0;
+    margin-top: 0;
+  }
+  
+  .uploader-card,
+  .recommend-section {
+    border-radius: 0;
+    border-top: 8px solid var(--bg-global);
+  }
+  
+  .action-bar {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    
+    .action-item {
+      flex: 1;
+      min-width: 80px;
+      justify-content: center;
+      
+      &.more-btn {
+        flex: none;
+        margin-left: 0;
+      }
+    }
+  }
+  
+  .video-title {
+    font-size: var(--font-size-xl);
+  }
+  
+  .video-stats {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    
+    .stats-left {
+      gap: var(--space-3);
+    }
   }
 }
 </style>

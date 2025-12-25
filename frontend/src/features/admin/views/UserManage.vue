@@ -9,7 +9,7 @@
           placeholder="搜索用户名 / 昵称"
           @keyup.enter="handleSearch"
         />
-        <button class="search-btn" @click="handleSearch">搜索</button>
+        <el-button class="search-btn" @click="handleSearch">搜索</el-button>
       </div>
     </div>
 

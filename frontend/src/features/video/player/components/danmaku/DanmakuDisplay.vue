@@ -7,13 +7,15 @@
         :class="{
           paused,
           'is-highlight': isHighlight(item),
+          'is-top': item.type === 'top',
+          'is-bottom': item.type === 'bottom',
         }"
         :style="getItemStyle(item)"
         @animationend="() => emit('finish', item.key)"
         @mousedown.stop
         @click.stop="handleDanmakuClick(item)"
       >
-        <span v-if="isHighlight(item)" class="hq-icon">🔥</span>
+        <span v-if="isHighlight(item)" class="hq-icon">✨</span>
         {{ item.text }}
       </div>
     </template>
@@ -145,17 +147,21 @@ const getItemStyle = (item: DanmakuDisplayItem) => {
 </script>
 
 <style scoped lang="scss">
+/* ===============================
+   Bilibili-Style Danmaku Display
+   =============================== */
 .danmaku-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
   overflow: hidden;
   z-index: 10;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--transition-base);
   opacity: 1;
 
   &.is-hidden {
     opacity: 0;
+    pointer-events: none;
   }
 }
 
@@ -163,65 +169,139 @@ const getItemStyle = (item: DanmakuDisplayItem) => {
   position: absolute;
   left: 100%;
   white-space: nowrap;
-  font-size: 24px; // 基础字号
+  font-size: var(--danmaku-font-size, 25px);
   font-weight: 600;
-  font-family: SimHei, "Microsoft YaHei", sans-serif;
+  font-family: 'SimHei', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  letter-spacing: 0.5px;
+  line-height: 1.3;
 
-  // 强描边，保证亮色背景可读
-  text-shadow: 1px 0 1px rgba(0, 0, 0, 0.6), -1px 0 1px rgba(0, 0, 0, 0.6),
-    0 1px 1px rgba(0, 0, 0, 0.6), 0 -1px 1px rgba(0, 0, 0, 0.6);
+  // Bilibili-style text stroke for readability
+  text-shadow: 
+    1px 0 1px rgba(0, 0, 0, 0.7),
+    -1px 0 1px rgba(0, 0, 0, 0.7),
+    0 1px 1px rgba(0, 0, 0, 0.7),
+    0 -1px 1px rgba(0, 0, 0, 0.7),
+    1px 1px 1px rgba(0, 0, 0, 0.5),
+    -1px -1px 1px rgba(0, 0, 0, 0.5);
 
-  animation-name: danmaku-move;
+  animation-name: danmaku-scroll;
   animation-timing-function: linear;
   animation-fill-mode: forwards;
   will-change: transform;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 
   display: flex;
   align-items: center;
+  gap: 4px;
 
-  // 添加点击提示
-  pointer-events: auto; /* 关键：让每条弹幕可以接收点击 */
+  // Enable click for reporting
+  pointer-events: auto;
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition: 
+    opacity var(--transition-fast),
+    transform var(--transition-fast);
+  border-radius: var(--radius-xs);
+  padding: 2px 4px;
 
   &:hover {
-    opacity: 0.8;
-    z-index: 999; /* 鼠标悬停时层级最高，防止重叠点错 */
-    border: 1px solid rgba(255, 255, 255, 0.5); /* 增加 hover 边框提示可点击 */
-    background-color: rgba(0, 0, 0, 0.3); /* 增加背景增强可读性 */
+    opacity: 0.85;
+    z-index: 999;
+    background: rgba(0, 0, 0, 0.4);
+    transform: scale(1.02);
+  }
+
+  // Paused state
+  &.paused {
+    animation-play-state: paused !important;
+  }
+
+  // Top fixed danmaku (centered)
+  &.is-top {
+    left: 50%;
+    transform: translateX(-50%);
+    animation: none;
+    text-align: center;
+  }
+
+  // Bottom fixed danmaku (centered)
+  &.is-bottom {
+    left: 50%;
+    bottom: 60px;
+    top: auto;
+    transform: translateX(-50%);
+    animation: none;
+    text-align: center;
   }
 
   /* ===============================
-     [New] 优质弹幕特效
+     Premium/Highlight Danmaku Style
      =============================== */
   &.is-highlight {
-    font-size: 28px; // 字号加大
-    text-shadow: 0 0 4px rgba(255, 215, 0, 0.6), 1px 1px 2px rgba(0, 0, 0, 0.8),
-      -1px -1px 0 rgba(0, 0, 0, 0.8);
-    background: rgba(0, 0, 0, 0.4); // 半透明黑底
-    padding: 2px 8px;
-    border-radius: 4px;
-    border: 1px solid rgba(255, 215, 0, 0.4); // 金边
-    box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+    font-size: calc(var(--danmaku-font-size, 25px) + 3px);
+    font-weight: 700;
+    
+    // Golden glow effect
+    text-shadow: 
+      0 0 8px rgba(255, 215, 0, 0.8),
+      0 0 16px rgba(255, 215, 0, 0.4),
+      1px 1px 2px rgba(0, 0, 0, 0.9),
+      -1px -1px 2px rgba(0, 0, 0, 0.9);
+    
+    // Premium background
+    background: linear-gradient(
+      135deg,
+      rgba(255, 215, 0, 0.15) 0%,
+      rgba(255, 165, 0, 0.1) 100%
+    );
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255, 215, 0, 0.5);
+    box-shadow: 
+      0 0 12px rgba(255, 215, 0, 0.3),
+      inset 0 0 8px rgba(255, 215, 0, 0.1);
+    
+    z-index: 100;
+
+    &:hover {
+      background: linear-gradient(
+        135deg,
+        rgba(255, 215, 0, 0.25) 0%,
+        rgba(255, 165, 0, 0.2) 100%
+      );
+      box-shadow: 
+        0 0 20px rgba(255, 215, 0, 0.5),
+        inset 0 0 12px rgba(255, 215, 0, 0.15);
+    }
   }
 
+  // Premium icon
   .hq-icon {
-    margin-right: 4px;
-    font-size: 0.9em;
-    filter: drop-shadow(0 0 2px orange);
+    font-size: 0.85em;
+    filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.8));
+    animation: sparkle 1.5s ease-in-out infinite;
   }
 }
 
-.danmaku-item.paused {
-  animation-play-state: paused !important;
-}
-
-@keyframes danmaku-move {
+// Scroll animation
+@keyframes danmaku-scroll {
   0% {
     transform: translateX(0);
   }
   100% {
     transform: translateX(calc(-100% - 100vw));
+  }
+}
+
+// Sparkle animation for premium icon
+@keyframes sparkle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.1);
   }
 }
 </style>

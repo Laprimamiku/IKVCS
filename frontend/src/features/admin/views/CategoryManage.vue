@@ -2,9 +2,9 @@
   <div class="category-manage-page">
     <div class="page-header">
       <h2>分类管理</h2>
-      <button class="add-btn" @click="showAddDialog = true">
+      <el-button class="add-btn" type="primary" @click="showAddDialog = true">
         <i class="iconfont icon-plus"></i> 新增分类
-      </button>
+      </el-button>
     </div>
 
     <div class="table-container">
@@ -27,9 +27,9 @@
             </td>
             <td>{{ category.video_count || 0 }}</td>
             <td class="text-right actions-cell">
-              <button class="btn link-primary" @click="handleEdit(category)">
+              <el-button class="btn link-primary" type="text" @click="handleEdit(category)">
                 编辑
-              </button>
+              </el-button>
               <button
                 class="btn link-danger"
                 @click="handleDelete(category)"
