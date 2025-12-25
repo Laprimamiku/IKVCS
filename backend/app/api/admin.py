@@ -692,3 +692,225 @@ async def get_prompt_versions(
     except Exception as e:
         logger.error(f"获取Prompt版本历史失败: {e}")
         raise HTTPException(status_code=500, detail="获取版本历史失败")
+
+
+# ==================== AI 管理 API (新增) ====================
+
+from app.services.ai.self_correction_service import self_correction_service
+from app.models.ai_correction import AiCorrection
+
+
+class CorrectionCreateRequest(BaseModel):
+    """创建修正记录请求"""
+    content: str
+    content_type: str  # "comment" 或 "danmaku"
+    original_result: dict
+    corrected_result: dict
+    correction_reason: str
+
+
+class CorrectionResponse(BaseModel):
+    """修正记录响应"""
+    id: int
+    content: str
+    content_type: str
+    original_result: dict
+    corrected_result: dict
+    correction_reason: str
+    corrected_by: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ErrorAnalysisRequest(BaseModel):
+    """错误分析请求"""
+    days: Optional[int] = 7
+
+
+class PromptUpdateRequest(BaseModel):
+    """Prompt 更新请求"""
+    prompt_type: str
+    new_prompt: str
+    update_reason: str
+
+
+class PromptRollbackRequest(BaseModel):
+    """Prompt 回滚请求"""
+    version_id: int
+
+
+@router.post("/ai/corrections", response_model=CorrectionResponse, summary="提交AI修正记录")
+async def create_correction(
+    correction_in: CorrectionCreateRequest,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin)
+):
+    """
+    管理员提交AI误判修正记录
+    
+    用于反馈式自我纠错机制
+    """
+    try:
+        correction = AiCorrection(
+            content=correction_in.content,
+            content_type=correction_in.content_type,
+            original_result=correction_in.original_result,
+            corrected_result=correction_in.corrected_result,
+            correction_reason=correction_in.correction_reason,
+            corrected_by=current_admin.id
+        )
+        db.add(correction)
+        db.commit()
+        db.refresh(correction)
+        
+        logger.info(f"[Admin] 管理员 {current_admin.username} 提交了AI修正记录 #{correction.id}")
+        
+        return correction
+    except Exception as e:
+        logger.error(f"[Admin] 创建修正记录失败: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="创建修正记录失败")
+
+
+@router.post("/ai/self-correction/analyze", summary="触发错误分析")
+async def trigger_error_analysis(
+    request: ErrorAnalysisRequest,
+    current_admin: User = Depends(get_current_admin)
+):
+    """
+    触发AI自我纠错分析
+    
+    分析最近N天的修正记录，生成优化建议
+    """
+    try:
+        result = await self_correction_service.analyze_errors(days=request.days)
+        
+        logger.info(f"[Admin] 管理员 {current_admin.username} 触发了错误分析（{request.days}天）")
+        
+        return result
+    except Exception as e:
+        logger.error(f"[Admin] 错误分析失败: {e}")
+        raise HTTPException(status_code=500, detail=f"错误分析失败: {str(e)}")
+
+
+@router.post("/ai/prompts/update", summary="更新System Prompt")
+async def update_prompt(
+    request: PromptUpdateRequest,
+    current_admin: User = Depends(get_current_admin)
+):
+    """
+    更新System Prompt
+    
+    应用优化建议，更新Prompt版本
+    """
+    try:
+        success = await self_correction_service.update_system_prompt(
+            prompt_type=request.prompt_type,
+            new_prompt=request.new_prompt,
+            update_reason=request.update_reason,
+            updated_by=current_admin.id
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="更新失败")
+        
+        logger.info(
+            f"[Admin] 管理员 {current_admin.username} 更新了 {request.prompt_type} Prompt"
+        )
+        
+        return {"status": "success", "message": "System Prompt 已更新"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin] 更新Prompt失败: {e}")
+        raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
+
+
+@router.get("/ai/prompts/versions", summary="查询Prompt版本历史")
+async def get_prompt_versions(
+    prompt_type: Optional[str] = Query(None, description="Prompt类型"),
+    limit: int = Query(50, ge=1, le=100, description="返回数量"),
+    current_admin: User = Depends(get_current_admin)
+):
+    """
+    查询Prompt版本历史
+    
+    支持按类型筛选
+    """
+    try:
+        versions = self_correction_service.get_prompt_history(
+            prompt_type=prompt_type,
+            limit=limit
+        )
+        
+        return {
+            "versions": versions,
+            "total": len(versions)
+        }
+    except Exception as e:
+        logger.error(f"[Admin] 查询Prompt版本失败: {e}")
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+
+
+@router.post("/ai/prompts/rollback", summary="回滚Prompt版本")
+async def rollback_prompt(
+    request: PromptRollbackRequest,
+    current_admin: User = Depends(get_current_admin)
+):
+    """
+    回滚到指定Prompt版本
+    
+    用于快速恢复到之前的稳定版本
+    """
+    try:
+        success = await self_correction_service.rollback_prompt(
+            version_id=request.version_id,
+            rollback_by=current_admin.id
+        )
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="版本不存在或回滚失败")
+        
+        logger.info(
+            f"[Admin] 管理员 {current_admin.username} 回滚Prompt到版本 {request.version_id}"
+        )
+        
+        return {"status": "success", "message": "Prompt 已回滚"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Admin] 回滚Prompt失败: {e}")
+        raise HTTPException(status_code=500, detail=f"回滚失败: {str(e)}")
+
+
+@router.get("/ai/config", summary="获取AI系统配置")
+async def get_ai_config(
+    current_admin: User = Depends(get_current_admin)
+):
+    """
+    获取AI系统当前配置
+    
+    包括：本地模型、多智能体、自我纠错等配置
+    """
+    from app.core.config import settings
+    
+    return {
+        "local_llm": {
+            "enabled": settings.LOCAL_LLM_ENABLED,
+            "model": settings.LOCAL_LLM_MODEL,
+            "threshold_high": settings.LOCAL_LLM_THRESHOLD_HIGH,
+            "threshold_low": settings.LOCAL_LLM_THRESHOLD_LOW
+        },
+        "multi_agent": {
+            "enabled": settings.MULTI_AGENT_ENABLED,
+            "conflict_threshold": settings.MULTI_AGENT_CONFLICT_THRESHOLD
+        },
+        "self_correction": {
+            "enabled": settings.SELF_CORRECTION_ENABLED,
+            "min_samples": settings.SELF_CORRECTION_MIN_SAMPLES,
+            "auto_update": settings.SELF_CORRECTION_AUTO_UPDATE,
+            "analysis_days": settings.SELF_CORRECTION_ANALYSIS_DAYS
+        }
+    }

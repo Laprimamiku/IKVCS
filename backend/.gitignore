@@ -56,6 +56,10 @@ storage/videos/*
 htmlcov/
 .tox/
 
+# AI功能测试文件（开发测试用，不提交）
+test/test_*.py
+test/final_test_report.py
+
 # 分发和打包（自动生成）
 dist/
 build/

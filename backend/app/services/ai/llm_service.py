@@ -29,7 +29,7 @@ from app.services.ai.prompts import (
     COMMENT_SYSTEM_PROMPT
 )
 from app.services.cache.redis_service import redis_service
-from app.services.ai.embedding_service import embedding_service
+# from app.services.ai.embedding_service import embedding_service  # 暂时注释，采用简化缓存方案
 from app.services.ai.local_model_service import local_model_service
 
 logger = logging.getLogger(__name__)
@@ -78,13 +78,14 @@ class LLMService:
 
     async def analyze_content(self, content: str, content_type: str) -> Dict[str, Any]:
         """
-        智能内容分析（三层架构 + 本地小模型协同）
+        智能内容分析（简化架构）
 
         Layer 1   : 规则过滤
         Layer 1.5 : 精确缓存（MD5）
-        Layer 2   : 语义缓存（Embedding）
         Layer 2.5 : 本地小模型（Local LLM）
         Layer 3   : 云端大模型（Cloud LLM）
+        
+        注：暂时移除Layer 2语义缓存，采用简化方案
         """
         if not content:
             return self.default_response
@@ -107,27 +108,28 @@ class LLMService:
             logger.warning(f"Exact cache read failed: {e}")
 
         # ==================== Layer 2: 语义缓存 ====================
-        embedding = await embedding_service.get_text_embedding(content)
-        sem_prefix = f"ai:semcache:{content_type}"
+        # 暂时注释语义缓存，采用简化方案
+        # embedding = await embedding_service.get_text_embedding(content)
+        # sem_prefix = f"ai:semcache:{content_type}"
 
-        if embedding is not None:
-            sem_cached = await redis_service.search_similar_vector(
-                cache_key_prefix=sem_prefix,
-                embedding=embedding,
-                threshold=settings.AI_SEMANTIC_CACHE_THRESHOLD,
-            )
-            if sem_cached:
-                try:
-                    result = json.loads(sem_cached)
-                    await redis_service.async_redis.setex(
-                        exact_cache_key,
-                        settings.AI_SEMANTIC_CACHE_TTL,
-                        json.dumps(result),
-                    )
-                    logger.info(f"AI Semantic Cache Hit: {content[:10]}...")
-                    return result
-                except Exception:
-                    logger.warning("Semantic cache parse error")
+        # if embedding is not None:
+        #     sem_cached = await redis_service.search_similar_vector(
+        #         cache_key_prefix=sem_prefix,
+        #         embedding=embedding,
+        #         threshold=settings.AI_SEMANTIC_CACHE_THRESHOLD,
+        #     )
+        #     if sem_cached:
+        #         try:
+        #             result = json.loads(sem_cached)
+        #             await redis_service.async_redis.setex(
+        #                 exact_cache_key,
+        #                 settings.AI_SEMANTIC_CACHE_TTL,
+        #                 json.dumps(result),
+        #             )
+        #             logger.info(f"AI Semantic Cache Hit: {content[:10]}...")
+        #             return result
+        #         except Exception:
+        #             logger.warning("Semantic cache parse error")
 
         # ==================== Layer 2.5: 本地小模型 ====================
         local_result = None
@@ -158,7 +160,7 @@ class LLMService:
                             content, local_result, "local_hit"
                         )
                         await self._save_cache(
-                            content, content_type, final_result, embedding
+                            content, content_type, final_result, None  # embedding=None
                         )
                         return final_result
 
@@ -177,7 +179,7 @@ class LLMService:
             await self._save_training_sample(content, local_result, "local_low_conf")
             await self._save_training_sample(content, result, "cloud_final")
 
-        await self._save_cache(content, content_type, result, embedding)
+        await self._save_cache(content, content_type, result, None)  # embedding=None
         return result
 
     # ==================== 缓存辅助 ====================
@@ -187,26 +189,30 @@ class LLMService:
         content: str,
         content_type: str,
         result: Dict[str, Any],
-        embedding
+        embedding  # 保留参数但暂时不使用
     ):
         try:
             content_hash = self._get_content_hash(content)
             exact_cache_key = f"ai:analysis:{content_type}:{content_hash}"
-            sem_prefix = f"ai:semcache:{content_type}"
+            # sem_prefix = f"ai:semcache:{content_type}"
 
-            if embedding is not None:
-                await redis_service.save_vector_result(
-                    cache_key_prefix=sem_prefix,
-                    embedding=embedding,
-                    result_json=json.dumps(result),
-                    ttl=settings.AI_SEMANTIC_CACHE_TTL,
-                )
+            # 暂时注释语义缓存保存
+            # if embedding is not None:
+            #     await redis_service.save_vector_result(
+            #         cache_key_prefix=sem_prefix,
+            #         embedding=embedding,
+            #         result_json=json.dumps(result),
+            #         ttl=settings.AI_SEMANTIC_CACHE_TTL,
+            #     )
 
+            # 只保存精确缓存，延长TTL到30天
+            cache_ttl = 30 * 24 * 3600  # 30天
             await redis_service.async_redis.setex(
                 exact_cache_key,
-                settings.AI_SEMANTIC_CACHE_TTL,
+                cache_ttl,
                 json.dumps(result),
             )
+            logger.debug(f"AI精确缓存已保存: {content[:10]}... TTL={cache_ttl}s")
         except Exception as e:
             logger.warning(f"Cache save failed: {e}")
 
