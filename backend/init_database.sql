@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS videos (
     cover_url VARCHAR(255),
     video_url VARCHAR(255) COMMENT 'm3u8 路径',
     subtitle_url VARCHAR(255),
+    outline TEXT COMMENT '视频内容大纲（JSON格式）',
     duration INT DEFAULT 0,
     status INT DEFAULT 0 COMMENT '0=转码中, 1=审核中, 2=已发布, 3=拒绝, 4=软删除',
     view_count INT DEFAULT 0,
@@ -166,7 +167,21 @@ CREATE TABLE IF NOT EXISTS user_interests (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================
--- 10. 举报表 (reports)
+-- 10. 观看历史表 (watch_history)
+-- ============================================
+CREATE TABLE IF NOT EXISTS watch_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    video_id INT NOT NULL,
+    watched_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '观看时间',
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE,
+    UNIQUE KEY uq_user_video_watch (user_id, video_id),
+    INDEX idx_user_watched (user_id, watched_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================
+-- 11. 举报表 (reports)
 -- 需求：16.1-16.5
 -- ============================================
 CREATE TABLE IF NOT EXISTS reports (

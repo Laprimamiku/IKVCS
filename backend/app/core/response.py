@@ -45,7 +45,7 @@ class ApiResponse(BaseModel):
 
 
 def success_response(
-    data: Any = None,
+    data: Optional[Any] = None,
     message: str = "操作成功",
     status_code: int = 200
 ) -> JSONResponse:

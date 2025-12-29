@@ -46,17 +46,16 @@ service.interceptors.request.use(
 
 // 响应拦截器
 service.interceptors.response.use(
-  // @ts-ignore 忽略类型检查，允许直接返回 data
-  (response: AxiosResponse) => {
+  (response: AxiosResponse<ApiResponse<unknown>>) => {
     const payload = response.data;
     
     // 兼容处理：如果后端返回的是数组或已经包含 success 字段
     if (payload && typeof payload === 'object') {
         if (Array.isArray(payload)) {
-            return { success: true, data: payload } as any;
+            return { success: true, data: payload } as ApiResponse<unknown>;
         }
         if ('success' in payload) {
-            return payload as any;
+            return payload as ApiResponse<unknown>;
         }
     }
     
@@ -65,9 +64,9 @@ service.interceptors.response.use(
       success: true,
       data: payload,
       message: 'success'
-    } as any;
+    } as ApiResponse<unknown>;
   },
-  (error: any) => {
+  (error: unknown) => {
     console.error('📥 响应错误:', error);
     if (error.response) {
       const { status, data } = error.response;
@@ -88,16 +87,16 @@ service.interceptors.response.use(
 
 // 封装通用请求方法
 export const request = {
-  get<T = any>(url: string, config?: RequestConfig): Promise<ApiResponse<T>> {
+  get<T = unknown>(url: string, config?: RequestConfig): Promise<ApiResponse<T>> {
     return service.get(url, config) as unknown as Promise<ApiResponse<T>>;
   },
-  post<T = any>(url: string, data?: any, config?: RequestConfig): Promise<ApiResponse<T>> {
+  post<T = unknown>(url: string, data?: unknown, config?: RequestConfig): Promise<ApiResponse<T>> {
     return service.post(url, data, config) as unknown as Promise<ApiResponse<T>>;
   },
-  put<T = any>(url: string, data?: any, config?: RequestConfig): Promise<ApiResponse<T>> {
+  put<T = unknown>(url: string, data?: unknown, config?: RequestConfig): Promise<ApiResponse<T>> {
     return service.put(url, data, config) as unknown as Promise<ApiResponse<T>>;
   },
-  delete<T = any>(url: string, config?: RequestConfig): Promise<ApiResponse<T>> {
+  delete<T = unknown>(url: string, config?: RequestConfig): Promise<ApiResponse<T>> {
     return service.delete(url, config) as unknown as Promise<ApiResponse<T>>;
   }
 };

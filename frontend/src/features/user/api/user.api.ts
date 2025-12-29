@@ -73,3 +73,31 @@ export async function getUserById(userId: number) {
   return response
 }
 
+/**
+ * 获取观看历史记录（最近3个）
+ * 
+ * @returns 返回观看历史列表
+ */
+export interface WatchHistoryItem {
+  id: number;
+  video_id: number;
+  watched_at: string;
+  video: {
+    id: number;
+    title: string;
+    cover_url: string;
+    duration: number;
+    view_count: number;
+    like_count: number;
+    uploader: {
+      id: number;
+      nickname: string;
+      avatar?: string;
+    };
+  };
+}
+
+export async function getWatchHistory() {
+  return request.get<ApiResponse<{ items: WatchHistoryItem[]; total: number }>>('/users/me/watch-history')
+}
+

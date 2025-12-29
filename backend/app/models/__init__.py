@@ -14,6 +14,7 @@ from app.models.danmaku import Danmaku
 from app.models.comment import Comment
 from app.models.report import Report
 from app.models.ai_training_sample import AiTrainingSample
+from app.models.watch_history import WatchHistory
 
 # AI 相关模型（可选）
 try:
@@ -31,6 +32,7 @@ __all__ = [
     "Danmaku",
     "Comment",
     "Report",
+    "WatchHistory",
 ]
 
 if _has_agent_analysis:

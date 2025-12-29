@@ -6,7 +6,8 @@
       @click="$emit('like')"
     >
       <el-icon :size="22">
-        <component :is="isLiked ? CircleCheckFilled : GoodTwo" />
+        <CircleCheckFilled v-if="isLiked" style="color: var(--bili-pink);" />
+        <CircleCheckFilled v-else />
       </el-icon>
       <span>{{ formatNumber(likeCount) || "点赞" }}</span>
     </div>
@@ -43,7 +44,6 @@ import {
   CircleCheckFilled,
   Warning,
 } from "@element-plus/icons-vue";
-import { Warning as GoodTwo } from "@element-plus/icons-vue";
 import { formatNumber } from "@/features/video/player/utils/videoFormatters";
 
 defineProps<{

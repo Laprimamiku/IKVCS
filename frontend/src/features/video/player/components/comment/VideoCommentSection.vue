@@ -8,13 +8,25 @@
       </div>
 
       <div class="header-right">
+        <!-- AI Purification Toggle -->
+        <div class="ai-purify-toggle">
+          <span class="toggle-label">
+            <el-icon><MagicStick /></el-icon> 一键净化
+          </span>
+          <el-switch
+            v-model="isPurified"
+            size="small"
+            style="--el-switch-on-color: #13ce66"
+          />
+        </div>
+
         <div class="sort-tabs">
           <span
             class="sort-tab"
             :class="{ active: sortBy === 'hot' }"
             @click="handleSortChange('hot')"
           >
-            <i class="tab-icon">🔥</i>
+            <el-icon class="tab-icon"><TrendCharts /></el-icon>
             最热
           </span>
           <span class="sort-divider"></span>
@@ -23,12 +35,20 @@
             :class="{ active: sortBy === 'new' }"
             @click="handleSortChange('new')"
           >
-            <i class="tab-icon">⏱️</i>
+            <el-icon class="tab-icon"><Clock /></el-icon>
             最新
           </span>
         </div>
       </div>
     </div>
+
+    <!-- Purification Hint -->
+    <transition name="el-fade-in-linear">
+      <div v-if="isPurified && purifiedCount > 0" class="purify-hint-bar">
+        <el-icon><sugar /></el-icon>
+        <span>AI 已为您净化 {{ purifiedCount }} 条低质/引战评论</span>
+      </div>
+    </transition>
 
     <!-- Comment Input -->
     <CommentInput
@@ -41,7 +61,7 @@
     <div class="comment-list" v-loading="loading">
       <transition-group name="comment-fade">
         <VideoCommentItem
-          v-for="item in commentList"
+          v-for="item in visibleComments"
           :key="item.id"
           :comment="item"
           :uploader-id="uploaderId"
@@ -50,9 +70,11 @@
       </transition-group>
 
       <!-- Empty State -->
-      <div v-if="!loading && commentList.length === 0" class="empty-state">
-        <div class="empty-icon">💬</div>
-        <p class="empty-text">还没有评论，快来抢沙发吧~</p>
+      <div v-if="!loading && visibleComments.length === 0" class="empty-state">
+        <el-icon class="empty-icon" :size="48"><ChatDotRound /></el-icon>
+        <p class="empty-text">
+          {{ isPurified && commentList.length > 0 ? '评论区已净化，暂无可见内容' : '还没有评论，快来抢沙发吧~' }}
+        </p>
       </div>
 
       <!-- Load More -->
@@ -73,8 +95,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, computed } from "vue";
 import { ElMessage } from "element-plus";
+import { MagicStick, Sugar, TrendCharts, Clock, ChatDotRound } from "@element-plus/icons-vue";
 import type { Comment } from "@/shared/types/entity";
 import {
   getComments,
@@ -98,6 +121,25 @@ const sortBy = ref<"new" | "hot">("hot");
 const page = ref(1);
 const pageSize = 20;
 const hasMore = ref(false);
+
+// AI Purification
+const isPurified = ref(false);
+
+const visibleComments = computed(() => {
+  if (!isPurified.value) return commentList.value;
+  
+  return commentList.value.filter(comment => {
+    // Filter logic: Score < 30 or explicitly flagged as inappropriate
+    // Default score to 100 if missing (assume innocent until proven guilty)
+    const score = comment.ai_score ?? 100; 
+    const isBad = score < 30 || (comment as any).is_inappropriate === true;
+    return !isBad;
+  });
+});
+
+const purifiedCount = computed(() => {
+  return commentList.value.length - visibleComments.value.length;
+});
 
 // Fetch comments
 const fetchComments = async (reset = false) => {
@@ -227,6 +269,49 @@ watch(
   .comment-count {
     font-size: var(--font-size-sm);
     color: var(--text-tertiary);
+  }
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+/* AI Purification Toggle */
+.ai-purify-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  
+  .toggle-label {
+    font-size: 13px;
+    color: #606266;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    
+    .el-icon {
+      color: #00aeec;
+    }
+  }
+}
+
+/* Purification Hint Bar */
+.purify-hint-bar {
+  margin-bottom: 16px;
+  background: #f0f9eb;
+  color: #67c23a;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #e1f3d8;
+  
+  .el-icon {
+    font-size: 16px;
   }
 }
 

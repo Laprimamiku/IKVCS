@@ -56,6 +56,26 @@ class UploadSessionRepository(BaseRepository):
         ).order_by(UploadSession.created_at.desc()).limit(limit).all()
     
     @classmethod
+    def get_by_video_id(
+        cls,
+        db: Session,
+        video_id: int
+    ) -> Optional[UploadSession]:
+        """
+        根据视频ID查询上传会话
+        
+        Args:
+            db: 数据库会话
+            video_id: 视频ID
+            
+        Returns:
+            Optional[UploadSession]: 上传会话对象，不存在返回None
+        """
+        return db.query(UploadSession).filter(
+            UploadSession.video_id == video_id
+        ).first()
+    
+    @classmethod
     def mark_completed(
         cls,
         db: Session,

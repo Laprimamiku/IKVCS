@@ -4,7 +4,7 @@
     <aside class="admin-sidebar">
       <div class="sidebar-header">
         <div class="logo-wrap">
-          <span class="logo-icon">🎬</span>
+          <el-icon class="logo-icon"><VideoCamera /></el-icon>
           <transition name="fade">
             <span v-if="!sidebarCollapsed" class="logo-text">IKVCS 管理后台</span>
           </transition>
@@ -17,33 +17,33 @@
       <nav class="sidebar-nav">
         <div class="nav-section">
           <router-link to="/admin/dashboard" class="nav-item" active-class="active">
-            <span class="nav-icon">📊</span>
+            <el-icon class="nav-icon"><DataAnalysis /></el-icon>
             <span class="nav-text">数据中心</span>
           </router-link>
           
           <router-link to="/admin/audit" class="nav-item" active-class="active">
-            <span class="nav-icon">🎥</span>
+            <el-icon class="nav-icon"><VideoCamera /></el-icon>
             <span class="nav-text">视频审核</span>
             <span v-if="pendingCount > 0" class="nav-badge">{{ pendingCount }}</span>
           </router-link>
           
           <router-link to="/admin/users" class="nav-item" active-class="active">
-            <span class="nav-icon">👥</span>
+            <el-icon class="nav-icon"><UserFilled /></el-icon>
             <span class="nav-text">用户管理</span>
           </router-link>
           
           <router-link to="/admin/reports" class="nav-item" active-class="active">
-            <span class="nav-icon">⚠️</span>
+            <el-icon class="nav-icon"><Warning /></el-icon>
             <span class="nav-text">举报处理</span>
           </router-link>
           
           <router-link to="/admin/categories" class="nav-item" active-class="active">
-            <span class="nav-icon">📁</span>
+            <el-icon class="nav-icon"><Folder /></el-icon>
             <span class="nav-text">分类管理</span>
           </router-link>
           
           <router-link to="/admin/ai" class="nav-item" active-class="active">
-            <span class="nav-icon">🤖</span>
+            <el-icon class="nav-icon"><Setting /></el-icon>
             <span class="nav-text">AI 控制台</span>
           </router-link>
         </div>
@@ -52,7 +52,7 @@
 
         <div class="nav-section">
           <router-link to="/" class="nav-item">
-            <span class="nav-icon">🏠</span>
+            <el-icon class="nav-icon"><HomeFilled /></el-icon>
             <span class="nav-text">返回主站</span>
           </router-link>
         </div>
@@ -87,10 +87,10 @@
         <div class="header-right">
           <div class="header-actions">
             <button class="action-btn" title="刷新">
-              <span class="action-icon">🔄</span>
+              <el-icon class="action-icon"><Refresh /></el-icon>
             </button>
             <button class="action-btn" title="通知">
-              <span class="action-icon">🔔</span>
+              <el-icon class="action-icon"><Bell /></el-icon>
               <span v-if="pendingCount > 0" class="action-badge"></span>
             </button>
           </div>
@@ -116,6 +116,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from "vue";
 import { useRoute } from "vue-router";
+import { VideoCamera, DataAnalysis, UserFilled, Warning, Folder, Setting, HomeFilled, Refresh, Bell } from "@element-plus/icons-vue";
 import { useUserStore } from "@/shared/stores/user";
 import { adminApi } from "../api/admin.api";
 

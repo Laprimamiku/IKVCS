@@ -17,9 +17,10 @@ import json
 import logging
 import hashlib
 import re
-from typing import Dict, Any, Optional
+from typing import Optional
 
 from app.core.config import settings
+from app.core.types import AIContentAnalysisResult
 from app.core.database import SessionLocal
 from app.models.danmaku import Danmaku
 from app.models.comment import Comment
@@ -60,7 +61,7 @@ class LLMService:
         self.model = settings.LLM_MODEL
         self.timeout = 30.0
 
-        self.default_response = {
+        self.default_response: AIContentAnalysisResult = {
             "score": 60,
             "category": "普通",
             "label": "普通",
@@ -76,7 +77,7 @@ class LLMService:
 
     # ==================== 核心分析流程 ====================
 
-    async def analyze_content(self, content: str, content_type: str) -> Dict[str, Any]:
+    async def analyze_content(self, content: str, content_type: str) -> AIContentAnalysisResult:
         """
         智能内容分析（简化架构）
 
@@ -188,7 +189,7 @@ class LLMService:
         self,
         content: str,
         content_type: str,
-        result: Dict[str, Any],
+        result: AIContentAnalysisResult,
         embedding  # 保留参数但暂时不使用
     ):
         try:
@@ -220,7 +221,7 @@ class LLMService:
 
     def _rule_based_filter(
         self, content: str, content_type: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[AIContentAnalysisResult]:
         clean = content.strip()
         if not clean:
             return self.default_response
@@ -314,7 +315,7 @@ class LLMService:
 
     def _parse_response(
         self, response_text: str, content_type: str
-    ) -> Dict[str, Any]:
+    ) -> AIContentAnalysisResult:
         try:
             clean = response_text.replace("```json", "").replace("```", "").strip()
             data = json.loads(clean)
@@ -328,7 +329,7 @@ class LLMService:
     # ==================== 训练样本 ====================
 
     async def _save_training_sample(
-        self, content: str, result: Dict[str, Any], source_tag: str
+        self, content: str, result: AIContentAnalysisResult, source_tag: str
     ):
         try:
             db = SessionLocal()

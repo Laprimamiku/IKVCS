@@ -128,7 +128,7 @@
  * 2. 注册表单
  * 3. 表单切换
  */
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules, FormItemRule } from 'element-plus'
@@ -279,9 +279,18 @@ const handleLogin = async () => {
     dialogVisible.value = false
     
     // 检查是否是管理员，如果是则跳转到管理员页面
+    // login 方法内部已经调用了 fetchUserInfo，所以这里可以直接检查
+    // 使用 nextTick 确保 Pinia 状态已更新
+    await nextTick()
+    
+    console.log('登录后用户信息:', userStore.userInfo)
+    console.log('是否是管理员:', userStore.isAdmin)
+    
     if (userStore.isAdmin) {
+      console.log('准备跳转到管理员页面')
       // 使用路由名称而不是路径，更可靠
-      router.push({ name: 'AdminDashboard' })
+      await router.push({ name: 'AdminDashboard' })
+      console.log('跳转完成')
     }
     
     emit('success')

@@ -74,6 +74,7 @@ class Video(Base):
     cover_url = Column(String(255), nullable=True, comment="封面图URL")
     video_url = Column(String(255), nullable=True, comment="视频URL（m3u8）")
     subtitle_url = Column(String(255), nullable=True, comment="字幕文件URL")
+    outline = Column(Text, nullable=True, comment="视频内容大纲（JSON格式）")
     duration = Column(Integer, default=0, comment="视频时长（秒）")
     
     # 状态和统计

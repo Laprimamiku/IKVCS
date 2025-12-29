@@ -120,7 +120,7 @@ const loadData = async () => {
       const statsRes = await adminApi.getCategoryStats();
       if (statsRes.success && statsRes.data) {
         const stats = Array.isArray(statsRes.data) ? statsRes.data : statsRes.data.items || [];
-        const statsMap = new Map(stats.map((s: any) => [s.name, s.count]));
+        const statsMap = new Map(stats.map((s: { name: string; count: number }) => [s.name, s.count]));
         
         categories.value = categoryList.map((cat: Category) => ({
           ...cat,
@@ -169,7 +169,7 @@ const handleDelete = async (category: CategoryWithCount) => {
     await adminApi.deleteCategory(category.id);
     ElMessage.success("删除成功");
     loadData();
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error !== "cancel") {
       console.error("删除分类失败", error);
       ElMessage.error(error?.response?.data?.detail || "删除失败");
@@ -199,7 +199,7 @@ const handleSubmit = async () => {
     editingCategory.value = null;
     formData.value = { name: "", description: "" };
     loadData();
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("操作失败", error);
     ElMessage.error(error?.response?.data?.detail || "操作失败");
   }

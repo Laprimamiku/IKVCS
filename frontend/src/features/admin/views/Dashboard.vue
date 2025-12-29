@@ -3,7 +3,7 @@
     <!-- Stats Cards -->
     <div class="stats-grid">
       <div class="stat-card users">
-        <div class="stat-icon">👥</div>
+        <el-icon class="stat-icon"><UserFilled /></el-icon>
         <div class="stat-content">
           <div class="stat-value">{{ overview.total_users }}</div>
           <div class="stat-label">总用户数</div>
@@ -15,7 +15,7 @@
       </div>
 
       <div class="stat-card videos">
-        <div class="stat-icon">🎬</div>
+        <el-icon class="stat-icon"><VideoCamera /></el-icon>
         <div class="stat-content">
           <div class="stat-value">{{ overview.total_videos }}</div>
           <div class="stat-label">已发布视频</div>
@@ -27,7 +27,7 @@
       </div>
 
       <div class="stat-card reports">
-        <div class="stat-icon">⚠️</div>
+        <el-icon class="stat-icon"><Warning /></el-icon>
         <div class="stat-content">
           <div class="stat-value">{{ overview.total_reports_pending }}</div>
           <div class="stat-label">待处理举报</div>
@@ -39,7 +39,7 @@
       </div>
 
       <div class="stat-card active">
-        <div class="stat-icon">📈</div>
+        <el-icon class="stat-icon"><TrendCharts /></el-icon>
         <div class="stat-content">
           <div class="stat-value">{{ formatNumber(12580) }}</div>
           <div class="stat-label">今日活跃</div>
@@ -57,7 +57,7 @@
       <div class="chart-card trend-chart">
         <div class="card-header">
           <h3 class="card-title">
-            <span class="title-icon">📊</span>
+            <el-icon class="title-icon"><DataAnalysis /></el-icon>
             数据趋势 (近7天)
           </h3>
           <div class="chart-legend">
@@ -133,19 +133,19 @@
       </h3>
       <div class="actions-grid">
         <router-link to="/admin/audit" class="action-card">
-          <span class="action-icon">🎥</span>
+          <el-icon class="action-icon"><VideoCamera /></el-icon>
           <span class="action-text">审核视频</span>
         </router-link>
         <router-link to="/admin/reports" class="action-card">
-          <span class="action-icon">⚠️</span>
+          <el-icon class="action-icon"><Warning /></el-icon>
           <span class="action-text">处理举报</span>
         </router-link>
         <router-link to="/admin/users" class="action-card">
-          <span class="action-icon">👥</span>
+          <el-icon class="action-icon"><UserFilled /></el-icon>
           <span class="action-text">管理用户</span>
         </router-link>
         <router-link to="/admin/categories" class="action-card">
-          <span class="action-icon">📁</span>
+          <el-icon class="action-icon"><Folder /></el-icon>
           <span class="action-text">分类管理</span>
         </router-link>
       </div>
@@ -155,6 +155,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
+import { UserFilled, VideoCamera, Warning, TrendCharts, DataAnalysis, Folder } from "@element-plus/icons-vue";
 import {
   adminApi,
   type StatsOverview,

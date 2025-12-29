@@ -87,6 +87,7 @@ class VideoListItemResponse(BaseModel):
     view_count: int
     like_count: int
     collect_count: int
+    danmaku_count: int = 0
     uploader: UploaderBriefResponse
     category: CategoryBriefResponse
     created_at: datetime
@@ -148,6 +149,7 @@ class VideoDetailResponse(BaseModel):
     view_count: int
     like_count: int
     collect_count: int
+    danmaku_count: int = 0
     uploader: UploaderBriefResponse
     category: CategoryBriefResponse
     created_at: datetime
@@ -225,6 +227,19 @@ class TranscodeTestRequest(BaseModel):
 
     class Config:
         json_schema_extra = {"example": {"video_id": 1}}
+
+
+class WatchHistoryResponse(BaseModel):
+    """
+    观看历史响应
+    """
+    id: int
+    video_id: int
+    watched_at: datetime
+    video: Optional['VideoListItemResponse'] = None
+    
+    class Config:
+        from_attributes = True
 
 
 class TranscodeTestResponse(BaseModel):

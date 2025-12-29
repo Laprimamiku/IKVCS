@@ -158,7 +158,7 @@ class UserResponse(BaseModel):
                 "id": 1,
                 "username": "zhangsan",
                 "nickname": "张三",
-                "avatar": "https://example.com/avatar.jpg",
+                "avatar": None,  # 示例：未设置头像时返回 None
                 "intro": "这是我的个人简介",
                 "role": "user",
                 "status": 1,

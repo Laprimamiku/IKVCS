@@ -37,11 +37,11 @@
           <div class="action-left">
             <!-- Emoji Button (placeholder) -->
             <button class="action-btn emoji-btn" title="表情">
-              <span class="btn-icon">😊</span>
+              <el-icon class="btn-icon"><Sunny /></el-icon>
             </button>
             <!-- Image Button (placeholder) -->
             <button class="action-btn image-btn" title="图片">
-              <span class="btn-icon">🖼️</span>
+              <el-icon class="btn-icon"><Picture /></el-icon>
             </button>
           </div>
 
@@ -67,6 +67,7 @@
 
 <script setup lang="ts">
 import { ref, nextTick } from "vue";
+import { Sunny, Picture } from "@element-plus/icons-vue";
 import { useUserStore } from "@/shared/stores/user";
 import { storeToRefs } from "pinia";
 

@@ -221,7 +221,7 @@ export function useChunkUpload() {
         uploadedChunks.value++
         uploadedBytes.value += chunk.size
         console.log(`分片 ${i} 上传成功`)
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error(`分片 ${i} 上传失败:`, error)
         // 如果错误是分片索引无效，提供更详细的错误信息
         const errorDetail = error?.response?.data?.detail || error?.message || String(error)

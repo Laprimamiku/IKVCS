@@ -5,7 +5,7 @@
       <div class="header-container">
         <div class="header-left">
           <div class="logo-section">
-            <span class="logo-icon">📺</span>
+            <el-icon class="logo-icon"><VideoCamera /></el-icon>
             <span class="logo-text">bilibili创作中心</span>
           </div>
           <div class="nav-tabs">
@@ -20,11 +20,15 @@
         <div class="header-right">
           <div class="search-box">
             <input type="text" placeholder="搜索内容" class="search-input" />
-            <button class="search-btn">🔍</button>
+            <button class="search-btn">
+              <el-icon><Search /></el-icon>
+            </button>
           </div>
           <div class="user-info">
             <span class="username">用户名</span>
-            <div class="user-avatar">👤</div>
+            <el-avatar :size="32" class="user-avatar">
+              <el-icon><User /></el-icon>
+            </el-avatar>
           </div>
         </div>
       </div>
@@ -35,37 +39,46 @@
       <!-- Sidebar -->
       <div class="creator-sidebar">
         <div class="sidebar-section">
-          <div class="section-title">📊 首页</div>
+          <div class="section-title">
+            <el-icon><DataAnalysis /></el-icon>
+            <span>首页</span>
+          </div>
           <div class="sidebar-item active">
-            <span class="item-icon">📝</span>
+            <el-icon class="item-icon"><Document /></el-icon>
             <span class="item-text">稿件管理</span>
           </div>
           <div class="sidebar-item">
-            <span class="item-icon">📊</span>
+            <el-icon class="item-icon"><DataAnalysis /></el-icon>
             <span class="item-text">数据中心</span>
           </div>
           <div class="sidebar-item">
-            <span class="item-icon">💰</span>
+            <el-icon class="item-icon"><Money /></el-icon>
             <span class="item-text">收益管理</span>
           </div>
         </div>
 
         <div class="sidebar-section">
-          <div class="section-title">🎬 互动管理</div>
+          <div class="section-title">
+            <el-icon><VideoCamera /></el-icon>
+            <span>互动管理</span>
+          </div>
           <div class="sidebar-item">
-            <span class="item-icon">💬</span>
+              <el-icon class="item-icon"><ChatDotRound /></el-icon>
             <span class="item-text">评论管理</span>
           </div>
           <div class="sidebar-item">
-            <span class="item-icon">👥</span>
+            <el-icon class="item-icon"><UserFilled /></el-icon>
             <span class="item-text">粉丝管理</span>
           </div>
         </div>
 
         <div class="sidebar-section">
-          <div class="section-title">⚙️ 创作助手</div>
+          <div class="section-title">
+            <el-icon><Setting /></el-icon>
+            <span>创作助手</span>
+          </div>
           <div class="sidebar-item">
-            <span class="item-icon">🎨</span>
+            <el-icon class="item-icon"><Brush /></el-icon>
             <span class="item-text">创作中心</span>
           </div>
         </div>
@@ -97,7 +110,7 @@
           </div>
           <div class="content-actions">
             <button class="action-btn primary" @click="handleUpload">
-              <span class="btn-icon">⬆️</span>
+              <el-icon class="btn-icon"><Upload /></el-icon>
               投稿
             </button>
           </div>
@@ -239,10 +252,10 @@
             </div>
           </div>
 
-          <!-- Video Item -->
-          <div class="video-item">
+          <!-- Video Item (Placeholder - to be replaced with actual video list) -->
+          <div class="video-item" v-if="false">
             <div class="video-cover">
-              <img src="https://via.placeholder.com/160x90" alt="视频封面" />
+              <img :src="getVideoCoverUrl(undefined)" alt="视频封面" />
               <div class="video-duration">04:33</div>
             </div>
             <div class="video-info">
@@ -253,27 +266,27 @@
               </div>
               <div class="video-stats">
                 <div class="stat-item">
-                  <span class="stat-icon">👁️</span>
+                  <el-icon class="stat-icon"><View /></el-icon>
                   <span class="stat-value">25</span>
                 </div>
                 <div class="stat-item">
-                  <span class="stat-icon">💬</span>
+                  <el-icon class="stat-icon"><ChatDotRound /></el-icon>
                   <span class="stat-value">3</span>
                 </div>
                 <div class="stat-item">
-                  <span class="stat-icon">👍</span>
+                  <el-icon class="stat-icon"><CircleCheckFilled /></el-icon>
                   <span class="stat-value">0</span>
                 </div>
                 <div class="stat-item">
-                  <span class="stat-icon">⭐</span>
+                  <el-icon class="stat-icon"><Star /></el-icon>
                   <span class="stat-value">0</span>
                 </div>
                 <div class="stat-item">
-                  <span class="stat-icon">💰</span>
+                  <el-icon class="stat-icon"><Money /></el-icon>
                   <span class="stat-value">1</span>
                 </div>
                 <div class="stat-item">
-                  <span class="stat-icon">📤</span>
+                  <el-icon class="stat-icon"><Upload /></el-icon>
                   <span class="stat-value">0</span>
                 </div>
               </div>
@@ -300,6 +313,7 @@
 import { ref, reactive, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
+import { VideoCamera, Search, ChatDotRound, Setting, Upload, View, CircleCheckFilled, Star, DataAnalysis, Document, Money, UserFilled, Brush, User } from "@element-plus/icons-vue";
 import FileSelector from "@/features/video/upload/components/FileSelector.vue";
 import VideoInfoForm from "@/features/video/upload/components/VideoInfoForm.vue";
 import UploadProgress from "@/features/video/upload/components/UploadProgress.vue";
@@ -311,6 +325,19 @@ import type { Category } from "@/shared/types/entity";
 const router = useRouter();
 const currentStep = ref<number>(0);
 const showUploadModal = ref<boolean>(false);
+
+// Helper function to get video cover URL
+const getVideoCoverUrl = (coverUrl: string | undefined): string => {
+  if (!coverUrl) {
+    return '/placeholder-cover.png';
+  }
+  // If coverUrl is already a full URL, return it; otherwise, prepend the API base URL
+  if (coverUrl.startsWith('http://') || coverUrl.startsWith('https://')) {
+    return coverUrl;
+  }
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+  return `${apiBaseUrl}${coverUrl.startsWith('/') ? '' : '/'}${coverUrl}`;
+};
 
 // File upload composable
 const {

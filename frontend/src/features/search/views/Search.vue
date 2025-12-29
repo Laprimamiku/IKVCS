@@ -129,7 +129,7 @@
 
           <!-- 空状态 -->
           <div v-else class="empty-state">
-            <div class="empty-icon">🔍</div>
+            <el-icon class="empty-icon" :size="48"><Search /></el-icon>
             <div class="empty-title">没有找到相关视频</div>
             <div class="empty-desc">
               <template v-if="currentKeyword">
@@ -176,7 +176,7 @@
 import { ref, onMounted, watch, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { ElMessage } from "element-plus";
-import { VideoPlay, ChatDotRound, User } from "@element-plus/icons-vue";
+import { VideoPlay, ChatDotRound, User, Search } from "@element-plus/icons-vue";
 import AppHeader from "@/shared/components/layout/AppHeader.vue";
 import AuthDialog from "@/features/auth/components/AuthDialog.vue";
 import { getVideoList } from "@/features/video/shared/api/video.api";

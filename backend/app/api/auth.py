@@ -17,8 +17,8 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 
 from app.core.database import get_db
-from app.core.security import verify_password, get_password_hash, create_access_token
 from app.core.dependencies import get_current_user
+from app.core.exceptions import ValidationException
 from app.core.redis import get_redis
 from app.models.user import User
 from app.schemas.user import (
@@ -64,30 +64,17 @@ async def register(
         - 密码必须哈希存储（安全性）
         - 返回 201 Created 状态码（RESTful 规范）
     """
-    # 1. 检查用户名是否已存在
-    existing_user = db.query(User).filter(User.username == user_data.username).first()
-    if existing_user:
+    # 调用 Service 层处理注册逻辑
+    from app.services.auth.auth_service import AuthService
+    
+    try:
+        new_user = AuthService.register_user(db, user_data)
+        return new_user
+    except ValidationException as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="用户名已存在"
+            detail=str(e)
         )
-    
-    # 2. 创建新用户
-    new_user = User(
-        username=user_data.username,
-        password_hash=get_password_hash(user_data.password),  # 密码哈希
-        nickname=user_data.nickname,
-        role="user",  # 默认角色
-        status=1  # 默认状态：正常
-    )
-    
-    # 3. 保存到数据库
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)  # 刷新以获取自增 ID
-    
-    # 4. 返回用户信息（不包含密码哈希）
-    return new_user
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -122,36 +109,12 @@ async def login(
         - JWT 令牌包含用户名和过期时间
         - 更新最后登录时间（用于统计）
     """
-    # 1. 查询用户
-    user = db.query(User).filter(User.username == login_data.username).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误"
-        )
+    # 调用 Service 层处理登录逻辑
+    from app.services.auth.auth_service import AuthService
     
-    # 2. 验证密码
-    if not verify_password(login_data.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误"
-        )
+    access_token, user = AuthService.login_user(db, login_data)
     
-    # 3. 检查用户状态
-    if user.status == 0:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="用户已被封禁，无法登录"
-        )
-    
-    # 4. 生成 JWT 令牌
-    access_token = create_access_token(data={"sub": user.username})
-    
-    # 5. 更新最后登录时间
-    user.last_login_time = datetime.utcnow()
-    db.commit()
-    
-    # 6. 返回令牌
+    # 返回令牌
     return TokenResponse(
         access_token=access_token,
         token_type="bearer"

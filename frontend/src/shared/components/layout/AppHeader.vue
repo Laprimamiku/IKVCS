@@ -81,7 +81,7 @@
                   @click="selectSuggestion(item)"
                   @mouseenter="selectedIndex = index"
                 >
-                  <span class="item-icon">🕐</span>
+                  <el-icon class="item-icon"><Clock /></el-icon>
                   <span class="item-text">{{ item }}</span>
                   <button class="remove-btn" @click.stop="removeHistoryItem(index)">×</button>
                 </div>
@@ -91,7 +91,8 @@
             <!-- Hot Searches -->
             <div v-if="!keyword && hotSearches.length > 0" class="suggestion-section">
               <div class="section-header">
-                <span class="section-title">🔥 热搜榜</span>
+                <el-icon class="section-icon"><TrendCharts /></el-icon>
+                <span class="section-title">热搜榜</span>
               </div>
               <div class="suggestion-list hot-list">
                 <div 
@@ -121,7 +122,7 @@
                   @click="selectSuggestion(item)"
                   @mouseenter="selectedIndex = index"
                 >
-                  <span class="item-icon">🔍</span>
+                  <el-icon class="item-icon"><Search /></el-icon>
                   <span class="item-text" v-html="highlightKeyword(item)"></span>
                 </div>
               </div>
@@ -215,10 +216,10 @@
           </div>
         </template>
 
-        <!-- Upload Button -->
+        <!-- Creator Center Button -->
         <el-button class="upload-btn" @click="handleUploadClick">
-          <el-icon><Upload /></el-icon>
-          <span>投稿</span>
+          <el-icon><VideoCamera /></el-icon>
+          <span>创作中心</span>
         </el-button>
       </div>
     </div>
@@ -239,6 +240,7 @@ import {
   Star,
   Clock,
   Bell,
+  TrendCharts,
 } from "@element-plus/icons-vue";
 
 const router = useRouter();
@@ -443,7 +445,14 @@ const handleUploadClick = () => {
     emit("login");
     return;
   }
-  router.push({ name: "VideoCenter" }).catch(console.error);
+  // 确保路由跳转
+  router.push({ name: "VideoCenter" }).catch((err) => {
+    console.error("跳转到视频中心失败:", err);
+    // 如果路由名称失败，尝试使用路径
+    router.push("/video-center").catch((err2) => {
+      console.error("使用路径跳转也失败:", err2);
+    });
+  });
 };
 
 const handleLogout = async () => {
@@ -701,7 +710,6 @@ const handleLogout = async () => {
 
   .item-icon {
     font-size: var(--font-size-sm);
-    font-style: normal;
     color: var(--text-tertiary);
   }
 

@@ -38,7 +38,8 @@ export const useUserStore = defineStore('user', {
     // 用户头像
     avatar: (state): string => {
       if (!state.userInfo?.avatar) {
-        return 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
+        // 使用环境变量配置的默认头像，或使用本地默认头像
+        return import.meta.env.VITE_DEFAULT_AVATAR_URL || '/default-avatar.png'
       }
       
       // API 层已经处理过 URL，直接返回

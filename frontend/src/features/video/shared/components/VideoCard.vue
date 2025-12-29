@@ -117,7 +117,9 @@ const formatDate = (dateStr: string): string => {
 // Get cover URL with fallback
 const getCoverUrl = (coverUrl: string | undefined): string => {
   if (!coverUrl) {
-    return "https://via.placeholder.com/320x180/f1f2f3/9499a0?text=No+Cover";
+    // 使用环境变量或默认占位图
+  const placeholderBase = import.meta.env.VITE_PLACEHOLDER_BASE_URL || '';
+  return placeholderBase ? `${placeholderBase}/placeholder-320x180.png` : '/placeholder-cover.png';
   }
   // Add cache buster for fresh images
   return coverUrl.includes("?") ? coverUrl : `${coverUrl}?t=${Date.now()}`;
@@ -126,7 +128,8 @@ const getCoverUrl = (coverUrl: string | undefined): string => {
 // Handle image load error
 const handleImageError = (e: Event) => {
   const img = e.target as HTMLImageElement;
-  img.src = "https://via.placeholder.com/320x180/f1f2f3/9499a0?text=No+Cover";
+  const placeholderBase = import.meta.env.VITE_PLACEHOLDER_BASE_URL || '';
+  img.src = placeholderBase ? `${placeholderBase}/placeholder-320x180.png` : '/placeholder-cover.png';
 };
 
 // Navigate to uploader profile
@@ -231,18 +234,18 @@ const handleWatchLater = () => {
   .stat-item {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     
     .el-icon {
-      font-size: 14px;
+      font-size: var(--font-size-sm);
     }
   }
   
   .duration {
-    padding: 2px 6px;
-    background: rgba(0, 0, 0, 0.5);
+    padding: var(--space-0-5) var(--space-1-5);
+    background: var(--bg-mask);
     border-radius: var(--radius-sm);
-    font-size: 11px;
+    font-size: var(--font-size-xs);
   }
 }
 
@@ -265,10 +268,10 @@ const handleWatchLater = () => {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 60px;
-    height: 60px;
+    width: var(--icon-size-xl);
+    height: var(--icon-size-xl);
     background: rgba(255, 255, 255, 0.9);
-    border-radius: 50%;
+    border-radius: var(--radius-circle);
     color: var(--bili-pink);
     transition: transform var(--transition-base);
     

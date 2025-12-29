@@ -4,9 +4,6 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
-import os
-import uuid
-from pathlib import Path
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_current_active_user
@@ -14,12 +11,9 @@ from app.core.response import success_response
 from app.models.user import User
 from app.schemas.user import UserResponse, UserUpdateRequest, MessageResponse
 from app.core.config import settings
+from app.services.user.user_service import UserService
 
 router = APIRouter()
-
-# 头像上传目录（使用配置中的路径）
-AVATAR_UPLOAD_DIR = Path(settings.UPLOAD_AVATAR_DIR)
-AVATAR_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @router.get("/me", response_model=UserResponse)
@@ -66,18 +60,9 @@ def update_current_user_info(
     返回：
     - 更新后的用户信息
     """
-    # 更新字段（只更新非 None 的字段）
-    if user_update.nickname is not None:
-        current_user.nickname = user_update.nickname
-    
-    if user_update.intro is not None:
-        current_user.intro = user_update.intro
-    
-    # 保存到数据库
-    db.commit()
-    db.refresh(current_user)
-    
-    return current_user
+    # 调用 Service 层处理更新逻辑
+    updated_user = UserService.update_user_info(db, current_user, user_update)
+    return updated_user
 
 
 @router.post("/me/avatar", response_model=dict)
@@ -105,35 +90,8 @@ async def upload_avatar(
     返回：
     - avatar_url: 头像访问地址
     """
-    # 验证文件类型
-    if not file.content_type.startswith('image/'):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="只能上传图片文件"
-        )
-    
-    # 验证文件大小（2MB）
-    content = await file.read()
-    if len(content) > 2 * 1024 * 1024:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="图片大小不能超过 2MB"
-        )
-    
-    # 生成唯一文件名
-    file_ext = os.path.splitext(file.filename)[1]
-    unique_filename = f"{uuid.uuid4()}{file_ext}"
-    file_path = AVATAR_UPLOAD_DIR / unique_filename
-    
-    # 保存文件
-    with open(file_path, 'wb') as f:
-        f.write(content)
-    
-    # 更新用户头像 URL（返回完整的访问路径）
-    avatar_url = f"/uploads/avatars/{unique_filename}"
-    current_user.avatar = avatar_url
-    db.commit()
-    db.refresh(current_user)
+    # 调用 Service 层处理头像上传逻辑
+    avatar_url = await UserService.upload_avatar(db, current_user, file)
     
     return success_response(
         data={"avatar_url": avatar_url},
@@ -165,12 +123,41 @@ def get_user_by_id(
     - 不需要登录即可访问
     - 返回的信息不包含敏感数据（密码哈希等）
     """
-    user = db.query(User).filter(User.id == user_id).first()
+    # 调用 Service 层获取用户信息
+    return UserService.get_user_by_id(db, user_id)
+
+
+@router.get("/me/watch-history", response_model=dict)
+def get_watch_history(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    获取当前用户的最近观看历史（最多3个）
     
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="用户不存在"
-        )
+    返回：
+    - 最近观看的3个视频列表（按观看时间倒序）
+    """
+    from app.repositories.watch_history_repository import WatchHistoryRepository
+    from app.schemas.video import VideoListItemResponse
+    from app.services.video import VideoResponseBuilder
     
-    return user
+    # 获取最近3个观看历史
+    watch_history_list = WatchHistoryRepository.get_recent_watches(db, current_user.id, limit=3)
+    
+    # 转换为响应格式
+    videos = []
+    for wh in watch_history_list:
+        if wh.video:
+            video_data = VideoResponseBuilder.build_list_item(wh.video, current_user.id if current_user else None)
+            videos.append({
+                "id": wh.id,
+                "video_id": wh.video_id,
+                "watched_at": wh.watched_at.isoformat(),
+                "video": video_data
+            })
+    
+    return success_response(
+        data={"items": videos, "total": len(videos)},
+        message="获取观看历史成功"
+    )

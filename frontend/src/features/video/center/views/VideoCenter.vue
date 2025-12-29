@@ -1,11 +1,18 @@
 <template>
-  <div class="bili-video-center">
+  <div class="bili-creator-center">
     <!-- 顶部导航栏 -->
     <AppHeader />
 
     <!-- 主内容区 -->
-    <main class="main-content">
-      <div class="content-container">
+    <main class="creator-main">
+      <!-- 侧边栏 -->
+      <CreatorSidebar :active-tab="activeTab" @tab-change="handleTabChange" />
+
+      <!-- 内容区域 -->
+      <div class="creator-content">
+        <!-- 视频管理 -->
+        <div v-if="activeTab === 'videos'" class="tab-content">
+          <div class="content-container">
         <!-- 页面头部 -->
         <div class="page-header">
           <div class="header-left">
@@ -25,34 +32,26 @@
 
         <!-- 统计卡片 -->
         <div class="stats-section">
-          <div class="stat-card">
-            <div class="stat-icon video-icon">📹</div>
-            <div class="stat-info">
-              <div class="stat-number">{{ total }}</div>
-              <div class="stat-label">总视频数</div>
-            </div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon view-icon">👁️</div>
-            <div class="stat-info">
-              <div class="stat-number">{{ formatNumber(totalViews) }}</div>
-              <div class="stat-label">总播放量</div>
-            </div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon like-icon">👍</div>
-            <div class="stat-info">
-              <div class="stat-number">{{ formatNumber(totalLikes) }}</div>
-              <div class="stat-label">总点赞数</div>
-            </div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon comment-icon">💬</div>
-            <div class="stat-info">
-              <div class="stat-number">{{ formatNumber(totalComments) }}</div>
-              <div class="stat-label">总评论数</div>
-            </div>
-          </div>
+          <StatCard :value="total" label="总视频数" variant="primary">
+            <template #icon>
+              <el-icon><VideoCamera /></el-icon>
+            </template>
+          </StatCard>
+          <StatCard :value="formatNumber(totalViews)" label="总播放量" variant="success">
+            <template #icon>
+              <el-icon><View /></el-icon>
+            </template>
+          </StatCard>
+          <StatCard :value="formatNumber(totalLikes)" label="总点赞数" variant="warning">
+            <template #icon>
+              <el-icon><Like /></el-icon>
+            </template>
+          </StatCard>
+          <StatCard :value="formatNumber(totalComments)" label="总评论数" variant="default">
+            <template #icon>
+              <el-icon><ChatDotRound /></el-icon>
+            </template>
+          </StatCard>
         </div>
 
         <!-- 筛选栏 -->
@@ -125,8 +124,8 @@
               <div class="video-cover" @click="handleView(video.id)">
                 <img :src="video.cover_url || '/placeholder-video.jpg'" :alt="video.title" />
                 <div class="video-duration">{{ formatDuration(video.duration) }}</div>
-                <div class="video-status" :class="getStatusClass(video.status)">
-                  {{ getStatusText(video.status) }}
+                <div class="video-status" :class="getStatusClass(video.status || 0)">
+                  {{ getStatusText(video.status || 0) }}
                 </div>
                 <div class="video-overlay">
                   <el-icon class="play-icon"><VideoPlay /></el-icon>
@@ -138,6 +137,9 @@
                 <div class="video-meta">
                   <span class="upload-time">{{ formatTime(video.created_at) }}</span>
                   <span class="category" v-if="video.category">{{ video.category.name }}</span>
+                  
+                  <!-- AI Inference Tag -->
+                  <InferenceEngineTag :result="video.ai_analysis_result" />
                 </div>
                 
                 <div class="video-stats">
@@ -156,6 +158,10 @@
                 </div>
                 
                 <div class="video-actions">
+                  <el-button size="small" @click="handleAnalyze(video)">
+                    <el-icon><DataAnalysis /></el-icon>
+                    智能分析
+                  </el-button>
                   <el-button size="small" @click="handleEdit(video)">
                     <el-icon><Edit /></el-icon>
                     编辑
@@ -182,17 +188,20 @@
           </div>
 
           <!-- 空状态 -->
-          <div v-else class="empty-state">
-            <div class="empty-icon">📹</div>
-            <div class="empty-title">还没有上传视频</div>
-            <div class="empty-desc">
-              快去上传您的第一个视频吧！
-            </div>
-            <el-button type="primary" size="large" @click="handleUpload">
-              <el-icon><Upload /></el-icon>
-              立即上传
-            </el-button>
-          </div>
+          <EmptyState
+            v-if="!loading && videos.length === 0"
+            title="还没有上传视频"
+            description="快去上传您的第一个视频吧！"
+            :icon="VideoCamera"
+            :icon-size="64"
+          >
+            <template #action>
+              <el-button type="primary" size="large" @click="handleUpload">
+                <el-icon><Upload /></el-icon>
+                立即上传
+              </el-button>
+            </template>
+          </EmptyState>
         </div>
 
         <!-- 分页 -->
@@ -205,6 +214,18 @@
             @current-change="loadVideos"
           />
         </div>
+          </div>
+        </div>
+
+        <!-- 数据中心 -->
+        <div v-if="activeTab === 'data'" class="tab-content">
+          <CreatorDataCenter :videos="videos" />
+        </div>
+
+        <!-- 互动管理 -->
+        <div v-if="activeTab === 'interaction'" class="tab-content">
+          <CreatorInteraction :videos="videos" />
+        </div>
       </div>
     </main>
 
@@ -216,11 +237,129 @@
       @save="handleSaveEdit"
       @cancel="editDialogVisible = false"
     />
+
+    <!-- 上传模态框 -->
+    <el-dialog
+      v-model="showUploadModal"
+      title="视频投稿"
+      width="900px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      @close="closeUploadModal"
+    >
+      <!-- Steps Indicator -->
+      <div class="upload-steps">
+        <div class="steps-bar">
+          <div 
+            class="step-item" 
+            :class="{ active: currentStep >= 0, completed: currentStep > 0 }"
+          >
+            <div class="step-circle">
+              <span v-if="currentStep > 0">✓</span>
+              <span v-else>1</span>
+            </div>
+            <span class="step-label">选择文件</span>
+          </div>
+          <div class="step-line" :class="{ active: currentStep > 0 }"></div>
+          <div 
+            class="step-item" 
+            :class="{ active: currentStep >= 1, completed: currentStep > 1 }"
+          >
+            <div class="step-circle">
+              <span v-if="currentStep > 1">✓</span>
+              <span v-else>2</span>
+            </div>
+            <span class="step-label">填写信息</span>
+          </div>
+          <div class="step-line" :class="{ active: currentStep > 1 }"></div>
+          <div 
+            class="step-item" 
+            :class="{ active: currentStep >= 2, completed: uploadComplete }"
+          >
+            <div class="step-circle">
+              <span v-if="uploadComplete">✓</span>
+              <span v-else>3</span>
+            </div>
+            <span class="step-label">上传完成</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step Content -->
+      <div class="upload-step-content">
+        <!-- Step 1: File Selection -->
+        <div v-show="currentStep === 0" class="upload-step">
+          <FileSelector
+            :video-file="videoFile"
+            :cover-file="coverFile"
+            :subtitle-file="subtitleFile"
+            :video-preview-url="videoPreviewUrl"
+            :cover-preview-url="coverPreviewUrl"
+            @video-selected="handleVideoSelected"
+            @cover-selected="handleCoverSelected"
+            @subtitle-selected="handleSubtitleSelected"
+            @video-removed="handleVideoRemoved"
+            @cover-removed="handleCoverRemoved"
+            @subtitle-removed="handleSubtitleRemoved"
+          />
+          <div class="step-actions">
+            <el-button
+              type="primary"
+              size="large"
+              :disabled="!hasVideoFile"
+              @click="nextStep"
+            >
+              下一步
+            </el-button>
+          </div>
+        </div>
+
+        <!-- Step 2: Video Info -->
+        <div v-show="currentStep === 1" class="upload-step">
+          <VideoInfoForm
+            ref="videoFormRef"
+            :categories="uploadCategories"
+            :model-value="videoForm"
+            @update:modelValue="handleVideoFormUpdate"
+          />
+          <div class="step-actions">
+            <el-button size="large" @click="prevStep">上一步</el-button>
+            <el-button
+              type="primary"
+              size="large"
+              :loading="uploading"
+              @click="handleStartUpload"
+            >
+              开始上传
+            </el-button>
+          </div>
+        </div>
+
+        <!-- Step 3: Upload Progress -->
+        <div v-show="currentStep === 2" class="upload-step">
+          <UploadProgress
+            :status="uploadStatus"
+            :detail="uploadDetail"
+            :progress="totalProgress"
+            :complete="uploadComplete"
+            :uploading="uploading"
+            :uploaded-chunks="uploadedChunks"
+            :total-chunks="totalChunks"
+            :speed="uploadSpeed"
+            :remaining-time="remainingTime"
+            @resume="handleResumeUpload"
+            @pause="handlePauseUpload"
+            @go-home="goToHome"
+            @upload-another="uploadAnother"
+          />
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from "vue";
+import { ref, reactive, onMounted, watch, computed } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
@@ -232,13 +371,35 @@ import {
   Edit,
   View,
   More,
+  Lightning,
+  Cloudy,
+  DataAnalysis,
 } from "@element-plus/icons-vue";
 import AppHeader from "@/shared/components/layout/AppHeader.vue";
+import StatCard from "@/shared/components/atoms/StatCard.vue";
+import EmptyState from "@/shared/components/atoms/EmptyState.vue";
 import VideoEditDialog from "@/features/video/center/components/VideoEditDialog.vue";
+import InferenceEngineTag from "@/features/video/center/components/InferenceEngineTag.vue";
+import CreatorSidebar from "@/features/video/center/components/CreatorSidebar.vue";
+import CreatorDataCenter from "@/features/video/center/views/CreatorDataCenter.vue";
+import CreatorInteraction from "@/features/video/center/views/CreatorInteraction.vue";
+import FileSelector from "@/features/video/upload/components/FileSelector.vue";
+import VideoInfoForm from "@/features/video/upload/components/VideoInfoForm.vue";
+import UploadProgress from "@/features/video/upload/components/UploadProgress.vue";
 import { useVideoManagement } from "@/features/video/center/composables/useVideoManagement";
-import type { Video } from "@/shared/types/entity";
+import { useFileUpload } from "@/features/video/upload/composables/useFileUpload";
+import { useChunkUpload } from "@/features/video/upload/composables/useChunkUpload";
+import { getCategories } from "@/features/video/shared/api/category.api";
+import { formatNumber } from "@/shared/utils/formatters";
+import type { Video, Category } from "@/shared/types/entity";
 
 const router = useRouter();
+
+// 标签页管理
+const activeTab = ref<'videos' | 'data' | 'interaction'>('videos');
+const handleTabChange = (tab: 'videos' | 'data' | 'interaction') => {
+  activeTab.value = tab;
+};
 
 // 使用视频管理 Composable
 const {
@@ -260,6 +421,36 @@ const {
 const editDialogVisible = ref(false);
 const editingVideo = ref<Video | null>(null);
 const sortType = ref("newest");
+
+// 上传相关状态
+const showUploadModal = ref(false);
+const currentStep = ref(0);
+const uploadCategories = ref<Category[]>([]);
+const videoFormRef = ref<InstanceType<typeof VideoInfoForm> | null>(null);
+const videoForm = reactive<{
+  title: string;
+  description: string;
+  category_id: number | null;
+}>({ title: "", description: "", category_id: null });
+
+// File upload composable
+const {
+  videoFile, coverFile, subtitleFile,
+  videoPreviewUrl, coverPreviewUrl,
+  selectVideoFile, selectCoverFile, selectSubtitleFile,
+  removeVideoFile, removeCoverFile, removeSubtitleFile,
+  resetFiles,
+} = useFileUpload();
+
+// Chunk upload composable
+const {
+  uploading, uploadComplete, uploadStatus, uploadDetail,
+  totalChunks, uploadedChunks, totalProgress,
+  uploadSpeed, remainingTime,
+  startUpload, pauseUpload, resumeUpload, resetUpload,
+} = useChunkUpload();
+
+const hasVideoFile = computed(() => !!videoFile.value);
 
 // 统计数据
 const totalViews = computed(() => {
@@ -289,12 +480,7 @@ const rejectedCount = computed(() => {
 /**
  * 格式化数字
  */
-const formatNumber = (num: number): string => {
-  if (!num) return "0";
-  if (num >= 100000000) return (num / 100000000).toFixed(1) + "亿";
-  if (num >= 10000) return (num / 10000).toFixed(1) + "万";
-  return num.toString();
-};
+// formatNumber 已从 @/shared/utils/formatters 导入
 
 /**
  * 格式化时长
@@ -340,12 +526,157 @@ const getStatusText = (status: number): string => {
 };
 
 // 操作处理
-const handleUpload = () => {
-  router.push("/upload");
+const handleUpload = async () => {
+  showUploadModal.value = true;
+  currentStep.value = 0;
+  // 加载分类（如果还没有加载）
+  if (uploadCategories.value.length === 0) {
+    await loadUploadCategories();
+  }
+};
+
+// 加载上传分类
+const loadUploadCategories = async () => {
+  try {
+    const res = await getCategories();
+    if (Array.isArray(res)) {
+      uploadCategories.value = res;
+    } else if (res && res.data) {
+      uploadCategories.value = res.data as Category[];
+    } else {
+      uploadCategories.value = [];
+    }
+  } catch (error) {
+    console.error("加载分类失败:", error);
+    ElMessage.error("加载分类失败，请稍后重试");
+    uploadCategories.value = [];
+  }
+};
+
+// 关闭上传模态框
+const closeUploadModal = () => {
+  showUploadModal.value = false;
+  resetFiles();
+  resetUpload();
+  videoForm.title = "";
+  videoForm.description = "";
+  videoForm.category_id = null;
+  currentStep.value = 0;
+};
+
+// 文件处理
+const handleVideoSelected = (file: File) => {
+  if (selectVideoFile(file)) {
+    if (!videoForm.title) {
+      videoForm.title = file.name.replace(/\.[^/.]+$/, "");
+    }
+  }
+};
+const handleCoverSelected = (file: File) => selectCoverFile(file);
+const handleSubtitleSelected = (file: File) => selectSubtitleFile(file);
+const handleVideoRemoved = () => removeVideoFile();
+const handleCoverRemoved = () => removeCoverFile();
+const handleSubtitleRemoved = () => removeSubtitleFile();
+
+// 步骤导航
+const nextStep = () => currentStep.value++;
+const prevStep = () => currentStep.value--;
+
+// 视频表单更新
+const handleVideoFormUpdate = (value: {
+  title: string;
+  description: string;
+  category_id: number | null;
+}) => {
+  videoForm.title = value.title ?? "";
+  videoForm.description = value.description ?? "";
+  videoForm.category_id = value.category_id ?? null;
+};
+
+// 开始上传
+const handleStartUpload = async () => {
+  if (!videoFile.value) {
+    ElMessage.error("请先选择视频文件");
+    return;
+  }
+
+  let valid = false;
+  try {
+    if (videoFormRef.value && typeof videoFormRef.value.validate === "function") {
+      valid = (await videoFormRef.value.validate()) ?? false;
+    }
+  } catch (err) {
+    valid = false;
+  }
+
+  if (!valid) {
+    ElMessage.error("请完善视频信息");
+    return;
+  }
+
+  if (!videoForm.category_id) {
+    ElMessage.error("请选择视频分类");
+    return;
+  }
+
+  currentStep.value = 2;
+
+  try {
+    await startUpload(
+      videoFile.value,
+      { title: videoForm.title, description: videoForm.description, category_id: videoForm.category_id },
+      coverFile.value,
+      subtitleFile.value
+    );
+    // 上传完成后刷新视频列表
+    if (uploadComplete.value) {
+      await loadVideos();
+    }
+  } catch (error) {
+    console.error("上传失败:", error);
+    ElMessage.error("上传失败，请稍后重试");
+  }
+};
+
+const handlePauseUpload = () => pauseUpload();
+const handleResumeUpload = async () => {
+  if (!videoFile.value || !videoForm.category_id) {
+    ElMessage.error("视频文件或分类不存在");
+    return;
+  }
+  try {
+    await resumeUpload(
+      videoFile.value,
+      { title: videoForm.title, description: videoForm.description, category_id: videoForm.category_id },
+      coverFile.value,
+      subtitleFile.value
+    );
+  } catch (error) {
+    console.error("继续上传失败:", error);
+    ElMessage.error("继续上传失败，请稍后重试");
+  }
+};
+
+const goToHome = () => {
+  closeUploadModal();
+  router.push("/");
+};
+
+const uploadAnother = () => {
+  currentStep.value = 0;
+  resetFiles();
+  resetUpload();
+  videoForm.title = "";
+  videoForm.description = "";
+  videoForm.category_id = null;
 };
 
 const handleView = (videoId: number) => {
   viewVideo(videoId);
+};
+
+const handleAnalyze = (video: Video) => {
+  router.push(`/center/analysis/${video.id}`);
 };
 
 const handleEdit = (video: Video) => {
@@ -420,28 +751,44 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.bili-video-center {
+.bili-creator-center {
   min-height: 100vh;
-  background: #f4f5f7;
+  background: var(--bg-global);
 }
 
-.main-content {
-  padding: 20px 0;
+.creator-main {
+  display: flex;
+  min-height: calc(100vh - var(--header-height));
+}
+
+.creator-content {
+  flex: 1;
+  padding: var(--space-6);
+  overflow-y: auto;
+}
+
+.tab-content {
+  width: 100%;
 }
 
 .content-container {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 0 20px;
+}
+
+.content-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 var(--space-5);
 }
 
 /* 页面头部 */
 .page-header {
-  background: #fff;
-  border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background: var(--bg-white);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  margin-bottom: var(--space-5);
+  box-shadow: var(--shadow-card);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -451,30 +798,30 @@ onMounted(() => {
   .page-title {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 24px;
-    font-weight: 600;
-    color: #18191c;
-    margin: 0 0 8px;
+    gap: var(--space-2);
+    font-size: var(--font-size-3xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin: 0 0 var(--space-2);
     
     .title-icon {
-      font-size: 28px;
-      color: #00aeec;
+      font-size: var(--font-size-4xl);
+      color: var(--bili-blue);
     }
   }
   
   .page-desc {
-    font-size: 14px;
-    color: #61666d;
+    font-size: var(--font-size-base);
+    color: var(--text-secondary);
   }
 }
 
 .header-actions {
   .el-button {
-    height: 40px;
-    padding: 0 20px;
-    border-radius: 20px;
-    font-weight: 500;
+    height: var(--btn-height-xl);
+    padding: 0 var(--space-5);
+    border-radius: var(--radius-round);
+    font-weight: var(--font-weight-medium);
   }
 }
 
@@ -482,72 +829,58 @@ onMounted(() => {
 .stats-section {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.stat-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  transition: transform 0.2s;
-  
-  &:hover {
-    transform: translateY(-2px);
-  }
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
 }
 
 .stat-icon {
   width: 48px;
   height: 48px;
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 24px;
+  color: var(--text-white);
   
   &.video-icon {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--bili-pink-gradient);
   }
   
   &.view-icon {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    background: linear-gradient(135deg, var(--bili-blue) 0%, var(--bili-blue-hover) 100%);
   }
   
   &.like-icon {
-    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    background: linear-gradient(135deg, #FF6B6B 0%, #FF8E8E 100%);
   }
   
   &.comment-icon {
-    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+    background: linear-gradient(135deg, var(--success-color) 0%, #52C41A 100%);
   }
 }
 
 .stat-info {
   .stat-number {
-    font-size: 24px;
-    font-weight: 600;
-    color: #18191c;
-    margin-bottom: 4px;
+    font-size: var(--font-size-2xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin-bottom: var(--space-1);
   }
   
   .stat-label {
-    font-size: 14px;
-    color: #61666d;
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
   }
 }
 
 /* 筛选栏 */
 .filter-section {
-  background: #fff;
-  border-radius: 8px;
-  padding: 16px 24px;
-  margin-bottom: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background: var(--bg-white);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-6);
+  margin-bottom: var(--space-5);
+  box-shadow: var(--shadow-card);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -560,9 +893,9 @@ onMounted(() => {
 }
 
 .filter-label {
-  font-size: 14px;
-  color: #61666d;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-medium);
   flex-shrink: 0;
 }
 
@@ -572,32 +905,32 @@ onMounted(() => {
 }
 
 .status-tab {
-  padding: 6px 16px;
-  border-radius: 20px;
-  font-size: 14px;
-  color: #61666d;
+  padding: var(--space-1) var(--space-4);
+  border-radius: var(--radius-round);
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: var(--transition-base);
   white-space: nowrap;
   
   &:hover {
-    background: #f1f2f3;
-    color: #18191c;
+    background: var(--bg-hover);
+    color: var(--text-primary);
   }
   
   &.active {
-    background: #00aeec;
-    color: #fff;
+    background: var(--bili-blue);
+    color: var(--text-white);
   }
 }
 
 /* 视频区域 */
 .video-section {
-  background: #fff;
-  border-radius: 8px;
-  padding: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  margin-bottom: 20px;
+  background: var(--bg-white);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-card);
+  margin-bottom: var(--space-5);
   min-height: 400px;
 }
 
@@ -605,47 +938,67 @@ onMounted(() => {
 .loading-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 20px;
+  gap: var(--space-5);
 }
 
 .video-skeleton {
   .skeleton-cover {
     width: 100%;
     aspect-ratio: 16/9;
-    background: linear-gradient(90deg, #f1f2f3 25%, #e3e5e7 50%, #f1f2f3 75%);
+    background: linear-gradient(
+      90deg,
+      var(--bg-gray-1) 25%,
+      var(--bg-gray-2) 50%,
+      var(--bg-gray-1) 75%
+    );
     background-size: 200% 100%;
     animation: skeleton-loading 1.5s infinite;
-    border-radius: 6px;
-    margin-bottom: 12px;
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-3);
   }
   
   .skeleton-info {
     .skeleton-title {
-      height: 16px;
-      background: linear-gradient(90deg, #f1f2f3 25%, #e3e5e7 50%, #f1f2f3 75%);
+      height: var(--font-size-lg);
+      background: linear-gradient(
+        90deg,
+        var(--bg-gray-1) 25%,
+        var(--bg-gray-2) 50%,
+        var(--bg-gray-1) 75%
+      );
       background-size: 200% 100%;
       animation: skeleton-loading 1.5s infinite;
-      border-radius: 4px;
-      margin-bottom: 8px;
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-2);
     }
     
     .skeleton-meta {
-      height: 12px;
+      height: var(--font-size-sm);
       width: 60%;
-      background: linear-gradient(90deg, #f1f2f3 25%, #e3e5e7 50%, #f1f2f3 75%);
+      background: linear-gradient(
+        90deg,
+        var(--bg-gray-1) 25%,
+        var(--bg-gray-2) 50%,
+        var(--bg-gray-1) 75%
+      );
       background-size: 200% 100%;
       animation: skeleton-loading 1.5s infinite;
-      border-radius: 4px;
-      margin-bottom: 8px;
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-2);
     }
     
     .skeleton-stats {
-      height: 12px;
+      height: var(--font-size-sm);
       width: 80%;
-      background: linear-gradient(90deg, #f1f2f3 25%, #e3e5e7 50%, #f1f2f3 75%);
+      background: linear-gradient(
+        90deg,
+        var(--bg-gray-1) 25%,
+        var(--bg-gray-2) 50%,
+        var(--bg-gray-1) 75%
+      );
       background-size: 200% 100%;
       animation: skeleton-loading 1.5s infinite;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
     }
   }
 }
@@ -659,17 +1012,17 @@ onMounted(() => {
 .video-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 20px;
+  gap: var(--space-5);
 }
 
 .video-card {
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: var(--transition-base);
   
   &:hover {
     transform: translateY(-4px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-card-hover);
     
     .video-overlay {
       opacity: 1;
@@ -697,38 +1050,38 @@ onMounted(() => {
   
   .video-duration {
     position: absolute;
-    bottom: 8px;
-    right: 8px;
-    background: rgba(0, 0, 0, 0.8);
-    color: #fff;
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-size: 12px;
-    font-weight: 500;
+    bottom: var(--space-2);
+    right: var(--space-2);
+    background: var(--bg-mask);
+    color: var(--text-white);
+    padding: var(--space-1) var(--space-1);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
   }
   
   .video-status {
     position: absolute;
-    top: 8px;
-    left: 8px;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 500;
+    top: var(--space-2);
+    left: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-round);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
     
     &.published {
-      background: #52c41a;
-      color: #fff;
+      background: var(--success-color);
+      color: var(--text-white);
     }
     
     &.pending {
-      background: #faad14;
-      color: #fff;
+      background: var(--warning-color);
+      color: var(--text-white);
     }
     
     &.rejected {
-      background: #ff4d4f;
-      color: #fff;
+      background: var(--danger-color);
+      color: var(--text-white);
     }
   }
   
@@ -738,29 +1091,29 @@ onMounted(() => {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--bg-mask-light);
     display: flex;
     align-items: center;
     justify-content: center;
     opacity: 0;
-    transition: opacity 0.3s;
+    transition: opacity var(--transition-slow);
     
     .play-icon {
-      font-size: 48px;
-      color: #fff;
+      font-size: var(--font-size-5xl);
+      color: var(--text-white);
     }
   }
 }
 
 .video-info {
-  padding: 16px;
+  padding: var(--space-4);
   
   .video-title {
-    font-size: 16px;
-    font-weight: 500;
-    color: #18191c;
-    line-height: 1.4;
-    margin: 0 0 8px;
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-primary);
+    line-height: var(--line-height-normal);
+    margin: 0 0 var(--space-2);
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -768,7 +1121,7 @@ onMounted(() => {
     cursor: pointer;
     
     &:hover {
-      color: #00aeec;
+      color: var(--bili-blue);
     }
   }
   
@@ -776,24 +1129,48 @@ onMounted(() => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 12px;
-    font-size: 12px;
-    color: #61666d;
+    margin-bottom: var(--space-3);
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
     
     .category {
-      background: #f1f2f3;
-      padding: 2px 6px;
-      border-radius: 3px;
+      background: var(--bg-gray-1);
+      padding: var(--space-1) var(--space-1);
+      border-radius: var(--radius-sm);
+    }
+
+    .ai-tag {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-1) var(--space-1);
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      font-weight: var(--font-weight-medium);
+      cursor: help;
+      margin-left: var(--space-2);
+      
+      &.local {
+        background: var(--success-light);
+        color: var(--success-color);
+        border: 1px solid var(--success-color);
+      }
+      
+      &.cloud {
+        background: var(--info-light);
+        color: var(--info-color);
+        border: 1px solid var(--info-color);
+      }
     }
   }
   
   .video-stats {
     display: flex;
     align-items: center;
-    gap: 16px;
-    margin-bottom: 12px;
-    font-size: 12px;
-    color: #61666d;
+    gap: var(--space-4);
+    margin-bottom: var(--space-3);
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
     
     .stat-item {
       display: flex;
@@ -818,46 +1195,14 @@ onMounted(() => {
   }
 }
 
-/* 空状态 */
-.empty-state {
-  text-align: center;
-  padding: 80px 20px;
-  
-  .empty-icon {
-    font-size: 80px;
-    margin-bottom: 20px;
-  }
-  
-  .empty-title {
-    font-size: 20px;
-    font-weight: 500;
-    color: #18191c;
-    margin-bottom: 8px;
-  }
-  
-  .empty-desc {
-    font-size: 14px;
-    color: #61666d;
-    margin-bottom: 24px;
-  }
-  
-  .el-button {
-    height: 44px;
-    padding: 0 24px;
-    border-radius: 22px;
-    font-size: 16px;
-    font-weight: 500;
-  }
-}
-
 /* 分页 */
 .pagination-section {
   display: flex;
   justify-content: center;
-  padding: 24px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: var(--space-6);
+  background: var(--bg-white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
 }
 
 /* 响应式 */
@@ -943,5 +1288,116 @@ onMounted(() => {
   .stat-info .stat-number {
     font-size: 20px;
   }
+}
+
+/* Upload Modal Styles */
+:deep(.el-dialog__body) {
+  padding: var(--space-6);
+}
+
+.upload-steps {
+  margin-bottom: var(--space-8);
+}
+
+.steps-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  
+  &.active {
+    .step-circle {
+      background: var(--bili-blue);
+      color: var(--text-white);
+      box-shadow: var(--shadow-md);
+    }
+    
+    .step-label {
+      color: var(--bili-blue);
+      font-weight: var(--font-weight-medium);
+    }
+  }
+  
+  &.completed {
+    .step-circle {
+      background: var(--success-color);
+      color: var(--text-white);
+    }
+    
+    .step-label {
+      color: var(--success-color);
+    }
+  }
+}
+
+.step-circle {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-circle);
+  background: var(--bg-gray-1);
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  transition: all var(--transition-base);
+}
+
+.step-label {
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+  transition: color var(--transition-base);
+}
+
+.step-line {
+  width: 80px;
+  height: 2px;
+  background: var(--bg-gray-1);
+  margin: 0 var(--space-4);
+  margin-bottom: var(--space-6);
+  border-radius: 1px;
+  transition: background var(--transition-base);
+
+  &.active {
+    background: var(--bili-blue);
+  }
+}
+
+.upload-step-content {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.upload-step {
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.step-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-4);
+  margin-top: auto;
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border-light);
 }
 </style>

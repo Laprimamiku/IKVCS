@@ -16,7 +16,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import func, case, desc
 
 
 from app.core.database import get_db
@@ -62,19 +62,10 @@ async def get_video_status(
     
     注意：此接口仅用于开发和调试，生产环境应通过视频详情接口获取状态
     """
-    video = db.query(Video).filter(Video.id == video_id).first()
-    if not video:
-        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
-
-    status_map = {0: "转码中", 1: "审核中", 2: "已发布", 3: "已拒绝", -1: "转码失败"}
-    return VideoStatusResponse(
-        video_id=video.id,
-        title=video.title,
-        status=video.status,
-        status_text=status_map.get(video.status, "未知状态"),
-        video_url=video.video_url,
-        duration=video.duration,
-    )
+    from app.services.video.video_status_service import VideoStatusService
+    
+    status_info = VideoStatusService.get_video_status(db, video_id)
+    return VideoStatusResponse(**status_info)
 
 
 @router.post("/{video_id}/transcode", response_model=TranscodeTestResponse)
@@ -96,24 +87,16 @@ async def test_transcode(
             detail="此接口仅在开发环境可用"
         )
     
-    video = db.query(Video).filter(Video.id == video_id).first()
-    if not video:
-        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
-
-    from app.models.upload import UploadSession
-
-    upload_session = db.query(UploadSession).filter(UploadSession.video_id == video_id).first()
-    if not upload_session:
-        raise ValidationException(message="没有对应的上传会话，无法转码")
-
-    video.status = 0
-    db.commit()
-
+    from app.services.video.video_status_service import VideoStatusService
     from app.services.transcode import TranscodeService
-
+    
+    # 调用 Service 层处理转码触发逻辑
+    status_info = VideoStatusService.trigger_transcode(db, video_id)
+    
+    # 启动后台转码任务
     background_tasks.add_task(TranscodeService.transcode_video, video_id)
-
-    return TranscodeTestResponse(message="转码任务已启动，请稍后查询视频状态", video_id=video_id, status="transcoding")
+    
+    return TranscodeTestResponse(**status_info)
 
 
 @router.get("", response_model=VideoListResponse)
@@ -184,6 +167,7 @@ async def get_my_videos(
 async def get_video_detail(
     video_id: int,
     db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user),
 ):
     """
     获取视频详情并增加播放量
@@ -192,6 +176,14 @@ async def get_video_detail(
     """
     # 增加播放量
     VideoStatsService.increment_view_count(db, video_id)
+    
+    # 如果用户已登录，记录观看历史
+    if current_user:
+        from app.repositories.watch_history_repository import WatchHistoryRepository
+        try:
+            WatchHistoryRepository.record_watch(db, current_user.id, video_id)
+        except Exception as e:
+            logger.warning(f"记录观看历史失败: {e}")
     
     # 获取视频详情响应（包含所有数据组装逻辑）
     video_detail = VideoResponseBuilder.get_video_detail_response(db, video_id)
@@ -468,7 +460,103 @@ async def collect_video(
         # 获取最新收藏数
         video = db.query(Video).filter(Video.id == video_id).first()
         return {"is_collected": True, "collect_count": video.collect_count if video else 0}
+
+
+@router.get("/{video_id}/outline", response_model=dict)
+async def get_video_outline(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user),
+):
+    """
+    获取视频内容大纲
     
+    如果大纲不存在且视频有字幕，则自动生成
+    """
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    
+    # 如果已有大纲，直接返回
+    if video.outline:
+        try:
+            import json
+            outline_data = json.loads(video.outline)
+            return success_response(
+                data={"outline": outline_data},
+                message="获取大纲成功"
+            )
+        except:
+            pass
+    
+    # 如果没有大纲但有字幕，尝试生成
+    if video.subtitle_url:
+        from app.services.video.outline_service import OutlineService
+        outline = await OutlineService.extract_outline(video_id, video.subtitle_url)
+        
+        if outline:
+            # 保存大纲到数据库
+            import json
+            video.outline = json.dumps(outline, ensure_ascii=False)
+            db.commit()
+            
+            return success_response(
+                data={"outline": outline},
+                message="大纲生成成功"
+            )
+    
+    return success_response(
+        data={"outline": []},
+        message="暂无大纲"
+    )
+
+
+@router.post("/{video_id}/outline/generate", response_model=dict)
+async def generate_video_outline(
+    video_id: int,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    手动触发生成视频大纲（需要登录，仅上传者可操作）
+    """
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    
+    if video.uploader_id != current_user.id:
+        raise ForbiddenException("只有视频上传者可以生成大纲")
+    
+    if not video.subtitle_url:
+        raise ValidationException(message="视频没有字幕文件，无法生成大纲")
+    
+    # 异步生成大纲
+    from app.services.video.outline_service import OutlineService
+    
+    async def generate_and_save():
+        outline = await OutlineService.extract_outline(video_id, video.subtitle_url)
+        if outline:
+            # 使用新的数据库会话保存
+            from app.core.database import SessionLocal
+            db_session = SessionLocal()
+            try:
+                video_obj = db_session.query(Video).filter(Video.id == video_id).first()
+                if video_obj:
+                    import json
+                    video_obj.outline = json.dumps(outline, ensure_ascii=False)
+                    db_session.commit()
+            finally:
+                db_session.close()
+    
+    background_tasks.add_task(generate_and_save)
+    
+    return success_response(
+        data={},
+        message="大纲生成任务已启动，请稍后查询"
+    )
+
+
 @router.get("/{video_id}/ai-analysis", summary="获取视频AI分析报告")
 async def get_video_ai_analysis(
     video_id: int,
@@ -482,40 +570,106 @@ async def get_video_ai_analysis(
     if video.uploader_id != current_user.id and current_user.role != "admin":
         raise HTTPException(403, "无权查看此报告")
 
-    # 2. 统计弹幕情感分布 (基于 ai_score)
+    # 2. 检查数据量 (评论 + 弹幕)
+    comment_count = db.query(Comment).filter(Comment.video_id == video_id).count()
+    danmaku_count = db.query(Danmaku).filter(Danmaku.video_id == video_id).count()
+    total_count = comment_count + danmaku_count
+
+    if total_count == 0:
+        return {
+            "sentiment": {"positive": 0, "neutral": 0, "negative": 0},
+            "risks": [],
+            "summary": "暂无数据：该视频尚未产生足够的互动（评论/弹幕），无法进行AI智能分析。",
+            "expert_results": [],
+            "conflict_resolved": False
+        }
+
+    # 3. 统计情感分布 (基于 ai_score)
     # score < 40: 负面/争议
     # 40 <= score <= 75: 中性/普通
     # score > 75: 正面/优质
-    # 使用 CASE WHEN 语法兼容 MySQL（PostgreSQL 的 FILTER 语法 MySQL 不支持）
+    
+    # 3.1 弹幕统计
     danmaku_stats = db.query(
         func.sum(case((Danmaku.ai_score < 40, 1), else_=0)).label("negative"),
         func.sum(case((Danmaku.ai_score.between(40, 75), 1), else_=0)).label("neutral"),
         func.sum(case((Danmaku.ai_score > 75, 1), else_=0)).label("positive")
     ).filter(Danmaku.video_id == video_id).first()
 
-    # 3. 获取风险/高亮内容
-    risks = db.query(Danmaku).filter(
+    # 3.2 评论统计
+    comment_stats = db.query(
+        func.sum(case((Comment.ai_score < 40, 1), else_=0)).label("negative"),
+        func.sum(case((Comment.ai_score.between(40, 75), 1), else_=0)).label("neutral"),
+        func.sum(case((Comment.ai_score > 75, 1), else_=0)).label("positive")
+    ).filter(Comment.video_id == video_id).first()
+
+    # 合并统计
+    positive = (danmaku_stats.positive or 0) + (comment_stats.positive or 0)
+    neutral = (danmaku_stats.neutral or 0) + (comment_stats.neutral or 0)
+    negative = (danmaku_stats.negative or 0) + (comment_stats.negative or 0)
+
+    # 4. 获取风险/高亮内容 (从两张表获取，合并排序)
+    danmaku_risks = db.query(Danmaku).filter(
         Danmaku.video_id == video_id,
-        Danmaku.ai_score < 30  # 假设低于30分为风险
+        Danmaku.ai_score < 30
     ).order_by(desc(Danmaku.created_at)).limit(5).all()
 
-    # 4. 获取陪审团数据 (从 AgentAnalysis 表获取最近一条记录)
-    # 这里做个简单模拟，实际应关联查询 ai_agent_analysis 表
-    # 如果你想做得更细致，可以查 AgentAnalysis 表
+    comment_risks = db.query(Comment).filter(
+        Comment.video_id == video_id,
+        Comment.ai_score < 30
+    ).order_by(desc(Comment.created_at)).limit(5).all()
+
+    # 合并并按时间倒序
+    combined_risks = []
+    for d in danmaku_risks:
+        combined_risks.append({
+            "content": d.content,
+            "reason": "弹幕低分预警",
+            "score": d.ai_score,
+            "time": d.created_at
+        })
+    for c in comment_risks:
+        combined_risks.append({
+            "content": c.content,
+            "reason": "评论低分预警",
+            "score": c.ai_score,
+            "time": c.created_at
+        })
     
+    # 再次排序取前5
+    combined_risks.sort(key=lambda x: x['time'], reverse=True)
+    final_risks = combined_risks[:5]
+
+    # 5. 动态生成陪审团数据 (模拟逻辑)
+    # 基于情感分布动态调整专家评分
+    
+    # Meme Expert: 正面内容越多，评分越高
+    meme_score = 60 + min(35, int((positive / total_count) * 40)) if total_count > 0 else 80
+    
+    # Emotion Expert: 负面内容越少，评分越高
+    emotion_score = 100 - min(40, int((negative / total_count) * 100)) if total_count > 0 else 90
+    
+    # Legal Expert: 风险内容越多，评分越低
+    risk_count = len(combined_risks)
+    legal_score = max(50, 100 - risk_count * 10)
+
+    expert_results = [
+        {"agent": "Meme Expert", "score": meme_score, "opinion": "社区梗与互动氛围检测中...", "safe": True},
+        {"agent": "Emotion Expert", "score": emotion_score, "opinion": "情感倾向与对立情绪分析中...", "safe": True},
+        {"agent": "Legal Expert", "score": legal_score, "opinion": "合规性与潜在风险扫描中...", "safe": legal_score > 60}
+    ]
+    
+    sentiment_desc = "积极" if positive > negative else "需关注"
+    summary = f"基于 {total_count} 条互动（{comment_count}条评论，{danmaku_count}条弹幕）分析，整体氛围{sentiment_desc}。发现 {len(combined_risks)} 条潜在风险内容。"
+
     return {
         "sentiment": {
-            "positive": danmaku_stats.positive or 0,
-            "neutral": danmaku_stats.neutral or 0,
-            "negative": danmaku_stats.negative or 0
+            "positive": positive,
+            "neutral": neutral,
+            "negative": negative
         },
-        "risks": [
-            {
-                "content": d.content,
-                "reason": "AI低分预警", 
-                "score": d.ai_score,
-                "time": d.created_at
-            } for d in risks
-        ],
-        "summary": f"共分析 {(danmaku_stats.positive or 0) + (danmaku_stats.neutral or 0) + (danmaku_stats.negative or 0)} 条互动，整体氛围{(danmaku_stats.positive or 0) > (danmaku_stats.negative or 0) and '积极' or '需关注'}。"
+        "risks": final_risks,
+        "summary": summary,
+        "expert_results": expert_results,
+        "conflict_resolved": False
     }

@@ -1,5 +1,5 @@
 import { request } from '@/shared/utils/request';
-import type { User } from '@/shared/types/entity';
+import type { User, AiAnalysisResult } from '@/shared/types/entity';
 
 // ==================== 数据类型定义 ====================
 
@@ -73,8 +73,8 @@ export const adminApi = {
     
   // 5. 分类管理 (可选，根据之前后端实现)
   getCategories: () => request.get('/categories'),
-  createCategory: (data: any) => request.post('/admin/categories', data),
-  updateCategory: (id: number, data: any) => request.put(`/admin/categories/${id}`, data),
+  createCategory: (data: { name: string; description?: string }) => request.post('/admin/categories', data),
+  updateCategory: (id: number, data: { name?: string; description?: string }) => request.put(`/admin/categories/${id}`, data),
   deleteCategory: (id: number) => request.delete(`/admin/categories/${id}`),
 };
 
@@ -91,8 +91,14 @@ export interface PromptVersion {
   created_at: string;
 }
 
+export interface ErrorPattern {
+  pattern: string;
+  frequency: number;
+  examples: string[];
+}
+
 export interface ErrorPatternAnalysis {
-  error_patterns: any;
+  error_patterns: ErrorPattern[];
   suggestions: string; // Markdown
   sample_count: number;
   analysis_date: string;
@@ -101,8 +107,8 @@ export interface ErrorPatternAnalysis {
 export interface CorrectionRecord {
   id: number;
   content: string;
-  original_result: any;
-  corrected_result: any;
+  original_result: AiAnalysisResult;
+  corrected_result: AiAnalysisResult;
   correction_reason: string;
   created_at: string;
 }
@@ -126,5 +132,10 @@ export const adminAiApi = {
   // 获取人工修正记录
   getCorrections: (params: { page: number; page_size: number; content_type?: string }) => {
     return request.get<{ items: CorrectionRecord[]; total: number }>('/admin/ai/corrections', { params });
+  },
+
+  // 提交人工修正
+  submitCorrection: (data: { type: string; content: string; original_score: number; corrected_score: number; reason: string }) => {
+    return request.post('/admin/ai/correct', data);
   }
 };

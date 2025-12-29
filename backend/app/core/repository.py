@@ -15,11 +15,12 @@
     video = VideoRepository.get_by_id(db, 1)
     videos = VideoRepository.get_all(db, skip=0, limit=20)
 """
-from typing import Type, TypeVar, Optional, List, Dict, Any
+from typing import Type, TypeVar, Optional, List, Union, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from app.core.database import Base
+from app.core.types import FilterDict
 
 # 类型变量，用于泛型
 ModelType = TypeVar("ModelType", bound=Base)
@@ -67,7 +68,7 @@ class BaseRepository:
         db: Session,
         skip: int = 0,
         limit: int = 100,
-        filters: Optional[Dict[str, Any]] = None,
+        filters: Optional[FilterDict] = None,
         order_by: Optional[str] = None
     ) -> List[ModelType]:
         """
@@ -111,7 +112,7 @@ class BaseRepository:
         return query.offset(skip).limit(limit).all()
     
     @classmethod
-    def count(cls, db: Session, filters: Optional[Dict[str, Any]] = None) -> int:
+    def count(cls, db: Session, filters: Optional[FilterDict] = None) -> int:
         """
         统计记录数量
         
@@ -139,7 +140,7 @@ class BaseRepository:
         return query.count()
     
     @classmethod
-    def create(cls, db: Session, obj_data: Dict[str, Any]) -> ModelType:
+    def create(cls, db: Session, obj_data: FilterDict) -> ModelType:
         """
         创建新记录
         

@@ -17,10 +17,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str  # 必需，从 .env 读取
     
     # Redis 配置
-    REDIS_HOST: str = "localhost"  # 默认值，可通过环境变量覆盖
-    REDIS_PORT: int = 6379  # 默认值，可通过环境变量覆盖
-    REDIS_DB: int = 0  # 默认值，可通过环境变量覆盖
-    REDIS_PASSWORD: str = ""  # 默认值，可通过环境变量覆盖
+    REDIS_HOST: str = "localhost"  # 默认值，可通过环境变量 REDIS_HOST 覆盖
+    REDIS_PORT: int = 6379  # 默认值，可通过环境变量 REDIS_PORT 覆盖
+    REDIS_DB: int = 0  # 默认值，可通过环境变量 REDIS_DB 覆盖
+    REDIS_PASSWORD: str = ""  # 默认值，可通过环境变量 REDIS_PASSWORD 覆盖
     
     # JWT 配置
     JWT_SECRET_KEY: str  # 必需，从 .env 读取
@@ -33,8 +33,8 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "glm-4-flash"  # 默认值，可通过环境变量覆盖
     
     # 本地 LLM 配置 (大小模型协同)
-    LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1" # 默认 Ollama 地址
-    LOCAL_LLM_MODEL: str = "qwen2.5:0.5b" # 默认使用 0.5B 模型
+    LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1"  # 默认 Ollama 地址，可通过环境变量 LOCAL_LLM_BASE_URL 覆盖
+    LOCAL_LLM_MODEL: str = "qwen2.5:0.5b"  # 默认使用 0.5B 模型，可通过环境变量 LOCAL_LLM_MODEL 覆盖
     LOCAL_LLM_THRESHOLD_LOW: int = 30  # 本地模型低分置信区间下限
     LOCAL_LLM_THRESHOLD_HIGH: int = 80 # 本地模型高分置信区间上限
     
@@ -51,9 +51,9 @@ class Settings(BaseSettings):
     AI_VECTOR_QUANTIZATION_PRECISION: int = 3  # 向量量化精度（小数位数）
     
     # AI 大小模型协同配置（Layer 2.5）
-    LOCAL_LLM_ENABLED: bool = False
-    LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1"
-    LOCAL_LLM_MODEL: str = "qwen2.5:0.5b-instruct"
+    LOCAL_LLM_ENABLED: bool = False  # 可通过环境变量 LOCAL_LLM_ENABLED 覆盖
+    LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1"  # 可通过环境变量 LOCAL_LLM_BASE_URL 覆盖
+    LOCAL_LLM_MODEL: str = "qwen2.5:0.5b-instruct"  # 可通过环境变量 LOCAL_LLM_MODEL 覆盖
     LOCAL_LLM_THRESHOLD_HIGH: int = 80
     LOCAL_LLM_THRESHOLD_LOW: int = 30
     LOCAL_LLM_TIMEOUT: float = 5.0
@@ -102,7 +102,7 @@ class Settings(BaseSettings):
     TRANSCODE_PRIORITY_RESOLUTIONS: str = "360p,480p"  # 逗号分隔
     
     # CORS 配置（多个源用逗号分隔）
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"  # 默认值，可通过环境变量覆盖
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"  # 默认值，可通过环境变量 CORS_ORIGINS 覆盖
     
     class Config:
         env_file = ".env"

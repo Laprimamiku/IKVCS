@@ -23,7 +23,7 @@
         <!-- AI Quality Tags -->
         <div class="ai-badges" v-if="comment.ai_score">
           <span v-if="comment.ai_score >= 85" class="ai-badge premium">
-            <i class="badge-icon">✨</i>
+            <el-icon class="badge-icon" :size="12"><Star /></el-icon>
             优质评论
           </span>
           <span 
@@ -48,24 +48,24 @@
           :class="{ active: localIsLiked }"
           @click="handleLike"
         >
-          <span class="btn-icon">{{ localIsLiked ? '👍' : '👍' }}</span>
+          <el-icon class="btn-icon"><component :is="localIsLiked ? 'CircleCheckFilled' : 'CircleCheckFilled'" /></el-icon>
           <span class="btn-text">{{ localLikeCount || '' }}</span>
         </button>
 
         <!-- Dislike Button (visual only) -->
         <button class="action-btn dislike-btn">
-          <span class="btn-icon">👎</span>
+          <el-icon class="btn-icon"><Minus /></el-icon>
         </button>
 
         <!-- Reply Button -->
         <button class="action-btn reply-btn" @click="toggleReplyBox">
-          <span class="btn-icon">💬</span>
+          <el-icon class="btn-icon"><ChatDotRound /></el-icon>
           <span class="btn-text">回复</span>
         </button>
 
         <!-- More Actions -->
         <button class="action-btn more-btn" @click="handleReport">
-          <span class="btn-icon">⚠️</span>
+          <el-icon class="btn-icon"><Warning /></el-icon>
           <span class="btn-text">举报</span>
         </button>
       </div>
@@ -107,7 +107,10 @@
             <p class="reply-text">{{ reply.content }}</p>
             <div class="reply-footer">
               <span class="reply-time">{{ formatDate(reply.created_at) }}</span>
-              <button class="reply-action">👍 {{ reply.like_count || '' }}</button>
+              <button class="reply-action">
+                <el-icon><CircleCheckFilled /></el-icon>
+                <span>{{ reply.like_count || '' }}</span>
+              </button>
               <button class="reply-action">回复</button>
             </div>
           </div>
@@ -130,6 +133,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { Star, CircleCheckFilled, Minus, ChatDotRound, Warning } from "@element-plus/icons-vue";
 import type { Comment } from "@/shared/types/entity";
 import { toggleCommentLike } from "@/features/video/player/api/comment.api";
 import { createReport } from "@/features/video/player/api/report.api";
@@ -267,7 +271,7 @@ const handleReport = async () => {
     } else {
       ElMessage.error('举报提交失败');
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error !== 'cancel') {
       console.error('举报失败:', error);
       ElMessage.error(error?.response?.data?.detail || '举报提交失败');

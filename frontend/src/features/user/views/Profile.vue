@@ -49,7 +49,7 @@
           
           <div class="action-buttons">
             <el-button class="edit-btn" @click="editVisible = true">
-              <span class="btn-icon">✏️</span>
+              <el-icon class="btn-icon"><Edit /></el-icon>
               编辑资料
             </el-button>
           </div>
@@ -66,7 +66,7 @@
             :class="{ active: activeTab === 'home' }"
             @click="activeTab = 'home'"
           >
-            <span class="tab-icon">🏠</span>
+            <el-icon class="tab-icon"><HomeFilled /></el-icon>
             <span class="tab-text">主页</span>
           </div>
           <div 
@@ -74,7 +74,7 @@
             :class="{ active: activeTab === 'videos' }"
             @click="activeTab = 'videos'"
           >
-            <span class="tab-icon">🎬</span>
+            <el-icon class="tab-icon"><VideoCamera /></el-icon>
             <span class="tab-text">投稿</span>
             <span class="tab-count">{{ videos.length }}</span>
           </div>
@@ -83,7 +83,7 @@
             :class="{ active: activeTab === 'favorites' }"
             @click="activeTab = 'favorites'"
           >
-            <span class="tab-icon">⭐</span>
+            <el-icon class="tab-icon"><Star /></el-icon>
             <span class="tab-text">收藏</span>
           </div>
           <div 
@@ -91,14 +91,14 @@
             :class="{ active: activeTab === 'settings' }"
             @click="activeTab = 'settings'"
           >
-            <span class="tab-icon">⚙️</span>
+            <el-icon class="tab-icon"><Setting /></el-icon>
             <span class="tab-text">设置</span>
           </div>
         </div>
         
         <div class="nav-search">
           <div class="search-box">
-            <span class="search-icon">🔍</span>
+            <el-icon class="search-icon"><Search /></el-icon>
             <input 
               type="text" 
               placeholder="搜索视频" 
@@ -118,7 +118,7 @@
           <section class="content-section">
             <div class="section-header">
               <h2 class="section-title">
-                <span class="title-icon">🎬</span>
+                <el-icon class="title-icon"><VideoCamera /></el-icon>
                 我的视频
               </h2>
               <button class="more-btn">
@@ -137,7 +137,7 @@
             </div>
             
             <div v-else class="empty-state">
-              <div class="empty-icon">📹</div>
+              <el-icon class="empty-icon" :size="48"><VideoCamera /></el-icon>
               <p class="empty-text">暂无投稿视频</p>
               <el-button type="primary" @click="$router.push('/upload')">
                 去投稿
@@ -152,7 +152,7 @@
           <div class="sidebar-card achievement-card">
             <div class="card-header">
               <h3 class="card-title">
-                <span class="title-icon">🏆</span>
+                <el-icon class="title-icon"><Trophy /></el-icon>
                 个人成就
               </h3>
             </div>
@@ -176,7 +176,7 @@
           <div class="sidebar-card announcement-card">
             <div class="card-header">
               <h3 class="card-title">
-                <span class="title-icon">📢</span>
+                <el-icon class="title-icon"><Bell /></el-icon>
                 公告
               </h3>
             </div>
@@ -191,7 +191,7 @@
           <div class="sidebar-card tags-card">
             <div class="card-header">
               <h3 class="card-title">
-                <span class="title-icon">🏷️</span>
+                <el-icon class="title-icon"><PriceTag /></el-icon>
                 兴趣标签
               </h3>
             </div>
@@ -242,6 +242,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from "vue";
 import { useRouter } from "vue-router";
+import { Edit, HomeFilled, VideoCamera, Star, Setting, Search, Trophy, Bell, PriceTag } from "@element-plus/icons-vue";
 import { useUserStore } from "@/shared/stores/user";
 import { useUserActions } from "@/features/user/composables/useUserActions";
 import { getVideoList } from "@/features/video/shared/api/video.api";
@@ -300,7 +301,7 @@ const handleCropConfirm = async (file: File) => {
   if (success) Object.assign(displayUser, userStore.userInfo);
 };
 
-const handleSubmit = async (data: any) => {
+const handleSubmit = async (data: { nickname?: string; intro?: string }) => {
   const success = await updateUser(data);
   if (success) {
     Object.assign(displayUser, userStore.userInfo);
@@ -327,7 +328,8 @@ const handleSubmit = async (data: any) => {
   inset: 0;
   background: 
     linear-gradient(135deg, #667eea 0%, #764ba2 100%),
-    url("https://cdn.pixabay.com/photo/2016/11/21/14/53/man-1845814_1280.jpg");
+    // 使用 CSS 变量或默认背景
+    url(var(--profile-bg-url, '/default-profile-bg.jpg'));
   background-size: cover;
   background-position: center;
   filter: blur(0);

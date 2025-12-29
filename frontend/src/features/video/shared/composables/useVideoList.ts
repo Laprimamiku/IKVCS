@@ -26,7 +26,7 @@ export interface VideoListItem {
 }
 
 export interface CategoryItem extends Category {
-  icon?: any;
+  icon?: string | (() => unknown);
 }
 
 export function useVideoList() {

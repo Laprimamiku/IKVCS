@@ -13,9 +13,10 @@
 import asyncio
 import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import List, Optional, Dict, Any
 
 from app.core.config import settings
+from app.core.types import AIContentAnalysisResult, ExpertResult
 from app.services.ai.llm_service import llm_service
 from app.services.ai.prompts import (
     MEME_EXPERT_PROMPT,
@@ -108,7 +109,7 @@ class MultiAgentService:
         self, 
         content: str, 
         content_type: str
-    ) -> List[Dict[str, Any]]:
+    ) -> List[ExpertResult]:
         """
         并行调用多个 Agent
         
@@ -175,7 +176,7 @@ class MultiAgentService:
         
         return parsed
     
-    def _parse_agent_response(self, response_text: str) -> Dict[str, Any]:
+    def _parse_agent_response(self, response_text: str) -> ExpertResult:
         """
         解析 Agent 返回结果
         
@@ -259,7 +260,7 @@ class MultiAgentService:
                 "confidence": 0.5
             }
     
-    def _has_conflict(self, expert_results: List[Dict[str, Any]]) -> bool:
+    def _has_conflict(self, expert_results: List[ExpertResult]) -> bool:
         """
         检查是否存在冲突
         
@@ -301,8 +302,8 @@ class MultiAgentService:
     async def _call_judge_agent(
         self, 
         content: str, 
-        expert_results: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        expert_results: List[ExpertResult]
+    ) -> AIContentAnalysisResult:
         """
         调用裁决 Agent
         
@@ -344,7 +345,7 @@ class MultiAgentService:
         
         return parsed
     
-    def _weighted_merge(self, expert_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _weighted_merge(self, expert_results: List[ExpertResult]) -> AIContentAnalysisResult:
         """
         加权平均合并专家意见
         

@@ -85,11 +85,6 @@ class CategoryStatItem(BaseModel):
     count: int
 
 
-
-
-
-
-
 # ==================== 4. 分类管理 API (新增) ====================
 
 @router.post("/categories", response_model=CategoryResponse, summary="创建分类")
@@ -154,11 +149,6 @@ async def delete_category(
     CategoryRepository.delete(db, category_id)
     
     return MessageResponse(message="分类已删除")
-
-
-
-
-
 
 
 # =========================
@@ -371,18 +361,11 @@ async def get_reports(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
-    query = db.query(Report).filter(Report.status == status)
-    total = query.count()
-    offset = (page - 1) * page_size
-
-    reports = (
-        query.options(joinedload(Report.reporter))
-        .order_by(desc(Report.created_at))
-        .offset(offset)
-        .limit(page_size)
-        .all()
-    )
-
+    # 调用 Service 层获取举报列表
+    from app.services.admin.admin_service import AdminService
+    
+    reports, total = AdminService.get_reports(db, status, page, page_size)
+    
     return {
         "items": reports,
         "total": total,
@@ -399,36 +382,13 @@ async def handle_report(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
-    report = db.query(Report).filter(Report.id == report_id).first()
-    if not report:
-        raise HTTPException(404, "举报不存在")
-
-    if data.action == "delete_target":
-        if report.target_type == "VIDEO":
-            video = db.query(Video).filter(Video.id == report.target_id).first()
-            if video:
-                video.status = 4
-        elif report.target_type == "COMMENT":
-            comment = db.query(Comment).filter(Comment.id == report.target_id).first()
-            if comment:
-                comment.is_deleted = True
-        elif report.target_type == "DANMAKU":
-            danmaku = db.query(Danmaku).filter(Danmaku.id == report.target_id).first()
-            if danmaku:
-                danmaku.is_deleted = True
-
-        report.status = 1
-        report.admin_note = data.admin_note or "管理员删除了违规内容"
-
-    elif data.action == "ignore":
-        report.status = 2
-        report.admin_note = data.admin_note or "管理员判定无违规"
-    else:
-        raise HTTPException(400, "无效操作")
-
-    report.handler_id = admin.id
-    report.handled_at = datetime.utcnow()
-    db.commit()
+    # 调用 Service 层处理举报逻辑
+    from app.services.admin.admin_service import AdminService
+    
+    AdminService.handle_report(
+        db, report_id, data.action, admin.id, data.admin_note
+    )
+    
     return {"message": "举报已处理"}
 
 
@@ -506,10 +466,11 @@ async def category_stats(
 
 
 # =========================
-# AI反馈式自我纠错管理 (新增)
+# AI反馈式自我纠错管理
 # =========================
 
-from app.models.ai_correction import AICorrection, AIPromptVersion
+from app.models.ai_correction import AiCorrection
+from app.models.ai_prompt_version import AiPromptVersion
 from app.services.ai.self_correction_service import self_correction_service
 from pydantic import BaseModel
 
@@ -550,6 +511,9 @@ class PromptUpdateRequest(BaseModel):
     new_prompt: str
     update_reason: str
 
+class PromptRollbackRequest(BaseModel):
+    """Prompt 回滚请求"""
+    version_id: int
 
 @router.post("/ai/corrections", response_model=CorrectionResponse, summary="提交AI修正记录")
 async def create_correction(
@@ -559,7 +523,7 @@ async def create_correction(
 ):
     """管理员提交AI分析修正记录"""
     try:
-        correction = AICorrection(
+        correction = AiCorrection(
             content=correction_in.content,
             content_type=correction_in.content_type,
             original_result=correction_in.original_result,
@@ -581,6 +545,15 @@ async def create_correction(
         db.rollback()
         raise HTTPException(status_code=500, detail="创建修正记录失败")
 
+@router.post("/ai/correct", response_model=CorrectionResponse, summary="提交AI修正记录 (Frontend Alias)")
+async def submit_correction(
+    correction_in: CorrectionCreateRequest,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Frontend alias for create_correction"""
+    return await create_correction(correction_in, current_admin, db)
+
 
 @router.get("/ai/corrections", summary="获取修正记录列表")
 async def get_corrections(
@@ -592,16 +565,16 @@ async def get_corrections(
 ):
     """获取AI修正记录列表"""
     try:
-        query = db.query(AICorrection)
+        query = db.query(AiCorrection)
         
         if content_type:
-            query = query.filter(AICorrection.content_type == content_type)
+            query = query.filter(AiCorrection.content_type == content_type)
         
         total = query.count()
         offset = (page - 1) * page_size
         
         corrections = (
-            query.order_by(AICorrection.created_at.desc())
+            query.order_by(AiCorrection.created_at.desc())
             .offset(offset)
             .limit(page_size)
             .all()
@@ -679,7 +652,7 @@ async def get_prompt_versions(
 ):
     """查询Prompt版本历史"""
     try:
-        versions = self_correction_service.get_prompt_versions(
+        versions = self_correction_service.get_prompt_history(
             prompt_type=prompt_type,
             limit=limit
         )
@@ -693,177 +666,12 @@ async def get_prompt_versions(
         logger.error(f"获取Prompt版本历史失败: {e}")
         raise HTTPException(status_code=500, detail="获取版本历史失败")
 
-
-# ==================== AI 管理 API (新增) ====================
-
-from app.services.ai.self_correction_service import self_correction_service
-from app.models.ai_correction import AiCorrection
-
-
-class CorrectionCreateRequest(BaseModel):
-    """创建修正记录请求"""
-    content: str
-    content_type: str  # "comment" 或 "danmaku"
-    original_result: dict
-    corrected_result: dict
-    correction_reason: str
-
-
-class CorrectionResponse(BaseModel):
-    """修正记录响应"""
-    id: int
-    content: str
-    content_type: str
-    original_result: dict
-    corrected_result: dict
-    correction_reason: str
-    corrected_by: int
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class ErrorAnalysisRequest(BaseModel):
-    """错误分析请求"""
-    days: Optional[int] = 7
-
-
-class PromptUpdateRequest(BaseModel):
-    """Prompt 更新请求"""
-    prompt_type: str
-    new_prompt: str
-    update_reason: str
-
-
-class PromptRollbackRequest(BaseModel):
-    """Prompt 回滚请求"""
-    version_id: int
-
-
-@router.post("/ai/corrections", response_model=CorrectionResponse, summary="提交AI修正记录")
-async def create_correction(
-    correction_in: CorrectionCreateRequest,
-    db: Session = Depends(get_db),
-    current_admin: User = Depends(get_current_admin)
-):
-    """
-    管理员提交AI误判修正记录
-    
-    用于反馈式自我纠错机制
-    """
-    try:
-        correction = AiCorrection(
-            content=correction_in.content,
-            content_type=correction_in.content_type,
-            original_result=correction_in.original_result,
-            corrected_result=correction_in.corrected_result,
-            correction_reason=correction_in.correction_reason,
-            corrected_by=current_admin.id
-        )
-        db.add(correction)
-        db.commit()
-        db.refresh(correction)
-        
-        logger.info(f"[Admin] 管理员 {current_admin.username} 提交了AI修正记录 #{correction.id}")
-        
-        return correction
-    except Exception as e:
-        logger.error(f"[Admin] 创建修正记录失败: {e}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail="创建修正记录失败")
-
-
-@router.post("/ai/self-correction/analyze", summary="触发错误分析")
-async def trigger_error_analysis(
-    request: ErrorAnalysisRequest,
-    current_admin: User = Depends(get_current_admin)
-):
-    """
-    触发AI自我纠错分析
-    
-    分析最近N天的修正记录，生成优化建议
-    """
-    try:
-        result = await self_correction_service.analyze_errors(days=request.days)
-        
-        logger.info(f"[Admin] 管理员 {current_admin.username} 触发了错误分析（{request.days}天）")
-        
-        return result
-    except Exception as e:
-        logger.error(f"[Admin] 错误分析失败: {e}")
-        raise HTTPException(status_code=500, detail=f"错误分析失败: {str(e)}")
-
-
-@router.post("/ai/prompts/update", summary="更新System Prompt")
-async def update_prompt(
-    request: PromptUpdateRequest,
-    current_admin: User = Depends(get_current_admin)
-):
-    """
-    更新System Prompt
-    
-    应用优化建议，更新Prompt版本
-    """
-    try:
-        success = await self_correction_service.update_system_prompt(
-            prompt_type=request.prompt_type,
-            new_prompt=request.new_prompt,
-            update_reason=request.update_reason,
-            updated_by=current_admin.id
-        )
-        
-        if not success:
-            raise HTTPException(status_code=500, detail="更新失败")
-        
-        logger.info(
-            f"[Admin] 管理员 {current_admin.username} 更新了 {request.prompt_type} Prompt"
-        )
-        
-        return {"status": "success", "message": "System Prompt 已更新"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[Admin] 更新Prompt失败: {e}")
-        raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
-
-
-@router.get("/ai/prompts/versions", summary="查询Prompt版本历史")
-async def get_prompt_versions(
-    prompt_type: Optional[str] = Query(None, description="Prompt类型"),
-    limit: int = Query(50, ge=1, le=100, description="返回数量"),
-    current_admin: User = Depends(get_current_admin)
-):
-    """
-    查询Prompt版本历史
-    
-    支持按类型筛选
-    """
-    try:
-        versions = self_correction_service.get_prompt_history(
-            prompt_type=prompt_type,
-            limit=limit
-        )
-        
-        return {
-            "versions": versions,
-            "total": len(versions)
-        }
-    except Exception as e:
-        logger.error(f"[Admin] 查询Prompt版本失败: {e}")
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
-
-
 @router.post("/ai/prompts/rollback", summary="回滚Prompt版本")
 async def rollback_prompt(
     request: PromptRollbackRequest,
     current_admin: User = Depends(get_current_admin)
 ):
-    """
-    回滚到指定Prompt版本
-    
-    用于快速恢复到之前的稳定版本
-    """
+    """回滚到指定Prompt版本"""
     try:
         success = await self_correction_service.rollback_prompt(
             version_id=request.version_id,
@@ -877,7 +685,7 @@ async def rollback_prompt(
             f"[Admin] 管理员 {current_admin.username} 回滚Prompt到版本 {request.version_id}"
         )
         
-        return {"status": "success", "message": "Prompt 已回滚"}
+        return {"message": "Prompt 已回滚"}
     except HTTPException:
         raise
     except Exception as e:
@@ -889,11 +697,7 @@ async def rollback_prompt(
 async def get_ai_config(
     current_admin: User = Depends(get_current_admin)
 ):
-    """
-    获取AI系统当前配置
-    
-    包括：本地模型、多智能体、自我纠错等配置
-    """
+    """获取AI系统当前配置"""
     from app.core.config import settings
     
     return {

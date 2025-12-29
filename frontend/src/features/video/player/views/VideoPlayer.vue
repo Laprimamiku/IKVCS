@@ -72,7 +72,7 @@
           <div class="action-bar">
             <div class="action-item like-btn" :class="{ active: isLiked }" @click="handleLike">
               <div class="action-icon">
-                <el-icon :size="20"><ThumbsUp /></el-icon>
+                <el-icon :size="20"><CircleCheckFilled /></el-icon>
               </div>
               <span class="action-text">{{ formatNumber(likeCount) }}</span>
             </div>
@@ -169,7 +169,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, defineComponent, h } from "vue";
+import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
@@ -182,23 +182,6 @@ import {
   ArrowUp,
   CircleCheckFilled,
 } from "@element-plus/icons-vue";
-
-// 自定义点赞图标组件
-const ThumbsUp = defineComponent({
-  name: 'ThumbsUp',
-  render() {
-    return h('svg', {
-      viewBox: '0 0 24 24',
-      fill: 'currentColor',
-      width: '1em',
-      height: '1em'
-    }, [
-      h('path', {
-        d: 'M18.77 11h-4.23l1.52-4.94C16.38 5.03 15.54 4 14.38 4c-.58 0-1.14.24-1.52.65L7.8 10H4c-.55 0-1 .45-1 1v8c0 .55.45 1 1 1h3.5c.28 0 .5-.22.5-.5 0-.12-.05-.23-.13-.33L11 17h6.27c.73 0 1.35-.44 1.62-1.09l1.78-4.32c.34-.82-.07-1.75-.9-1.59z'
-      })
-    ]);
-  }
-});
 
 import AppHeader from "@/shared/components/layout/AppHeader.vue";
 import AuthDialog from "@/features/auth/components/AuthDialog.vue";

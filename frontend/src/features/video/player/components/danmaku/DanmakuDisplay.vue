@@ -15,7 +15,9 @@
         @mousedown.stop
         @click.stop="handleDanmakuClick(item)"
       >
-        <span v-if="isHighlight(item)" class="hq-icon">✨</span>
+        <el-icon v-if="isHighlight(item)" class="hq-icon" :size="14">
+          <Star />
+        </el-icon>
         {{ item.text }}
       </div>
     </template>
@@ -24,6 +26,7 @@
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from "element-plus";
+import { Star } from "@element-plus/icons-vue";
 import type { DanmakuDisplayItem } from "@/shared/types/entity";
 import { createReport } from "@/features/video/player/api/report.api";
 import { useUserStore } from "@/shared/stores/user";
@@ -88,7 +91,7 @@ const handleDanmakuClick = async (item: DanmakuDisplayItem) => {
     } else {
       ElMessage.error("举报提交失败，请稍后重试");
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error !== "cancel") {
       console.error("举报失败:", error);
       const errorMsg =
@@ -193,7 +196,7 @@ const getItemStyle = (item: DanmakuDisplayItem) => {
 
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 
   // Enable click for reporting
   pointer-events: auto;
@@ -202,7 +205,7 @@ const getItemStyle = (item: DanmakuDisplayItem) => {
     opacity var(--transition-fast),
     transform var(--transition-fast);
   border-radius: var(--radius-xs);
-  padding: 2px 4px;
+  padding: var(--space-0-5) var(--space-1);
 
   &:hover {
     opacity: 0.85;

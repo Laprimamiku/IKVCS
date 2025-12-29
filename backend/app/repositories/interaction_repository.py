@@ -18,7 +18,6 @@ class InteractionRepository(BaseRepository):
     
     注意：点赞功能已通过 Redis 实现（见 redis_service），
     收藏功能通过 UserCollection 模型实现
-    此类保留为未来扩展使用
     """
     model = None
     
@@ -69,6 +68,100 @@ class InteractionRepository(BaseRepository):
         """
         # 当前通过 Redis 实现，见 redis_service
         return []
+    
+    @classmethod
+    def get_collection(
+        cls,
+        db: Session,
+        user_id: int,
+        video_id: int
+    ) -> Optional[UserCollection]:
+        """
+        获取收藏记录
+        
+        Args:
+            db: 数据库会话
+            user_id: 用户ID
+            video_id: 视频ID
+            
+        Returns:
+            Optional[UserCollection]: 收藏记录，不存在返回None
+        """
+        return db.query(UserCollection).filter(
+            UserCollection.user_id == user_id,
+            UserCollection.video_id == video_id
+        ).first()
+    
+    @classmethod
+    def create_collection(
+        cls,
+        db: Session,
+        user_id: int,
+        video_id: int
+    ) -> UserCollection:
+        """
+        创建收藏记录
+        
+        Args:
+            db: 数据库会话
+            user_id: 用户ID
+            video_id: 视频ID
+            
+        Returns:
+            UserCollection: 创建的收藏记录
+        """
+        new_collection = UserCollection(user_id=user_id, video_id=video_id)
+        db.add(new_collection)
+        db.commit()
+        db.refresh(new_collection)
+        return new_collection
+    
+    @classmethod
+    def delete_collection(
+        cls,
+        db: Session,
+        collection_id: int
+    ) -> bool:
+        """
+        删除收藏记录
+        
+        Args:
+            db: 数据库会话
+            collection_id: 收藏记录ID
+            
+        Returns:
+            bool: 是否删除成功
+        """
+        collection = db.query(UserCollection).filter(UserCollection.id == collection_id).first()
+        if collection:
+            db.delete(collection)
+            db.commit()
+            return True
+        return False
+    
+    @classmethod
+    def get_user_collections(
+        cls,
+        db: Session,
+        user_id: int,
+        skip: int = 0,
+        limit: int = 20
+    ) -> List[UserCollection]:
+        """
+        获取用户的收藏列表（支持分页）
+        
+        Args:
+            db: 数据库会话
+            user_id: 用户ID
+            skip: 跳过数量
+            limit: 限制数量
+            
+        Returns:
+            List[UserCollection]: 收藏列表
+        """
+        return db.query(UserCollection).filter(
+            UserCollection.user_id == user_id
+        ).order_by(UserCollection.created_at.desc()).offset(skip).limit(limit).all()
 
 
 class CollectionRepository(BaseRepository):

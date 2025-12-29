@@ -46,11 +46,14 @@
           </template>
 
           <!-- Empty State -->
-          <div v-else-if="!loading && videos.length === 0" class="empty-state">
-            <div class="empty-icon">📺</div>
-            <div class="empty-text">暂无视频内容</div>
-            <div class="empty-hint">快去上传第一个视频吧~</div>
-          </div>
+          <EmptyState
+            v-else-if="!loading && videos.length === 0"
+            title="暂无视频内容"
+            description="快去上传第一个视频吧~"
+            :icon="VideoCamera"
+            :icon-size="48"
+            size="medium"
+          />
         </div>
 
         <!-- Load More Section -->
@@ -86,8 +89,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from "vue";
 import { useRouter } from "vue-router";
-import { ArrowDown } from "@element-plus/icons-vue";
+import { ArrowDown, VideoCamera } from "@element-plus/icons-vue";
 import AppHeader from "@/shared/components/layout/AppHeader.vue";
+import EmptyState from "@/shared/components/atoms/EmptyState.vue";
 import CategoryNav from "@/features/home/components/CategoryNav.vue";
 import HomeBanner from "@/features/home/components/HomeBanner.vue";
 import VideoCard from "@/features/video/shared/components/VideoCard.vue";
@@ -222,7 +226,7 @@ const handleVideoClick = (v: Video) => {
 };
 
 // 处理轮播图点击事件
-const handleBannerClick = (item: any) => {
+const handleBannerClick = (item: { id: number; title: string }) => {
   if (item.video) {
     router.push(`/videos/${item.video.id}`);
   }
@@ -338,9 +342,8 @@ onMounted(async () => {
   }
   
   .skeleton-title {
-    height: 18px;
+    height: var(--font-size-lg);
     width: 90%;
-    border-radius: var(--radius-sm);
     background: linear-gradient(
       90deg,
       var(--bg-gray-1) 25%,
@@ -349,13 +352,13 @@ onMounted(async () => {
     );
     background-size: 200% 100%;
     animation: skeleton-loading 1.5s infinite;
+    border-radius: var(--radius-sm);
     margin-bottom: var(--space-2);
   }
   
   .skeleton-meta {
-    height: 14px;
+    height: var(--font-size-sm);
     width: 60%;
-    border-radius: var(--radius-sm);
     background: linear-gradient(
       90deg,
       var(--bg-gray-1) 25%,
@@ -364,6 +367,7 @@ onMounted(async () => {
     );
     background-size: 200% 100%;
     animation: skeleton-loading 1.5s infinite;
+    border-radius: var(--radius-sm);
   }
 }
 
@@ -383,7 +387,7 @@ onMounted(async () => {
   color: var(--text-tertiary);
   
   .empty-icon {
-    font-size: 64px;
+    font-size: var(--font-size-5xl);
     margin-bottom: var(--space-4);
   }
   
@@ -412,8 +416,8 @@ onMounted(async () => {
   font-size: var(--font-size-sm);
   
   .loading-spinner {
-    width: 20px;
-    height: 20px;
+    width: var(--space-5);
+    height: var(--space-5);
     border: 2px solid var(--border-color);
     border-top-color: var(--bili-pink);
     border-radius: 50%;
@@ -430,7 +434,7 @@ onMounted(async () => {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-8);
-  height: 40px;
+  height: var(--btn-height-xl);
   background: var(--bg-white);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-round);
@@ -462,7 +466,7 @@ onMounted(async () => {
   
   .divider-line {
     width: 60px;
-    height: 1px;
+    height: 1px; /* 保持 1px 细线 */
     background: var(--border-color);
   }
   

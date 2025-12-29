@@ -2,8 +2,9 @@ import httpx
 import json
 import logging
 import re
-from typing import Dict, Any, Optional
+from typing import Optional
 from app.core.config import settings
+from app.core.types import AIContentAnalysisResult
 from app.services.ai.prompts import COMMENT_SYSTEM_PROMPT, DANMAKU_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ class LocalModelService:
         self.model = settings.LOCAL_LLM_MODEL
         self.timeout = settings.LOCAL_LLM_TIMEOUT
 
-    async def predict(self, content: str, content_type: str) -> Optional[Dict[str, Any]]:
+    async def predict(self, content: str, content_type: str) -> Optional[AIContentAnalysisResult]:
         """
         调用本地模型进行预测
         
@@ -86,7 +87,7 @@ class LocalModelService:
     def _get_system_prompt(self, content_type: str) -> str:
         return COMMENT_SYSTEM_PROMPT if content_type == "comment" else DANMAKU_SYSTEM_PROMPT
 
-    def _parse_json_safely(self, text: str) -> Optional[Dict[str, Any]]:
+    def _parse_json_safely(self, text: str) -> Optional[AIContentAnalysisResult]:
         """鲁棒的 JSON 解析，应对小模型可能输出 Markdown 代码块的情况"""
         try:
             # 清理 Markdown 标记 ```json ... ```
@@ -97,7 +98,7 @@ class LocalModelService:
             logger.warning(f"[LocalLLM] JSON 解析失败: {text[:50]}...")
             return None
 
-    def _calculate_confidence(self, result: Dict[str, Any]) -> float:
+    def _calculate_confidence(self, result: AIContentAnalysisResult) -> float:
         """
         基于评分的启发式置信度计算
         策略：评分越极端（接近0或100），置信度越高；中间分段置信度低。

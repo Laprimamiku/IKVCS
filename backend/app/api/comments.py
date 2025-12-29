@@ -11,7 +11,7 @@ from app.models.user import User
 from app.models.comment import Comment
 from app.schemas.comment import CommentCreate, CommentResponse
 from app.schemas.common import PageResult
-from app.repositories.comment_repository import comment_repository
+from app.services.comment.comment_service import CommentService
 from app.services.ai.llm_service import llm_service  # 导入 LLM 服务
 
 router = APIRouter()
@@ -28,18 +28,12 @@ async def create_comment(
     发表评论 (支持根评论和回复)
     并触发 AI 智能分析
     """
-    # 1. 基础校验 (如果是回复，检查父评论是否存在)
-    if comment_in.parent_id:
-        parent = comment_repository.get(db, comment_in.parent_id)
-        if not parent or parent.video_id != video_id:
-            raise HTTPException(status_code=404, detail="父评论不存在或不属于该视频")
-
-    # 2. 创建评论
-    new_comment = comment_repository.create(
+    # 调用 Service 层处理评论创建逻辑
+    new_comment = CommentService.create_comment(
         db=db,
         video_id=video_id,
         user_id=current_user.id,
-        obj_in=comment_in
+        comment_data=comment_in
     )
     
     # 3. 🚀 触发 AI 异步分析任务 (核心集成点)
@@ -59,9 +53,14 @@ def list_comments(
     """
     获取视频评论列表 (仅一级评论)
     """
-    skip = (page - 1) * page_size
-    items, total = comment_repository.get_list(
-        db, video_id, skip=skip, limit=page_size, sort_by=sort_by, parent_id=None
+    # 调用 Service 层处理评论查询逻辑
+    items, total = CommentService.get_comment_list(
+        db=db,
+        video_id=video_id,
+        page=page,
+        page_size=page_size,
+        sort_by=sort_by,
+        parent_id=None  # 只查根评论
     )
     
     # 计算总页数
@@ -86,13 +85,18 @@ def list_replies(
     获取某条评论的子回复
     """
     # 先查一下父评论，确认视频ID
-    parent = comment_repository.get(db, comment_id)
+    parent = CommentService.get_comment_by_id(db, comment_id)
     if not parent:
         raise HTTPException(status_code=404, detail="评论不存在")
         
-    skip = (page - 1) * page_size
-    items, total = comment_repository.get_list(
-        db, parent.video_id, skip=skip, limit=page_size, sort_by="new", parent_id=comment_id
+    # 调用 Service 层处理回复查询逻辑
+    items, total = CommentService.get_comment_list(
+        db=db,
+        video_id=parent.video_id,
+        page=page,
+        page_size=page_size,
+        sort_by="new",
+        parent_id=comment_id
     )
     
     total_pages = (total + page_size - 1) // page_size
@@ -114,7 +118,7 @@ def delete_comment(
     """
     删除评论 (软删除)
     """
-    comment = comment_repository.get(db, comment_id)
+    comment = CommentService.get_comment_by_id(db, comment_id)
     if not comment:
         raise HTTPException(status_code=404, detail="评论不存在")
     
@@ -122,7 +126,7 @@ def delete_comment(
     if comment.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="无权删除该评论")
         
-    comment_repository.delete(db, comment_id)
+    CommentService.delete_comment(db, comment_id)
     
     return {"success": True, "message": "评论已删除"}
 
@@ -142,7 +146,7 @@ async def like_comment(
     from app.services.cache.redis_service import redis_service
     
     # 检查评论是否存在
-    comment = comment_repository.get(db, comment_id)
+    comment = CommentService.get_comment_by_id(db, comment_id)
     if not comment:
         raise HTTPException(status_code=404, detail="评论不存在")
     

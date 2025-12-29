@@ -12,11 +12,12 @@
 
 import json
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.types import ErrorPattern, CorrectionRecord
 from app.core.database import SessionLocal
 from app.models.ai_correction import AiCorrection
 from app.models.ai_prompt_version import AiPromptVersion
@@ -31,7 +32,7 @@ class SelfCorrectionService:
         self.min_samples = settings.SELF_CORRECTION_MIN_SAMPLES
         self.analysis_days = settings.SELF_CORRECTION_ANALYSIS_DAYS
     
-    async def analyze_errors(self, days: Optional[int] = None) -> Dict[str, Any]:
+    async def analyze_errors(self, days: Optional[int] = None) -> dict:
         """
         分析最近 N 天的错误案例
         

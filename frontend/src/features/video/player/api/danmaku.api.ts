@@ -15,3 +15,10 @@ export async function sendDanmaku(videoId: number, payload: DanmakuSendPayload) 
   return request.post<Danmaku>(`/videos/${videoId}/danmakus`, payload)
 }
 
+/**
+ * 点赞/取消点赞弹幕
+ */
+export function toggleDanmakuLike(videoId: number, danmakuId: number) {
+  return request.post<{ is_liked: boolean; like_count: number }>(`/videos/${videoId}/danmakus/${danmakuId}/like`);
+}
+

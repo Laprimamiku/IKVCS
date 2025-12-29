@@ -183,4 +183,55 @@ class VideoRepository(BaseRepository):
         video.view_count = (video.view_count or 0) + 1
         db.commit()
         return True
+    
+    @classmethod
+    def increment_collect_count(
+        cls,
+        db: Session,
+        video_id: int
+    ) -> bool:
+        """
+        增加视频收藏数
+        
+        Args:
+            db: 数据库会话
+            video_id: 视频ID
+            
+        Returns:
+            bool: 是否成功
+        """
+        video = cls.get_by_id(db, video_id)
+        if not video:
+            return False
+        
+        video.collect_count = (video.collect_count or 0) + 1
+        db.commit()
+        return True
+    
+    @classmethod
+    def decrement_collect_count(
+        cls,
+        db: Session,
+        video_id: int
+    ) -> bool:
+        """
+        减少视频收藏数
+        
+        Args:
+            db: 数据库会话
+            video_id: 视频ID
+            
+        Returns:
+            bool: 是否成功
+        """
+        video = cls.get_by_id(db, video_id)
+        if not video:
+            return False
+        
+        if video.collect_count and video.collect_count > 0:
+            video.collect_count = video.collect_count - 1
+        else:
+            video.collect_count = 0
+        db.commit()
+        return True
 

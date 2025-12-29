@@ -1,7 +1,10 @@
 <template>
   <div class="ai-governance-container">
     <div class="header-section">
-      <h2>🤖 AI 进化控制台</h2>
+      <h2>
+        <el-icon><Setting /></el-icon>
+        AI 进化控制台
+      </h2>
       <p class="subtitle">
         监控系统自进化状态，管理 Prompt 版本与多智能体共识。
       </p>
@@ -28,7 +31,19 @@
             :disabled="analyzing"
             :loading="analyzing"
           >
-            {{ analyzing ? "分析中..." : "✨ 触发元分析" }}
+            <el-icon v-if="!analyzing"><MagicStick /></el-icon>
+            {{ analyzing ? "分析中..." : "触发元分析" }}
+          </el-button>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="label">人工修正记录</div>
+        <div class="value">
+          {{ totalCorrections }} <span class="unit">条</span>
+        </div>
+        <div class="action">
+          <el-button type="success" size="small" @click="openCorrectionDialog">
+            <el-icon><Edit /></el-icon> 手动修正
           </el-button>
         </div>
       </div>
@@ -63,16 +78,38 @@
         <div v-if="selectedVersion && !analysisResult" class="version-detail">
           <div class="detail-header">
             <h3>版本 V{{ selectedVersion.id }} 详情</h3>
-            <span class="tag">{{ selectedVersion.prompt_type }}</span>
+            <div class="actions">
+               <el-switch
+                v-model="showDiff"
+                active-text="Diff 对比"
+                inactive-text="源码模式"
+              />
+              <span class="tag">{{ selectedVersion.prompt_type }}</span>
+            </div>
           </div>
-          <div class="code-preview">
+
+          <!-- Diff View / Code View -->
+          <div class="code-preview" v-if="!showDiff">
             <pre>{{ selectedVersion.prompt_content }}</pre>
+          </div>
+          <div class="diff-view" v-else>
+            <div class="diff-column">
+              <div class="diff-header">上一版本 (V{{ getPreviousVersion(selectedVersion)?.id || 'Null' }})</div>
+              <pre>{{ getPreviousVersion(selectedVersion)?.prompt_content || '// 无上一版本' }}</pre>
+            </div>
+            <div class="diff-column current">
+              <div class="diff-header">当前版本 (V{{ selectedVersion.id }})</div>
+              <pre>{{ selectedVersion.prompt_content }}</pre>
+            </div>
           </div>
         </div>
 
         <div v-if="analysisResult" class="analysis-result">
           <div class="result-header">
-            <h3>🔍 错误模式元分析报告</h3>
+            <h3>
+              <el-icon><Search /></el-icon>
+              错误模式元分析报告
+            </h3>
             <el-button 
               type="info" 
               size="small"
@@ -107,17 +144,49 @@
         </div>
       </div>
     </div>
+
+    <!-- Manual Correction Dialog -->
+    <el-dialog v-model="correctionDialogVisible" title="提交人工修正 (Misjudgment Feedback)" width="500px">
+      <el-form :model="correctionForm" label-width="100px">
+        <el-form-item label="内容类型">
+          <el-radio-group v-model="correctionForm.type">
+            <el-radio label="COMMENT">评论</el-radio>
+            <el-radio label="DANMAKU">弹幕</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="原始内容">
+          <el-input v-model="correctionForm.content" type="textarea" :rows="3" placeholder="输入被误判的内容..." />
+        </el-form-item>
+        <el-form-item label="原始评分">
+          <el-input-number v-model="correctionForm.originalScore" :min="0" :max="100" />
+        </el-form-item>
+        <el-form-item label="正评分">
+          <el-input-number v-model="correctionForm.correctedScore" :min="0" :max="100" />
+        </el-form-item>
+        <el-form-item label="修正原因">
+          <el-input v-model="correctionForm.reason" placeholder="例如：这是流行梗，非违规" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="correctionDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="submitCorrection">提交修正</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
+import { Edit, Search, Setting, MagicStick } from "@element-plus/icons-vue";
 import {
   adminAiApi,
   type PromptVersion,
   type ErrorPatternAnalysis,
 } from "../api/admin.api";
-import { formatDate } from "@/shared/utils/formatters"; // 假设你有这个工具函数
+import { formatDate } from "@/shared/utils/formatters";
+import { ElMessage } from "element-plus";
 
 // 状态
 const versions = ref<PromptVersion[]>([]);
@@ -125,11 +194,23 @@ const totalVersions = ref(0);
 const lastUpdateTime = ref("-");
 const selectedPromptType = ref("COMMENT");
 const selectedVersion = ref<PromptVersion | null>(null);
+const showDiff = ref(false);
 
-const pendingCorrections = ref(12); // 示例数据，实际可调用 getCorrections 统计
+const pendingCorrections = ref(12);
+const totalCorrections = ref(0); // 实际应从 API 获取
 const analyzing = ref(false);
 const analysisResult = ref<ErrorPatternAnalysis | null>(null);
 const newPromptDraft = ref("");
+
+// Correction Dialog
+const correctionDialogVisible = ref(false);
+const correctionForm = ref({
+  type: "COMMENT",
+  content: "",
+  originalScore: 0,
+  correctedScore: 100,
+  reason: ""
+});
 
 // 方法
 const fetchVersions = async () => {
@@ -153,6 +234,14 @@ const fetchVersions = async () => {
   }
 };
 
+const getPreviousVersion = (current: PromptVersion) => {
+  const index = versions.value.findIndex(v => v.id === current.id);
+  if (index !== -1 && index + 1 < versions.value.length) {
+    return versions.value[index + 1];
+  }
+  return null;
+};
+
 const triggerAnalysis = async () => {
   analyzing.value = true;
   try {
@@ -163,13 +252,12 @@ const triggerAnalysis = async () => {
 
     if (res.success) {
       analysisResult.value = res.data;
-      // 提取建议作为草稿
       newPromptDraft.value =
         extractCodeBlock(res.data.suggestions) ||
         "无法自动提取 Prompt 代码，请手动复制建议内容。";
     }
-  } catch (e) {
-    alert("分析失败：" + (e as any).message);
+  } catch (e: unknown) {
+    ElMessage.error("分析失败：" + (e.message || "未知错误"));
   } finally {
     analyzing.value = false;
   }
@@ -187,15 +275,45 @@ const applyOptimization = async () => {
       update_reason:
         "基于元分析报告的自动进化 (v" + (totalVersions.value + 1) + ")",
     });
-    alert("更新成功！系统已进化。");
+    ElMessage.success("更新成功！系统已进化。");
     analysisResult.value = null;
-    fetchVersions(); // 刷新列表
+    fetchVersions();
   } catch (e) {
-    alert("更新失败");
+    ElMessage.error("更新失败");
   }
 };
 
-// 简单的 Markdown 渲染模拟 (生产环境建议用 markdown-it)
+// Manual Correction
+const openCorrectionDialog = () => {
+  correctionDialogVisible.value = true;
+};
+
+const submitCorrection = async () => {
+  try {
+    await adminAiApi.submitCorrection({
+      type: correctionForm.value.type,
+      content: correctionForm.value.content,
+      original_score: correctionForm.value.originalScore,
+      corrected_score: correctionForm.value.correctedScore,
+      reason: correctionForm.value.reason
+    });
+    ElMessage.success("修正已提交！系统将在下次元分析时学习此案例。");
+    correctionDialogVisible.value = false;
+    totalCorrections.value++;
+    // 重置表单
+    correctionForm.value = {
+      type: "COMMENT",
+      content: "",
+      originalScore: 0,
+      correctedScore: 100,
+      reason: ""
+    };
+  } catch (e) {
+    ElMessage.error("提交失败");
+  }
+};
+
+// Utils
 const renderMarkdown = (text: string) => {
   if (!text) return "";
   return text.replace(/\n/g, "<br>").replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
@@ -214,50 +332,54 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .ai-governance-container {
-  padding: 24px;
-  background: #f8f9fa;
+  padding: var(--space-6);
+  background: var(--bg-global);
   min-height: 100vh;
 }
 
 .header-section {
-  margin-bottom: 24px;
+  margin-bottom: var(--space-6);
   h2 {
-    font-size: 24px;
-    margin-bottom: 8px;
+    font-size: var(--font-size-2xl);
+    margin-bottom: var(--space-2);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
   }
   .subtitle {
-    color: #666;
+    color: var(--text-secondary);
   }
 }
 
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
-  margin-bottom: 24px;
+  gap: var(--space-5);
+  margin-bottom: var(--space-6);
 
   .stat-card {
-    background: white;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    background: var(--bg-white);
+    padding: var(--space-5);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-card);
 
     &.warning {
-      border-left: 4px solid #ff9800;
+      border-left: 4px solid var(--warning-color);
     }
 
     .label {
-      font-size: 14px;
-      color: #888;
-      margin-bottom: 8px;
+      font-size: var(--font-size-sm);
+      color: var(--text-tertiary);
+      margin-bottom: var(--space-2);
     }
     .value {
-      font-size: 28px;
-      font-weight: bold;
-      color: #333;
+      font-size: var(--font-size-3xl);
+      font-weight: var(--font-weight-bold);
+      color: var(--text-primary);
     }
     .unit {
-      font-size: 14px;
+      font-size: var(--font-size-sm);
       font-weight: normal;
     }
     .desc {
@@ -312,6 +434,8 @@ onMounted(() => {
     }
     select {
       padding: 4px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
     }
   }
 }
@@ -384,6 +508,13 @@ onMounted(() => {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 16px;
+    
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
     .tag {
       background: #e0e7ff;
       color: #4338ca;
@@ -404,6 +535,47 @@ onMounted(() => {
       margin: 0;
       font-family: monospace;
       white-space: pre-wrap;
+    }
+  }
+  
+  /* Diff View Styles */
+  .diff-view {
+    flex: 1;
+    display: flex;
+    gap: 12px;
+    overflow: hidden;
+    
+    .diff-column {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: #f8f9fa;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      overflow: hidden;
+      
+      &.current {
+        background: #fff;
+        border-color: #764ba2;
+      }
+      
+      .diff-header {
+        padding: 8px;
+        background: #eee;
+        font-size: 12px;
+        font-weight: bold;
+        border-bottom: 1px solid #ddd;
+      }
+      
+      pre {
+        flex: 1;
+        margin: 0;
+        padding: 12px;
+        overflow: auto;
+        font-size: 12px;
+        white-space: pre-wrap;
+        font-family: monospace;
+      }
     }
   }
 

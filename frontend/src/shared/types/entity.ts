@@ -40,6 +40,31 @@ export interface UserInfo {
 // [Fix] 添加 User 类型别名，解决 admin.api.ts 的引用错误
 export type User = UserInfo;
 
+// [New] 多智能体专家结果接口
+export interface ExpertResult {
+  score: number;
+  category: string;
+  label: string;
+  reason: string;
+  is_highlight: boolean;
+  is_inappropriate: boolean;
+  confidence?: number;
+}
+
+// [New] AI 分析结果接口 (对应后端 AiAnalysisResult)
+export interface AiAnalysisResult {
+  score: number;               // 0-100 score
+  category: string;            // Content category
+  label: string;               // Label
+  reason: string;              // Analysis reasoning
+  source: 'local' | 'cloud';   // Inference source (based on LocalModelService)
+  confidence: number;          // Confidence level (0.0-1.0)
+  is_highlight: boolean;       // Whether to highlight
+  is_inappropriate: boolean;   // Whether it is inappropriate
+  expert_results?: ExpertResult[];      // Raw opinions from the Multi-Agent Jury
+  conflict_resolved?: boolean; // Whether a Judge Agent was triggered
+}
+
 // 视频信息
 export interface Video {
   id: number;
@@ -51,6 +76,7 @@ export interface Video {
   duration: number;
   view_count: number;
   like_count: number;
+  comment_count?: number;
   collect_count?: number;
   danmaku_count?: number; // 后端可能需要补这个字段，前端暂用0
   
@@ -58,6 +84,9 @@ export interface Video {
   is_liked?: boolean;
   is_collected?: boolean;
   
+  // [New] AI 分析数据
+  ai_analysis_result?: AiAnalysisResult;
+
   status?: number; // 0: 转码中, 1: 审核中, 2: 已发布, 3: 已拒绝, 4: 已删除
   category_id?: number;
   uploader: UserBrief;
@@ -123,6 +152,9 @@ export interface Danmaku {
   ai_score?: number;     // AI 评分 (0-100)
   ai_category?: string;  // AI 分类
   is_highlight?: boolean;// 是否为优质/高亮弹幕
+  // [New] 新增点赞相关字段
+  like_count?: number;   // 点赞数
+  is_liked?: boolean;    // 当前用户是否已点赞
 }
 
 export interface DanmakuDisplayItem {
