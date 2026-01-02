@@ -106,25 +106,68 @@ class SubtitleParser:
     
     @staticmethod
     def _parse_json(file_path: str) -> List[SubtitleEntry]:
-        """解析 JSON 格式"""
+        """
+        解析 JSON 格式字幕
+        支持多种格式：
+        1. bilibili-evolved 格式：{ "body": [{ "from": 1.234, "to": 5.678, "content": "..." }] }
+        2. 标准格式：[{ "start": 1.234, "end": 5.678, "text": "..." }]
+        3. 嵌套格式：{ "subtitles": [{ "start_time": 1.234, "end_time": 5.678, "text": "..." }] }
+        """
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
         subtitles = []
-        if isinstance(data, list):
+        
+        # 处理 bilibili-evolved 格式：{ "body": [...] }
+        if isinstance(data, dict) and 'body' in data:
+            body = data['body']
+            if isinstance(body, list):
+                for item in body:
+                    # bilibili-evolved 使用 from/to/content
+                    from_time = item.get('from', item.get('start', item.get('start_time', 0)))
+                    to_time = item.get('to', item.get('end', item.get('end_time', 0)))
+                    content = item.get('content', item.get('text', ''))
+                    
+                    if content:  # 只添加有内容的字幕
+                        subtitles.append({
+                            'start_time': float(from_time),
+                            'end_time': float(to_time),
+                            'text': str(content).strip()
+                        })
+        
+        # 处理标准数组格式：[{ "start": ..., "end": ..., "text": ... }]
+        elif isinstance(data, list):
             for item in data:
-                subtitles.append({
-                    'start_time': item.get('start', item.get('start_time', 0)),
-                    'end_time': item.get('end', item.get('end_time', 0)),
-                    'text': item.get('text', item.get('content', ''))
-                })
+                if isinstance(item, dict):
+                    start_time = item.get('start', item.get('start_time', item.get('from', 0)))
+                    end_time = item.get('end', item.get('end_time', item.get('to', 0)))
+                    text = item.get('text', item.get('content', ''))
+                    
+                    if text:  # 只添加有内容的字幕
+                        subtitles.append({
+                            'start_time': float(start_time),
+                            'end_time': float(end_time),
+                            'text': str(text).strip()
+                        })
+        
+        # 处理嵌套格式：{ "subtitles": [...] }
         elif isinstance(data, dict) and 'subtitles' in data:
-            for item in data['subtitles']:
-                subtitles.append({
-                    'start_time': item.get('start', item.get('start_time', 0)),
-                    'end_time': item.get('end', item.get('end_time', 0)),
-                    'text': item.get('text', item.get('content', ''))
-                })
+            subtitle_list = data['subtitles']
+            if isinstance(subtitle_list, list):
+                for item in subtitle_list:
+                    start_time = item.get('start', item.get('start_time', item.get('from', 0)))
+                    end_time = item.get('end', item.get('end_time', item.get('to', 0)))
+                    text = item.get('text', item.get('content', ''))
+                    
+                    if text:  # 只添加有内容的字幕
+                        subtitles.append({
+                            'start_time': float(start_time),
+                            'end_time': float(end_time),
+                            'text': str(text).strip()
+                        })
+        
+        # 按开始时间排序，确保字幕顺序正确
+        subtitles.sort(key=lambda x: x['start_time'])
         
         return subtitles
     

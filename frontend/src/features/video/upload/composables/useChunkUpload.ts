@@ -273,18 +273,40 @@ export function useChunkUpload() {
         throw new Error('未获取到视频ID，请稍后重试')
       }
 
-      // 上传封面（如果有）
+      // 并行上传封面和字幕（如果有）
+      const uploadTasks: Promise<any>[] = []
+      
       if (coverFile) {
-        uploadStatus.value = '正在上传封面...'
-        uploadDetail.value = '请勿关闭窗口'
-        await uploadVideoCover(videoId, coverFile)
+        uploadStatus.value = '正在上传封面和字幕...'
+        uploadDetail.value = '并行上传中，请勿关闭窗口'
+        uploadTasks.push(
+          uploadVideoCover(videoId, coverFile).catch((error) => {
+            console.error('封面上传失败:', error)
+            ElMessage.warning('封面上传失败，可稍后重新上传')
+            // 不抛出错误，允许继续
+            return null
+          })
+        )
       }
 
-      // 上传字幕（如果有）
       if (subtitleFile) {
-        uploadStatus.value = '正在上传字幕...'
-        uploadDetail.value = '支持 SRT、VTT、JSON、ASS'
-        await uploadVideoSubtitle(videoId, subtitleFile)
+        if (!coverFile) {
+          uploadStatus.value = '正在上传字幕...'
+          uploadDetail.value = '支持 SRT、VTT、JSON、ASS'
+        }
+        uploadTasks.push(
+          uploadVideoSubtitle(videoId, subtitleFile).catch((error) => {
+            console.error('字幕上传失败:', error)
+            ElMessage.warning('字幕上传失败，可稍后重新上传')
+            // 不抛出错误，允许继续
+            return null
+          })
+        )
+      }
+
+      // 等待所有上传任务完成
+      if (uploadTasks.length > 0) {
+        await Promise.all(uploadTasks)
       }
 
       uploadStatus.value = '上传完成！'

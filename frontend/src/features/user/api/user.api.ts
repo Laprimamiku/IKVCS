@@ -97,7 +97,65 @@ export interface WatchHistoryItem {
   };
 }
 
-export async function getWatchHistory() {
-  return request.get<ApiResponse<{ items: WatchHistoryItem[]; total: number }>>('/users/me/watch-history')
+export async function getWatchHistory(params?: { page?: number; page_size?: number }) {
+  return request.get<ApiResponse<{ items: WatchHistoryItem[]; total: number; page: number; page_size: number }>>('/users/me/watch-history', { params })
+}
+
+/**
+ * 删除观看历史记录
+ * 
+ * @param watchHistoryId - 观看历史记录ID
+ * @returns 返回删除结果
+ */
+export async function deleteWatchHistory(watchHistoryId: number) {
+  return request.delete<ApiResponse>(`/users/me/watch-history/${watchHistoryId}`)
+}
+
+/**
+ * 获取用户统计数据
+ * 
+ * @returns 返回用户统计数据（关注、粉丝、获赞）
+ */
+export interface UserStats {
+  following_count: number
+  followers_count: number
+  total_likes: number
+}
+
+export async function getUserStats() {
+  return request.get<ApiResponse<UserStats>>('/users/me/stats')
+}
+
+/**
+ * 收藏文件夹相关 API
+ */
+export interface CollectionFolder {
+  id: number;
+  name: string;
+  description?: string;
+  count: number;
+  created_at: string;
+}
+
+export interface CollectionFoldersResponse {
+  folders: CollectionFolder[];
+  uncategorized_count: number;
+}
+
+/**
+ * 获取收藏文件夹列表
+ */
+export async function getCollectionFolders() {
+  return request.get<ApiResponse<CollectionFoldersResponse>>('/users/me/favorites/folders')
+}
+
+/**
+ * 创建收藏文件夹
+ */
+export async function createCollectionFolder(name: string, description?: string) {
+  return request.post<ApiResponse<CollectionFolder>>('/users/me/favorites/folders', {
+    name,
+    description
+  })
 }
 

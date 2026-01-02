@@ -1091,7 +1091,7 @@ onMounted(async () => {
 }
 
 .upload-modal-content {
-  padding: 24px;
+  padding: 32px 40px; // 增加内边距，从 24px 改为 32px 40px
   max-height: calc(90vh - 80px);
   overflow-y: auto;
 }
@@ -1186,9 +1186,10 @@ onMounted(async () => {
 }
 
 .upload-step {
-  min-height: 400px;
+  min-height: 450px; // 增加最小高度
   display: flex;
   flex-direction: column;
+  gap: 24px; // 增加内部元素间距
 }
 
 /* Step Actions */
@@ -1197,7 +1198,8 @@ onMounted(async () => {
   justify-content: center;
   gap: 16px;
   margin-top: auto;
-  padding-top: 24px;
+  padding-top: 32px; // 增加上内边距
+  padding-bottom: 8px;
   border-top: 1px solid #f1f2f3;
 }
 

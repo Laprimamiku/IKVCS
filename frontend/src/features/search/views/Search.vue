@@ -180,7 +180,7 @@ import { VideoPlay, ChatDotRound, User, Search } from "@element-plus/icons-vue";
 import AppHeader from "@/shared/components/layout/AppHeader.vue";
 import AuthDialog from "@/features/auth/components/AuthDialog.vue";
 import { getVideoList } from "@/features/video/shared/api/video.api";
-import { getCategories } from "@/features/video/shared/api/category.api";
+import { getPublicCategories } from "@/features/video/shared/api/category.api";
 import type {
   Video,
   Category,
@@ -301,7 +301,7 @@ watch(
  */
 const loadCategories = async () => {
   try {
-    const response = await getCategories();
+    const response = await getPublicCategories();
 
     if (response && response.data && Array.isArray(response.data)) {
       categories.value = response.data as Category[];

@@ -227,4 +227,48 @@ view_count=VideoStatsService.get_view_count_from_model(video),
             page_size=page_size,
             total_pages=total_pages,
         )
-
+    
+    @staticmethod
+    def build_list_item(video, current_user_id: Optional[int] = None) -> dict:
+        """
+        构建单个视频列表项响应（用于观看历史等场景）
+        
+        Args:
+            video: Video 模型对象
+            current_user_id: 当前用户ID（可选，用于判断是否已点赞/收藏）
+            
+        Returns:
+            dict: 视频列表项数据
+        """
+        from app.services.video.video_stats_service import VideoStatsService
+        from app.services.cache.redis_service import redis_service
+        
+        # 判断是否已点赞（如果提供了 current_user_id）
+        is_liked = False
+        if current_user_id:
+            # 检查 Redis 中的点赞状态
+            like_key = f"likes:video:{video.id}"
+            is_liked = redis_service.redis.sismember(like_key, current_user_id)
+        
+        return {
+            "id": video.id,
+            "title": video.title,
+            "description": video.description,
+            "cover_url": video.cover_url,
+            "duration": video.duration,
+            "view_count": VideoStatsService.get_view_count_from_model(video),
+            "like_count": video.like_count,
+            "collect_count": video.collect_count,
+            "is_liked": is_liked,
+            "uploader": {
+                "id": video.uploader.id,
+                "username": video.uploader.username,
+                "nickname": video.uploader.nickname,
+                "avatar": video.uploader.avatar,
+            },
+            "category": {
+                "id": video.category.id,
+                "name": video.category.name
+            },
+            "created_at": video.created_at.isoformat() if hasattr(video.created_at, 'isoformat') else str(video.created_at),
+        }

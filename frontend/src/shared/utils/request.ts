@@ -85,6 +85,9 @@ service.interceptors.response.use(
   }
 );
 
+// 上传相关请求的超时时间（10分钟，适用于大文件上传）
+const UPLOAD_TIMEOUT = 600000; // 600秒 = 10分钟
+
 // 封装通用请求方法
 export const request = {
   get<T = unknown>(url: string, config?: RequestConfig): Promise<ApiResponse<T>> {
@@ -98,6 +101,22 @@ export const request = {
   },
   delete<T = unknown>(url: string, config?: RequestConfig): Promise<ApiResponse<T>> {
     return service.delete(url, config) as unknown as Promise<ApiResponse<T>>;
+  }
+};
+
+// 上传专用请求方法（使用更长超时时间）
+export const uploadRequest = {
+  post<T = unknown>(url: string, data?: unknown, config?: RequestConfig): Promise<ApiResponse<T>> {
+    return service.post(url, data, {
+      ...config,
+      timeout: config?.timeout || UPLOAD_TIMEOUT
+    }) as unknown as Promise<ApiResponse<T>>;
+  },
+  put<T = unknown>(url: string, data?: unknown, config?: RequestConfig): Promise<ApiResponse<T>> {
+    return service.put(url, data, {
+      ...config,
+      timeout: config?.timeout || UPLOAD_TIMEOUT
+    }) as unknown as Promise<ApiResponse<T>>;
   }
 };
 

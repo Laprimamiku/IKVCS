@@ -38,11 +38,13 @@ class VideoManagementService:
             user_id: 用户ID（用于权限验证）
             title: 视频标题（可选）
             description: 视频描述（可选）
-            category_id: 分类ID（可选）
+            category_id: 分类ID（可选，None表示设置为临时分类）
             
         Returns:
             Optional[Video]: 更新后的视频对象，不存在或权限不足返回 None
         """
+        from app.services.category.category_service import CategoryService
+        
         video = VideoRepository.get_by_id(db, video_id)
         if not video:
             logger.warning(f"视频不存在：video_id={video_id}")
@@ -60,12 +62,17 @@ class VideoManagementService:
         if description is not None:
             update_data['description'] = description
         if category_id is not None:
-            # 验证分类是否存在
-            category = CategoryRepository.get_by_id(db, category_id)
-            if not category:
-                logger.warning(f"分类不存在：category_id={category_id}")
-                return None
-            update_data['category_id'] = category_id
+            if category_id == 0:
+                # category_id = 0 表示设置为临时分类
+                temp_category = CategoryService.get_or_create_temp_category(db)
+                update_data['category_id'] = temp_category.id
+            else:
+                # 验证分类是否存在
+                category = CategoryRepository.get_by_id(db, category_id)
+                if not category:
+                    logger.warning(f"分类不存在：category_id={category_id}")
+                    return None
+                update_data['category_id'] = category_id
         
         if update_data:
             updated_video = VideoRepository.update(db, video_id, update_data)

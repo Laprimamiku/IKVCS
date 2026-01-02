@@ -21,6 +21,7 @@ class Comment(Base):
     video_id = Column(Integer, ForeignKey('videos.id', ondelete='CASCADE'), nullable=False, comment="视频ID")
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, comment="用户ID")
     parent_id = Column(Integer, ForeignKey('comments.id', ondelete='CASCADE'), nullable=True, comment="父评论ID")
+    reply_to_user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True, comment="回复目标用户ID（用于@功能）")
     content = Column(Text, nullable=False, comment="评论内容")
     ai_score = Column(Integer, nullable=True, comment="AI评分")
     ai_label = Column(String(50), nullable=True, comment="AI标签")
@@ -30,6 +31,7 @@ class Comment(Base):
     
     # 关系映射
     user = relationship("User", foreign_keys=[user_id])
+    reply_to_user = relationship("User", foreign_keys=[reply_to_user_id])
     video = relationship("Video", foreign_keys=[video_id])
     parent = relationship("Comment", remote_side=[id], backref="replies")
     

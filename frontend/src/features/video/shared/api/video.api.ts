@@ -1,4 +1,4 @@
-import { request } from "@/shared/utils/request";
+import { request, uploadRequest } from "@/shared/utils/request";
 import type { Video, PageResult, VideoQueryParams } from "@/shared/types/entity";
 import { processVideoUrls, processVideoList } from "@/shared/utils/apiHelpers";
 
@@ -37,7 +37,7 @@ export function incrementViewCount(videoId: number) {
 export function uploadVideoCover(videoId: number, file: File) {
   const formData = new FormData();
   formData.append('cover', file);
-  return request.post(`/videos/${videoId}/cover`, formData, {
+  return uploadRequest.post(`/videos/${videoId}/cover`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   });
 }
@@ -48,7 +48,7 @@ export function uploadVideoCover(videoId: number, file: File) {
 export function uploadVideoSubtitle(videoId: number, file: File) {
   const formData = new FormData();
   formData.append('subtitle', file);
-  return request.post(`/videos/${videoId}/subtitle`, formData, {
+  return uploadRequest.post(`/videos/${videoId}/subtitle`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   });
 }
@@ -74,8 +74,8 @@ export function updateVideo(videoId: number, data: { title?: string; description
 /**
  * 删除视频
  */
-export function deleteVideo(videoId: number, hardDelete: boolean = true) {
-  return request.delete(`/videos/${videoId}`, { params: { hard_delete: hardDelete } });
+export function deleteVideo(videoId: number) {
+  return request.delete(`/videos/${videoId}`);
 }
 
 /**
@@ -87,15 +87,21 @@ export function toggleVideoLike(videoId: number) {
 
 /**
  * 收藏/取消收藏视频
+ * @param videoId - 视频ID
+ * @param folderId - 文件夹ID（可选，null 表示未分类，undefined 表示取消收藏）
  */
-export function toggleVideoCollect(videoId: number) {
-  return request.post<{ is_collected: boolean; collect_count: number }>(`/videos/${videoId}/collect`);
+export function toggleVideoCollect(videoId: number, folderId?: number | null) {
+  // 如果 folderId 是 undefined，说明是取消收藏，不传 folder_id
+  // 如果 folderId 是 null，说明收藏到未分类
+  // 如果 folderId 是数字，说明收藏到指定文件夹
+  const data = folderId !== undefined ? { folder_id: folderId } : {};
+  return request.post<{ is_collected: boolean; collect_count: number }>(`/videos/${videoId}/collect`, data);
 }
 
 /**
  * 获取我的收藏列表
  */
-export async function getMyCollections(params: { page: number; page_size: number }) {
+export async function getMyCollections(params: { page: number; page_size: number; folder_id?: number | null }) {
   const response = await request.get<PageResult<Video>>('/users/me/favorites', { params });
   if (response.success && response.data) {
     // 同样处理视频列表格式

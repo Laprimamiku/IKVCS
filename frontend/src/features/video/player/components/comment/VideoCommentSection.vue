@@ -204,11 +204,12 @@ const handleCreateComment = async (content: string) => {
 };
 
 // Reply to comment
-const handleReplyComment = async (content: string, parentId: number) => {
+const handleReplyComment = async (content: string, parentId: number, replyToUserId?: number | null) => {
   try {
     const res = await createComment(props.videoId, {
       content,
       parent_id: parentId,
+      reply_to_user_id: replyToUserId || null,
     });
     if (res.success) {
       ElMessage.success("回复成功");

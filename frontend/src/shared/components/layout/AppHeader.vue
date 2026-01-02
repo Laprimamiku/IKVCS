@@ -150,9 +150,6 @@
                   </el-avatar>
                   <div class="user-info">
                     <div class="nickname">{{ userStore.userInfo?.nickname }}</div>
-                    <div class="level-wrap">
-                      <span class="level-badge lv5">LV5</span>
-                    </div>
                   </div>
                 </div>
                 <div class="dropdown-body">
@@ -433,11 +430,21 @@ const goToVideoCenter = () => {
 };
 
 const goToCollections = () => {
-  router.push("/collections");
+  router.push("/profile");
+  // 延迟切换标签页，确保页面已加载
+  setTimeout(() => {
+    const event = new CustomEvent('switch-tab', { detail: 'favorites' });
+    window.dispatchEvent(event);
+  }, 100);
 };
 
 const goToHistory = () => {
-  router.push("/history");
+  router.push("/profile");
+  // 延迟切换标签页，确保页面已加载
+  setTimeout(() => {
+    const event = new CustomEvent('switch-tab', { detail: 'history' });
+    window.dispatchEvent(event);
+  }, 100);
 };
 
 const handleUploadClick = () => {
@@ -967,29 +974,6 @@ const handleLogout = async () => {
         margin-bottom: var(--space-1);
       }
 
-      .level-wrap {
-        display: flex;
-        align-items: center;
-        gap: var(--space-2);
-      }
-
-      .level-badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 0 6px;
-        height: 16px;
-        font-size: 10px;
-        font-weight: var(--font-weight-bold);
-        color: var(--text-white);
-        border-radius: 2px;
-
-        &.lv0, &.lv1 { background: #C0C4CC; }
-        &.lv2 { background: #95DDB2; }
-        &.lv3 { background: #92D1E5; }
-        &.lv4 { background: #FFB37C; }
-        &.lv5 { background: #FF6C6C; }
-        &.lv6 { background: #FF0000; }
-      }
     }
   }
 

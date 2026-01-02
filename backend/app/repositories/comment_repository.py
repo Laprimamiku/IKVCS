@@ -13,6 +13,7 @@ class CommentRepository:
             video_id=video_id,
             user_id=user_id,
             parent_id=obj_in.parent_id,
+            reply_to_user_id=obj_in.reply_to_user_id,
             content=obj_in.content,
             # AI 字段默认为 None，等待异步任务更新
             ai_score=None,
@@ -24,8 +25,11 @@ class CommentRepository:
         return db_comment
 
     def get(self, db: Session, id: int) -> Optional[Comment]:
-        """获取单条评论"""
-        return db.query(Comment).filter(
+        """获取单条评论（包含用户和回复目标用户信息）"""
+        return db.query(Comment).options(
+            joinedload(Comment.user),
+            joinedload(Comment.reply_to_user)
+        ).filter(
             Comment.id == id, 
             Comment.is_deleted == False
         ).first()
@@ -63,7 +67,10 @@ class CommentRepository:
         total = query.count()
 
         # 预加载用户信息，避免 N+1 查询
-        query = query.options(joinedload(Comment.user))
+        query = query.options(
+            joinedload(Comment.user),
+            joinedload(Comment.reply_to_user)
+        )
         
         # 分页
         items = query.offset(skip).limit(limit).all()

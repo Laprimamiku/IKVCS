@@ -160,8 +160,13 @@ class TranscodeService:
                         transcoded_resolutions.append(result)
                 
                 # 如果至少有一个清晰度转码成功，立即生成播放列表并更新状态
+                # 特别地，如果 360p 转码成功，立即更新状态让用户可观看
                 if transcoded_resolutions:
                     logger.info(f"第一阶段完成：成功转码 {len(transcoded_resolutions)} 个清晰度，立即更新播放列表")
+                    # 检查是否有 360p（最低清晰度，用户可立即观看）
+                    has_360p = any(r[0] == '360p' for r in transcoded_resolutions)
+                    if has_360p:
+                        logger.info(f"360p 转码成功，立即更新视频状态为可观看：video_id={video_id}")
                     TranscodeService._update_playlist_and_status(
                         db, video, video_id, output_dir, transcoded_resolutions, input_path
                     )
@@ -253,20 +258,41 @@ class TranscodeService:
         
         logger.info(f"FFmpeg 命令 ({name})：{' '.join(ffmpeg_cmd)}")
         
-        # 执行转码
-        returncode, stderr = TranscodeExecutor.execute_transcode(ffmpeg_cmd)
+        # 执行转码（最多重试3次）
+        max_retries = 3
+        retry_count = 0
+        last_error = None
         
-        if returncode == 0:
-            logger.info(f"转码成功：{name}")
-            # 计算带宽（码率转换为 bps）
-            bandwidth = int(video_bitrate.replace('k', '')) * 1000
-            return (name, resolution, bandwidth)
-        else:
-            logger.error(f"转码失败：{name}, returncode={returncode}")
-            if stderr:
-                error_msg = stderr.decode('utf-8', errors='ignore') if isinstance(stderr, bytes) else str(stderr)
-                logger.error(f"FFmpeg 错误输出 ({name})：{error_msg}")
-            return None
+        while retry_count < max_retries:
+            returncode, stderr = TranscodeExecutor.execute_transcode(ffmpeg_cmd)
+            
+            if returncode == 0:
+                logger.info(f"转码成功：{name}" + (f"（重试 {retry_count} 次后成功）" if retry_count > 0 else ""))
+                # 计算带宽（码率转换为 bps）
+                bandwidth = int(video_bitrate.replace('k', '')) * 1000
+                return (name, resolution, bandwidth)
+            else:
+                retry_count += 1
+                error_msg = ""
+                if stderr:
+                    error_msg = stderr.decode('utf-8', errors='ignore') if isinstance(stderr, bytes) else str(stderr)
+                    last_error = error_msg
+                
+                if retry_count < max_retries:
+                    logger.warning(f"转码失败 ({name})，第 {retry_count} 次重试：returncode={returncode}")
+                    if error_msg:
+                        logger.warning(f"FFmpeg 错误输出 ({name})：{error_msg[:500]}")  # 只记录前500字符
+                    # 等待1秒后重试
+                    import time
+                    time.sleep(1)
+                else:
+                    logger.error(f"转码失败 ({name})，已重试 {max_retries} 次，放弃：returncode={returncode}")
+                    if last_error:
+                        # 记录完整错误信息
+                        logger.error(f"FFmpeg 完整错误输出 ({name})：{last_error}")
+                    return None
+        
+        return None
     
     @staticmethod
     def _update_playlist_and_status(

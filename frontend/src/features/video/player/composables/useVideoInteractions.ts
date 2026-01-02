@@ -49,6 +49,14 @@ export function useVideoInteractions(videoData?: Ref<Video | null | undefined>) 
             videoData.value.is_liked = response.data.is_liked;
             videoData.value.like_count = response.data.like_count;
           }
+          // 触发全局事件，通知其他页面更新数据
+          window.dispatchEvent(new CustomEvent('video-like-changed', {
+            detail: {
+              videoId: videoData.value.id,
+              isLiked: response.data.is_liked,
+              likeCount: response.data.like_count
+            }
+          }));
         }
       }
     } catch (error) {
@@ -61,42 +69,53 @@ export function useVideoInteractions(videoData?: Ref<Video | null | undefined>) 
     return true;
   };
 
-  const handleCollect = async () => {
+  const handleCollect = async (folderId?: number | null) => {
     if (!userStore.isLoggedIn) {
       ElMessage.warning('请先登录');
       return false;
     }
 
-    const originalState = isCollected.value;
-    const originalCount = collectCount.value;
+    // 如果已收藏，直接取消收藏
+    if (isCollected.value) {
+      const originalState = isCollected.value;
+      const originalCount = collectCount.value;
 
-    // 乐观更新
-    isCollected.value = !isCollected.value;
-    collectCount.value = isCollected.value ? collectCount.value + 1 : collectCount.value - 1;
+      // 乐观更新
+      isCollected.value = false;
+      collectCount.value = collectCount.value - 1;
 
-    try {
-      if (videoData?.value) {
-        const response = await toggleVideoCollect(videoData.value.id);
-        // 使用后端返回的最新状态
-        if (response.success && response.data) {
-          isCollected.value = response.data.is_collected;
-          collectCount.value = response.data.collect_count;
-          // 同步更新 videoData
-          if (videoData.value) {
-            videoData.value.is_collected = response.data.is_collected;
-            videoData.value.collect_count = response.data.collect_count;
+      try {
+        if (videoData?.value) {
+          const response = await toggleVideoCollect(videoData.value.id, undefined);
+          if (response.success && response.data) {
+            isCollected.value = response.data.is_collected;
+            collectCount.value = response.data.collect_count;
+            if (videoData.value) {
+              videoData.value.is_collected = response.data.is_collected;
+              videoData.value.collect_count = response.data.collect_count;
+            }
+            window.dispatchEvent(new CustomEvent('video-collect-changed', {
+              detail: {
+                videoId: videoData.value.id,
+                isCollected: response.data.is_collected,
+                collectCount: response.data.collect_count
+              }
+            }));
+            ElMessage.success('取消收藏');
           }
-          ElMessage.success(isCollected.value ? '收藏成功' : '取消收藏');
         }
+      } catch (error) {
+        isCollected.value = originalState;
+        collectCount.value = originalCount;
+        ElMessage.error('操作失败');
+        return false;
       }
-    } catch (error) {
-      // 回滚乐观更新
-      isCollected.value = originalState;
-      collectCount.value = originalCount;
-      ElMessage.error('操作失败');
-      return false;
+      return true;
     }
-    return true;
+
+    // 如果未收藏，需要选择文件夹（通过回调函数处理）
+    // 这里返回一个标志，让调用者知道需要弹出文件夹选择对话框
+    return 'need-folder-selection';
   };
 
   const handleShare = () => {

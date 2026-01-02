@@ -92,17 +92,7 @@ export function useVideoManagement() {
    */
   const deleteVideoItem = async (video: Video) => {
     try {
-      await ElMessageBox.confirm(
-        `确定要删除视频"${video.title}"吗？此操作不可恢复！`,
-        '警告',
-        {
-          confirmButtonText: '确定删除',
-          cancelButtonText: '取消',
-          type: 'error',
-          confirmButtonClass: 'el-button--danger',
-        }
-      )
-      await deleteVideo(video.id, true) // hardDelete = true，直接删除数据库记录
+      await deleteVideo(video.id)
       ElMessage.success('删除成功')
       await loadVideos()
     } catch (error) {
@@ -128,7 +118,7 @@ export function useVideoManagement() {
       await updateVideo(videoId, {
         title: data.title,
         description: data.description,
-        category_id: data.category_id || undefined,
+        category_id: data.category_id || 0, // 0表示设置为临时分类
       })
 
       // 2. 上传封面（如果有新封面）

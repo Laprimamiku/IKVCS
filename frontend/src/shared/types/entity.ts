@@ -190,6 +190,7 @@ export interface Comment {
   video_id: number;
   user_id: number;
   parent_id: number | null;
+  reply_to_user_id?: number | null;
   content: string;
   like_count: number;
   created_at: string;
@@ -199,6 +200,7 @@ export interface Comment {
   
   // 关联用户
   user: UserBrief;
+  reply_to_user?: UserBrief; // 回复目标用户（用于@功能）
   
   // AI 分析字段
   ai_score?: number;
@@ -213,4 +215,5 @@ export interface Comment {
 export interface CommentCreatePayload {
   content: string;
   parent_id?: number | null;
+  reply_to_user_id?: number | null; // 回复目标用户ID（用于@功能）
 }

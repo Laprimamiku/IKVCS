@@ -2,7 +2,7 @@ import { ref, type Ref } from "vue";
 import { ElMessage } from "element-plus";
 import { Star, Film, Monitor, Reading } from "@element-plus/icons-vue";
 import { getVideoList } from "@/features/video/shared/api/video.api";
-import { getCategories } from "@/features/video/shared/api/category.api";
+import { getPublicCategories } from "@/features/video/shared/api/category.api";
 import { resolveFileUrl } from "@/shared/utils/urlHelpers";
 import { formatDuration } from "@/shared/utils/formatters";
 import type { Video, Category, PageResult } from "@/shared/types/entity";
@@ -41,7 +41,7 @@ export function useVideoList() {
 
   const loadCategories = async () => {
     try {
-      const response = await getCategories();
+      const response = await getPublicCategories();
 
       let categoryList: Category[] = [];
       if (response && response.data && Array.isArray(response.data)) {

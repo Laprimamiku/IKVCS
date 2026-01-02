@@ -209,90 +209,104 @@ const handleRemoveSubtitle = () => {
 .file-selector {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xl);
+  gap: 32px; // 增加间距，从 var(--spacing-xl) 改为固定值 32px
 }
 
 .upload-section {
   h3 {
-    font-size: var(--font-size-lg);
-    margin-bottom: var(--spacing-md);
+    font-size: 18px;
+    margin-bottom: 16px;
     color: var(--text-primary);
+    font-weight: 500;
   }
 }
 
 .file-upload-box {
   border: 2px dashed var(--border-base);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-2xl);
+  border-radius: 12px;
+  padding: 48px 32px; // 增加内边距，从 var(--spacing-2xl) 改为更大的值
   cursor: pointer;
-  transition: all var(--transition-base);
+  transition: all 0.3s ease;
+  background: #fafafa;
 
   &:hover {
     border-color: var(--primary-color);
-    background: var(--primary-light);
+    background: #f0f7ff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   }
 }
 
 .upload-placeholder {
   text-align: center;
-  padding: var(--spacing-2xl) 0;
+  padding: 32px 0; // 增加内边距
 
   &.small {
-    padding: var(--spacing-lg) 0;
+    padding: 24px 0; // 增加小尺寸的内边距
   }
 }
 
 .upload-text {
-  font-size: var(--font-size-lg);
+  font-size: 16px;
   color: var(--text-primary);
-  margin: var(--spacing-md) 0 var(--spacing-sm);
+  margin: 16px 0 8px; // 增加间距
+  font-weight: 500;
 }
 
 .upload-hint {
-  font-size: var(--font-size-sm);
+  font-size: 14px;
   color: var(--text-secondary);
+  margin-top: 8px;
 }
 
 .file-preview {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
+  gap: 20px; // 增加间距
 }
 
 .video-preview {
   width: 100%;
   max-height: 400px;
-  border-radius: var(--radius-md);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .file-info {
   text-align: center;
+  padding: 16px 0; // 增加内边距
 }
 
 .file-name {
-  font-size: var(--font-size-base);
+  font-size: 15px;
   color: var(--text-primary);
-  margin-bottom: var(--spacing-xs);
+  margin-bottom: 8px;
+  font-weight: 500;
+  word-break: break-all;
 }
 
 .file-size {
-  font-size: var(--font-size-sm);
+  font-size: 13px;
   color: var(--text-secondary);
-  margin-bottom: var(--spacing-md);
+  margin-bottom: 16px; // 增加间距
 }
 
 .cover-upload-box {
-  width: 300px;
-  height: 200px;
+  width: 320px; // 稍微增加宽度
+  height: 180px; // 调整高度比例
   border: 2px dashed var(--border-base);
-  border-radius: var(--radius-md);
+  border-radius: 8px;
   cursor: pointer;
   overflow: hidden;
   position: relative;
-  transition: all var(--transition-base);
+  transition: all 0.3s ease;
+  background: #fafafa;
 
   &:hover {
     border-color: var(--primary-color);
+    background: #f0f7ff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   }
 }
 

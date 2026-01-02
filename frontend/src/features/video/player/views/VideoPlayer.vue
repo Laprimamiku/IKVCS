@@ -77,7 +77,7 @@
               <span class="action-text">{{ formatNumber(likeCount) }}</span>
             </div>
             
-            <div class="action-item collect-btn" :class="{ active: isCollected }" @click="handleCollect">
+            <div class="action-item collect-btn" :class="{ active: isCollected }" @click="handleCollectClick">
               <div class="action-icon">
                 <el-icon :size="20"><Star /></el-icon>
               </div>
@@ -165,6 +165,12 @@
     </div>
 
     <AuthDialog v-model="showAuthDialog" />
+    
+    <!-- Collection Folder Dialog -->
+    <CollectionFolderDialog 
+      v-model="showFolderDialog" 
+      @confirm="handleFolderConfirm"
+    />
   </div>
 </template>
 
@@ -185,6 +191,7 @@ import {
 
 import AppHeader from "@/shared/components/layout/AppHeader.vue";
 import AuthDialog from "@/features/auth/components/AuthDialog.vue";
+import CollectionFolderDialog from "@/features/video/shared/components/CollectionFolderDialog.vue";
 import VideoPlayerCore from "@/features/video/player/components/core/VideoPlayerCore.vue";
 import DanmakuDisplay from "@/features/video/player/components/danmaku/DanmakuDisplay.vue";
 import DanmakuToolbar from "@/features/video/player/components/danmaku/DanmakuToolbar.vue";
@@ -204,6 +211,7 @@ import { incrementViewCount } from "@/features/video/shared/api/video.api";
 const router = useRouter();
 const userStore = useUserStore();
 const showAuthDialog = ref(false);
+const showFolderDialog = ref(false);
 const showMoreActions = ref(false);
 const descExpanded = ref(false);
 const isFollowed = ref(false);
@@ -303,6 +311,49 @@ const handleFollow = () => {
   }
   isFollowed.value = !isFollowed.value;
   ElMessage.success(isFollowed.value ? "关注成功" : "已取消关注");
+};
+
+// Handle collect click
+const handleCollectClick = async () => {
+  if (!userStore.isLoggedIn) {
+    showAuthDialog.value = true;
+    return;
+  }
+  
+  const result = await handleCollect();
+  if (result === 'need-folder-selection') {
+    // 需要选择文件夹，弹出对话框
+    showFolderDialog.value = true;
+  }
+};
+
+// Handle folder selection confirm
+const handleFolderConfirm = async (folderId: number | null) => {
+  if (!videoData.value) return;
+  
+  try {
+    const { toggleVideoCollect } = await import('@/features/video/shared/api/video.api');
+    const response = await toggleVideoCollect(videoData.value.id, folderId);
+    if (response.success && response.data) {
+      isCollected.value = response.data.is_collected;
+      collectCount.value = response.data.collect_count;
+      if (videoData.value) {
+        videoData.value.is_collected = response.data.is_collected;
+        videoData.value.collect_count = response.data.collect_count;
+      }
+      window.dispatchEvent(new CustomEvent('video-collect-changed', {
+        detail: {
+          videoId: videoData.value.id,
+          isCollected: response.data.is_collected,
+          collectCount: response.data.collect_count
+        }
+      }));
+      ElMessage.success('收藏成功');
+    }
+  } catch (error) {
+    console.error('收藏失败:', error);
+    ElMessage.error('收藏失败');
+  }
 };
 </script>
 

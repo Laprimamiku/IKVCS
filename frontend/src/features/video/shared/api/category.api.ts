@@ -10,6 +10,13 @@ export function getCategories() {
 }
 
 /**
+ * 获取公开分类（排除临时分类）
+ */
+export function getPublicCategories() {
+  return request.get<Category[]>('/categories/public');
+}
+
+/**
  * 创建分类（管理员）
  */
 export function createCategory(data: { name: string; description?: string }) {

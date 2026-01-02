@@ -18,8 +18,9 @@
       @ended="handlePause"
       @click.stop
     >
+      <!-- 原生字幕轨道（用于 SRT/VTT 格式） -->
       <track
-        v-if="subtitleUrl"
+        v-if="subtitleUrl && !isJsonSubtitle && subtitleVisible"
         kind="subtitles"
         :src="subtitleUrl"
         label="中文字幕"
@@ -28,6 +29,14 @@
       />
       您的浏览器不支持视频播放。
     </video>
+    
+    <!-- 自定义字幕显示（用于 JSON 格式） -->
+    <div 
+      v-if="subtitleUrl && isJsonSubtitle && subtitleVisible && currentSubtitleText"
+      class="custom-subtitle"
+    >
+      {{ currentSubtitleText }}
+    </div>
     
     <!-- 加载占位符 -->
     <div v-else class="video-placeholder">
@@ -214,6 +223,25 @@
             </div>
           </div>
 
+          <!-- 字幕开关 -->
+          <button 
+            v-if="subtitleUrl"
+            class="control-btn"
+            @click="toggleSubtitle"
+            :title="subtitleVisible ? '隐藏字幕' : '显示字幕'"
+          >
+            <svg 
+              class="subtitle-icon"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              width="20"
+              height="20"
+            >
+              <path v-if="subtitleVisible" d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H5V6h14v12zM7 15h10v2H7zm0-4h10v2H7zm0-4h7v2H7z"/>
+              <path v-else d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H5V6h14v12zM7 15h10v2H7zm0-4h10v2H7zm0-4h7v2H7z" opacity="0.3"/>
+            </svg>
+          </button>
+
           <!-- 全屏按钮 -->
           <button 
             class="control-btn"
@@ -257,6 +285,7 @@ import {
   ArrowDown
 } from "@element-plus/icons-vue";
 import Hls from "hls.js";
+import { resolveFileUrl } from "@/shared/utils/urlHelpers";
 
 const props = defineProps<{
   videoUrl?: string | null;
@@ -298,6 +327,12 @@ const previewPercent = ref(0);
 const showQualityMenu = ref(false);
 const showSpeedMenu = ref(false);
 const showVolumeSlider = ref(false);
+
+// 字幕状态
+const subtitleVisible = ref(true); // 默认显示字幕
+const isJsonSubtitle = ref(false); // 是否为 JSON 格式字幕
+const subtitleData = ref<Array<{ start_time: number; end_time: number; text: string }>>([]);
+const currentSubtitleText = ref('');
 
 // 清晰度选项（从 master.m3u8 解析）
 const qualityOptions = ref([
@@ -466,6 +501,11 @@ const handleTimeUpdate = () => {
   if (videoRef.value && !isDragging.value) {
     currentTime.value = videoRef.value.currentTime;
     emit("timeupdate", videoRef.value.currentTime);
+    
+    // 更新 JSON 字幕显示
+    if (isJsonSubtitle.value && subtitleVisible.value) {
+      updateSubtitleDisplay(currentTime.value);
+    }
   }
 };
 
@@ -758,6 +798,114 @@ const toggleFullscreen = () => {
   }
 };
 
+// 字幕控制
+const toggleSubtitle = () => {
+  subtitleVisible.value = !subtitleVisible.value;
+  if (!subtitleVisible.value) {
+    currentSubtitleText.value = '';
+  } else if (isJsonSubtitle.value && videoRef.value) {
+    updateSubtitleDisplay(videoRef.value.currentTime);
+  }
+};
+
+// 加载字幕文件
+const loadSubtitle = async (url: string) => {
+  try {
+    // 解析 URL（支持相对路径）
+    const fullUrl = resolveFileUrl(url);
+    
+    // 判断是否为 JSON 格式
+    if (url.toLowerCase().endsWith('.json')) {
+      isJsonSubtitle.value = true;
+      const response = await fetch(fullUrl);
+      if (!response.ok) {
+        throw new Error(`加载字幕失败: ${response.statusText}`);
+      }
+      const data = await response.json();
+      subtitleData.value = parseJsonSubtitle(data);
+    } else {
+      isJsonSubtitle.value = false;
+      subtitleData.value = [];
+    }
+  } catch (error) {
+    console.error('加载字幕失败:', error);
+    isJsonSubtitle.value = false;
+    subtitleData.value = [];
+  }
+};
+
+// 解析 JSON 字幕（支持 bilibili-evolved 格式）
+const parseJsonSubtitle = (data: any): Array<{ start_time: number; end_time: number; text: string }> => {
+  const subtitles: Array<{ start_time: number; end_time: number; text: string }> = [];
+  
+  // bilibili-evolved 格式：{ "body": [...] }
+  if (data && typeof data === 'object' && 'body' in data && Array.isArray(data.body)) {
+    data.body.forEach((item: any) => {
+      const from = item.from ?? item.start ?? item.start_time ?? 0;
+      const to = item.to ?? item.end ?? item.end_time ?? 0;
+      const content = item.content ?? item.text ?? '';
+      if (content) {
+        subtitles.push({
+          start_time: Number(from),
+          end_time: Number(to),
+          text: String(content).trim()
+        });
+      }
+    });
+  }
+  // 标准数组格式
+  else if (Array.isArray(data)) {
+    data.forEach((item: any) => {
+      if (item && typeof item === 'object') {
+        const start = item.start ?? item.start_time ?? item.from ?? 0;
+        const end = item.end ?? item.end_time ?? item.to ?? 0;
+        const text = item.text ?? item.content ?? '';
+        if (text) {
+          subtitles.push({
+            start_time: Number(start),
+            end_time: Number(end),
+            text: String(text).trim()
+          });
+        }
+      }
+    });
+  }
+  // 嵌套格式：{ "subtitles": [...] }
+  else if (data && typeof data === 'object' && 'subtitles' in data && Array.isArray(data.subtitles)) {
+    data.subtitles.forEach((item: any) => {
+      const start = item.start ?? item.start_time ?? item.from ?? 0;
+      const end = item.end ?? item.end_time ?? item.to ?? 0;
+      const text = item.text ?? item.content ?? '';
+      if (text) {
+        subtitles.push({
+          start_time: Number(start),
+          end_time: Number(end),
+          text: String(text).trim()
+        });
+      }
+    });
+  }
+  
+  // 按开始时间排序
+  subtitles.sort((a, b) => a.start_time - b.start_time);
+  return subtitles;
+};
+
+// 根据当前播放时间更新字幕显示
+const updateSubtitleDisplay = (currentTime: number) => {
+  if (!subtitleData.value || subtitleData.value.length === 0) {
+    currentSubtitleText.value = '';
+    return;
+  }
+  
+  // 查找当前时间对应的字幕
+  const subtitle = subtitleData.value.find(
+    item => currentTime >= item.start_time && currentTime <= item.end_time
+  );
+  
+  currentSubtitleText.value = subtitle ? subtitle.text : '';
+};
+
 // 监听全屏状态变化
 const handleFullscreenChange = () => {
   isFullscreen.value = !!(
@@ -816,6 +964,17 @@ onUnmounted(() => {
   document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
   document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
 });
+
+// 监听字幕 URL 变化，加载字幕
+watch(() => props.subtitleUrl, async (newUrl) => {
+  if (newUrl) {
+    await loadSubtitle(newUrl);
+  } else {
+    isJsonSubtitle.value = false;
+    subtitleData.value = [];
+    currentSubtitleText.value = '';
+  }
+}, { immediate: true });
 
 // 监听视频 URL 变化，重置状态并解析清晰度
 watch(() => props.videoUrl, async (newUrl) => {
@@ -916,6 +1075,26 @@ defineExpose({
       margin: 0;
       font-size: 14px;
     }
+  }
+
+  // 自定义字幕显示
+  .custom-subtitle {
+    position: absolute;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 16px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    font-size: 18px;
+    line-height: 1.5;
+    border-radius: 4px;
+    max-width: 80%;
+    text-align: center;
+    word-wrap: break-word;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 0.3s ease;
   }
 
   // 控制栏

@@ -87,4 +87,29 @@ class CommentService:
             sort_by=sort_by,
             parent_id=parent_id
         )
+    
+    @staticmethod
+    def get_comment_by_id(db: Session, comment_id: int) -> Optional[Comment]:
+        """
+        根据ID获取单条评论
+        
+        Args:
+            db: 数据库会话
+            comment_id: 评论ID
+            
+        Returns:
+            Optional[Comment]: 评论对象，如果不存在则返回 None
+        """
+        from sqlalchemy.orm import joinedload
+        return db.query(Comment).options(
+            joinedload(Comment.user),
+            joinedload(Comment.reply_to_user)
+        ).filter(
+            Comment.id == comment_id,
+            Comment.is_deleted == False
+        ).first()
+
+
+
+
 

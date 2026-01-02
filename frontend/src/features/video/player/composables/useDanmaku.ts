@@ -124,13 +124,16 @@ const handleTimeChange = (time: number, forceSeek = false) => {
     const isSeek = forceSeek || timeDiff > 1.5
 
     if (isSeek) {
+      // 清空当前显示的弹幕
       activeList.value = []
+      // 重新计算 historyIndex
       const newIndex = historyList.value.findIndex(d => d.video_time >= time)
       historyIndex.value = newIndex === -1 ? historyList.value.length : newIndex
 
       const durationSec = DANMAKU_DURATION / 1000
       const startTimeWindow = time - durationSec
       
+      // 加载当前时间窗口内的弹幕（向前查找）
       let backIndex = historyIndex.value - 1
       while (backIndex >= 0) {
         const item = historyList.value[backIndex]
@@ -147,6 +150,9 @@ const handleTimeChange = (time: number, forceSeek = false) => {
         backIndex--
       }
 
+      // 确保后续正常播放时能继续加载弹幕
+      // 重置 lastTimeRef 为当前时间，避免下次被误判为 seek
+      lastTimeRef.value = time
     } else {
       const list = historyList.value
       while (historyIndex.value < list.length && list[historyIndex.value].video_time <= time) {
@@ -162,8 +168,8 @@ const handleTimeChange = (time: number, forceSeek = false) => {
         
         historyIndex.value += 1
       }
+      lastTimeRef.value = time
     }
-    lastTimeRef.value = time
   }
 
   watch(currentTime, (t) => handleTimeChange(t))

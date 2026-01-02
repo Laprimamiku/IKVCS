@@ -16,7 +16,6 @@
               alt="avatar" 
               class="user-avatar"
             />
-            <span class="level-badge">LV.6</span>
           </div>
           
           <div class="user-info">
@@ -31,17 +30,17 @@
             
             <div class="user-stats">
               <div class="stat-item">
-                <span class="stat-value">{{ formatNumber(128) }}</span>
+                <span class="stat-value">{{ formatNumber(userStats.following_count) }}</span>
                 <span class="stat-label">关注</span>
               </div>
               <div class="stat-divider"></div>
               <div class="stat-item">
-                <span class="stat-value">{{ formatNumber(1024) }}</span>
+                <span class="stat-value">{{ formatNumber(userStats.followers_count) }}</span>
                 <span class="stat-label">粉丝</span>
               </div>
               <div class="stat-divider"></div>
               <div class="stat-item">
-                <span class="stat-value">{{ formatNumber(56789) }}</span>
+                <span class="stat-value">{{ formatNumber(userStats.total_likes) }}</span>
                 <span class="stat-label">获赞</span>
               </div>
             </div>
@@ -88,11 +87,12 @@
           </div>
           <div 
             class="nav-tab"
-            :class="{ active: activeTab === 'settings' }"
-            @click="activeTab = 'settings'"
+            :class="{ active: activeTab === 'history' }"
+            @click="activeTab = 'history'"
           >
-            <el-icon class="tab-icon"><Setting /></el-icon>
-            <span class="tab-text">设置</span>
+            <el-icon class="tab-icon"><Clock /></el-icon>
+            <span class="tab-text">历史记录</span>
+            <span class="tab-count">{{ watchHistory.length }}</span>
           </div>
         </div>
         
@@ -114,17 +114,21 @@
       <div class="content-container">
         <!-- Left Column - Main Content -->
         <div class="content-main">
-          <!-- Videos Section -->
-          <section class="content-section">
+          <!-- Home Tab (暂时空出来) -->
+          <section v-if="activeTab === 'home'" class="content-section">
+            <div class="empty-state">
+              <el-icon class="empty-icon" :size="64"><HomeFilled /></el-icon>
+              <p class="empty-text">主页功能开发中...</p>
+            </div>
+          </section>
+
+          <!-- Videos Tab (我的投稿) -->
+          <section v-if="activeTab === 'videos'" class="content-section">
             <div class="section-header">
               <h2 class="section-title">
                 <el-icon class="title-icon"><VideoCamera /></el-icon>
-                我的视频
+                我的投稿
               </h2>
-              <button class="more-btn">
-                更多
-                <span class="arrow">→</span>
-              </button>
             </div>
 
             <div class="video-grid" v-if="videos.length > 0">
@@ -139,9 +143,105 @@
             <div v-else class="empty-state">
               <el-icon class="empty-icon" :size="48"><VideoCamera /></el-icon>
               <p class="empty-text">暂无投稿视频</p>
-              <el-button type="primary" @click="$router.push('/upload')">
+              <el-button type="primary" @click="$router.push('/video-center')">
                 去投稿
               </el-button>
+            </div>
+          </section>
+
+          <!-- Collections Tab (我的收藏) -->
+          <section v-if="activeTab === 'favorites'" class="content-section">
+            <div class="section-header">
+              <h2 class="section-title">
+                <el-icon class="title-icon"><Star /></el-icon>
+                我的收藏
+              </h2>
+              <el-button 
+                type="primary" 
+                :icon="Plus" 
+                @click="showCreateFolderDialog = true"
+                size="small"
+              >
+                新建收藏夹
+              </el-button>
+            </div>
+
+            <!-- 文件夹列表 -->
+            <div class="folders-list" v-if="collectionFolders.length > 0 || uncategorizedCount > 0">
+              <div 
+                v-for="folder in collectionFolders" 
+                :key="folder.id"
+                class="folder-item"
+                :class="{ active: selectedFolderId === folder.id }"
+                @click="selectFolder(folder.id)"
+              >
+                <el-icon class="folder-icon"><Folder /></el-icon>
+                <span class="folder-name">{{ folder.name }}</span>
+                <span class="folder-count">({{ folder.count }})</span>
+              </div>
+              
+              <!-- 未分类选项 -->
+              <div 
+                class="folder-item"
+                :class="{ active: selectedFolderId === null }"
+                @click="selectFolder(null)"
+              >
+                <el-icon class="folder-icon"><Document /></el-icon>
+                <span class="folder-name">未分类</span>
+                <span class="folder-count">({{ uncategorizedCount }})</span>
+              </div>
+            </div>
+
+            <!-- 视频列表 -->
+            <div class="video-grid" v-if="collections.length > 0">
+              <VideoCard
+                v-for="video in collections"
+                :key="video.id"
+                :video="video"
+                @click="handleVideoClick"
+              />
+            </div>
+            
+            <div v-else-if="selectedFolderId !== undefined" class="empty-state">
+              <el-icon class="empty-icon" :size="48"><Star /></el-icon>
+              <p class="empty-text">该收藏夹还没有视频哦</p>
+            </div>
+          </section>
+
+          <!-- History Tab (历史记录) -->
+          <section v-if="activeTab === 'history'" class="content-section">
+            <div class="section-header">
+              <h2 class="section-title">
+                <el-icon class="title-icon"><Clock /></el-icon>
+                历史记录
+              </h2>
+            </div>
+
+            <div class="video-grid history-grid" v-if="watchHistory.length > 0">
+              <div 
+                v-for="item in watchHistory"
+                :key="item.id"
+                class="history-item-wrapper"
+              >
+                <VideoCard
+                  :video="item.video as Video"
+                  @click="() => handleVideoClick(item.video as Video)"
+                />
+                <el-button
+                  class="delete-history-btn"
+                  type="danger"
+                  :icon="Delete"
+                  circle
+                  size="small"
+                  @click.stop="handleDeleteHistory(item)"
+                  title="删除历史记录"
+                />
+              </div>
+            </div>
+            
+            <div v-else class="empty-state">
+              <el-icon class="empty-icon" :size="48"><Clock /></el-icon>
+              <p class="empty-text">还没有观看历史</p>
             </div>
           </section>
         </div>
@@ -159,15 +259,15 @@
             <div class="card-body">
               <div class="achievement-item">
                 <span class="achievement-label">获得点赞</span>
-                <span class="achievement-value">{{ formatNumber(1234) }}</span>
+                <span class="achievement-value">{{ formatNumber(userStats.total_likes) }}</span>
               </div>
               <div class="achievement-item">
                 <span class="achievement-label">获得播放</span>
-                <span class="achievement-value">{{ formatNumber(56789) }}</span>
+                <span class="achievement-value">{{ formatNumber(videos.reduce((sum, v) => sum + (v.view_count || 0), 0)) }}</span>
               </div>
               <div class="achievement-item">
                 <span class="achievement-label">获得收藏</span>
-                <span class="achievement-value">{{ formatNumber(234) }}</span>
+                <span class="achievement-value">{{ formatNumber(videos.reduce((sum, v) => sum + (v.collect_count || 0), 0)) }}</span>
               </div>
             </div>
           </div>
@@ -236,16 +336,52 @@
       :img-src="selectedImageSrc"
       @confirm="handleCropConfirm"
     />
+
+    <!-- Create Folder Dialog -->
+    <el-dialog
+      v-model="showCreateFolderDialog"
+      title="新建收藏夹"
+      width="500px"
+      @close="newFolderName = ''; newFolderDescription = ''"
+    >
+      <el-form label-width="100px">
+        <el-form-item label="文件夹名称" required>
+          <el-input
+            v-model="newFolderName"
+            placeholder="请输入文件夹名称"
+            maxlength="100"
+            show-word-limit
+          />
+        </el-form-item>
+        <el-form-item label="文件夹描述">
+          <el-input
+            v-model="newFolderDescription"
+            type="textarea"
+            placeholder="请输入文件夹描述（可选）"
+            :rows="3"
+            maxlength="500"
+            show-word-limit
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showCreateFolderDialog = false">取消</el-button>
+        <el-button type="primary" @click="handleCreateFolder">创建</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from "vue";
+import { ref, reactive, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
-import { Edit, HomeFilled, VideoCamera, Star, Setting, Search, Trophy, Bell, PriceTag } from "@element-plus/icons-vue";
+import { Edit, HomeFilled, VideoCamera, Star, Clock, Search, Trophy, Bell, PriceTag, Delete, Plus, Folder, Document } from "@element-plus/icons-vue";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { useUserStore } from "@/shared/stores/user";
 import { useUserActions } from "@/features/user/composables/useUserActions";
-import { getVideoList } from "@/features/video/shared/api/video.api";
+import { getMyVideos } from "@/features/video/shared/api/video.api";
+import { getMyCollections } from "@/features/video/shared/api/video.api";
+import { getUserStats, getWatchHistory, type WatchHistoryItem, getCollectionFolders, createCollectionFolder, type CollectionFolder } from "@/features/user/api/user.api";
 import type { UserInfo, Video } from "@/shared/types/entity";
 import { formatNumber } from "@/shared/utils/formatters";
 
@@ -261,6 +397,19 @@ const { submitting, updateUser, uploadUserAvatar } = useUserActions();
 
 const displayUser = reactive<UserInfo>({} as UserInfo);
 const videos = ref<Video[]>([]);
+const collections = ref<Video[]>([]);
+const watchHistory = ref<WatchHistoryItem[]>([]);
+const collectionFolders = ref<CollectionFolder[]>([]);
+const uncategorizedCount = ref(0);
+const selectedFolderId = ref<number | null | undefined>(undefined);
+const showCreateFolderDialog = ref(false);
+const newFolderName = ref('');
+const newFolderDescription = ref('');
+const userStats = reactive({
+  following_count: 0,
+  followers_count: 0,
+  total_likes: 0
+});
 const editVisible = ref(false);
 const infoFormRef = ref(null);
 const activeTab = ref('home');
@@ -273,14 +422,168 @@ const selectedImageSrc = ref("");
 onMounted(async () => {
   await userStore.fetchUserInfo();
   Object.assign(displayUser, userStore.userInfo);
-  loadMyVideos();
+  await loadUserStats();
+  await loadMyVideos();
+  await loadCollectionFolders();
+  await loadMyCollections();
+  await loadWatchHistory();
+  
+  // 监听来自导航栏的标签页切换事件
+  window.addEventListener('switch-tab', handleTabSwitch);
+  
+  // 监听视频点赞/收藏变化事件，实时更新数据
+  window.addEventListener('video-like-changed', handleVideoLikeChanged);
+  window.addEventListener('video-collect-changed', handleVideoCollectChanged);
 });
+
+// Handle tab switch from navigation
+const handleTabSwitch = (event: Event) => {
+  const customEvent = event as CustomEvent;
+  if (customEvent.detail && ['home', 'videos', 'favorites', 'history'].includes(customEvent.detail)) {
+    activeTab.value = customEvent.detail;
+  }
+};
+
+// Handle video like/collect changes
+const handleVideoLikeChanged = () => {
+  // 重新加载用户统计数据和视频列表
+  loadUserStats();
+  loadMyVideos();
+};
+
+const handleVideoCollectChanged = () => {
+  // 重新加载用户统计数据、视频列表和收藏列表
+  loadUserStats();
+  loadMyVideos();
+  loadCollectionFolders();
+  loadMyCollections();
+};
+
+// Cleanup
+onUnmounted(() => {
+  window.removeEventListener('switch-tab', handleTabSwitch);
+  window.removeEventListener('video-like-changed', handleVideoLikeChanged);
+  window.removeEventListener('video-collect-changed', handleVideoCollectChanged);
+});
+
+// Load user statistics
+const loadUserStats = async () => {
+  try {
+    const res = await getUserStats();
+    if (res.success && res.data) {
+      Object.assign(userStats, res.data);
+    }
+  } catch (error) {
+    console.error('加载用户统计数据失败:', error);
+  }
+};
 
 // Load user's videos
 const loadMyVideos = async () => {
-  const res = await getVideoList({ page: 1, page_size: 8 });
-  if (res.success && res.data?.items) {
-    videos.value = res.data.items;
+  try {
+    const res = await getMyVideos({ page: 1, page_size: 8 });
+    if (res.success && res.data?.items) {
+      videos.value = res.data.items;
+    }
+  } catch (error) {
+    console.error('加载我的视频失败:', error);
+  }
+};
+
+// Load collection folders
+const loadCollectionFolders = async () => {
+  try {
+    const res = await getCollectionFolders();
+    if (res.success && res.data) {
+      collectionFolders.value = res.data.folders || [];
+      uncategorizedCount.value = res.data.uncategorized_count || 0;
+    }
+  } catch (error) {
+    console.error('加载收藏文件夹失败:', error);
+  }
+};
+
+// Select folder
+const selectFolder = (folderId: number | null) => {
+  selectedFolderId.value = folderId;
+  loadMyCollections();
+};
+
+// Load user's collections
+const loadMyCollections = async () => {
+  try {
+    const res = await getMyCollections({ 
+      page: 1, 
+      page_size: 8,
+      folder_id: selectedFolderId.value === undefined ? undefined : selectedFolderId.value
+    });
+    if (res.success && res.data?.items) {
+      collections.value = res.data.items;
+    }
+  } catch (error) {
+    console.error('加载我的收藏失败:', error);
+  }
+};
+
+// Create folder
+const handleCreateFolder = async () => {
+  if (!newFolderName.value.trim()) {
+    ElMessage.warning('请输入文件夹名称');
+    return;
+  }
+
+  try {
+    const res = await createCollectionFolder(newFolderName.value.trim(), newFolderDescription.value.trim() || undefined);
+    if (res.success && res.data) {
+      ElMessage.success('创建成功');
+      await loadCollectionFolders();
+      showCreateFolderDialog.value = false;
+      newFolderName.value = '';
+      newFolderDescription.value = '';
+    }
+  } catch (error: any) {
+    console.error('创建文件夹失败:', error);
+    ElMessage.error(error.response?.data?.detail || '创建文件夹失败');
+  }
+};
+
+// Load watch history
+const loadWatchHistory = async () => {
+  try {
+    const res = await getWatchHistory({ page: 1, page_size: 100 }); // 加载更多历史记录
+    if (res.success && res.data?.items) {
+      watchHistory.value = res.data.items;
+    }
+  } catch (error) {
+    console.error('加载观看历史失败:', error);
+  }
+};
+
+// Delete watch history
+const handleDeleteHistory = async (item: WatchHistoryItem) => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要删除这条观看历史吗？此操作不可恢复。',
+      '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+    
+    const { deleteWatchHistory } = await import('@/features/user/api/user.api');
+    const res = await deleteWatchHistory(item.id);
+    if (res.success) {
+      ElMessage.success('删除成功');
+      // 重新加载历史记录
+      await loadWatchHistory();
+    }
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('删除观看历史失败:', error);
+      ElMessage.error('删除失败');
+    }
   }
 };
 
@@ -380,18 +683,6 @@ const handleSubmit = async (data: { nickname?: string; intro?: string }) => {
   background: var(--bg-white);
 }
 
-.level-badge {
-  position: absolute;
-  bottom: 20px;
-  right: -4px;
-  padding: 2px 6px;
-  font-size: 10px;
-  font-weight: var(--font-weight-bold);
-  color: var(--text-white);
-  background: linear-gradient(135deg, #FF9500 0%, #FF5E3A 100%);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
-}
 
 .user-info {
   flex: 1;
@@ -624,6 +915,10 @@ const handleSubmit = async (data: { nickname?: string; intro?: string }) => {
 
 .section-header {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+  display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: var(--space-5);
@@ -666,6 +961,56 @@ const handleSubmit = async (data: { nickname?: string; intro?: string }) => {
 
     .arrow {
       transform: translateX(2px);
+    }
+  }
+}
+
+.folders-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-light);
+
+  .folder-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--bg-gray-1);
+    border: 1px solid var(--border-light);
+
+    &:hover {
+      background: var(--bg-gray-2);
+      border-color: var(--primary-color);
+    }
+
+    &.active {
+      background: var(--primary-light);
+      border-color: var(--primary-color);
+      color: var(--primary-color);
+
+      .folder-icon {
+        color: var(--primary-color);
+      }
+    }
+
+    .folder-icon {
+      font-size: 18px;
+    }
+
+    .folder-name {
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-medium);
+    }
+
+    .folder-count {
+      font-size: var(--font-size-xs);
+      color: var(--text-tertiary);
     }
   }
 }
@@ -790,6 +1135,28 @@ const handleSubmit = async (data: { nickname?: string; intro?: string }) => {
 /* Edit Dialog */
 .edit-dialog-body {
   padding: 0 var(--space-4);
+}
+
+/* History Item Wrapper */
+.history-item-wrapper {
+  position: relative;
+  
+  .delete-history-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity var(--transition-base);
+  }
+  
+  &:hover .delete-history-btn {
+    opacity: 1;
+  }
+}
+
+.history-grid {
+  position: relative;
 }
 
 /* Responsive */

@@ -21,12 +21,18 @@ class CategoryRepository:
         return db.query(Category).filter(Category.name == name).first()
 
     @classmethod
-    def create(cls, db: Session, category_in: CategoryCreate) -> Category:
+    def create(cls, db: Session, category_in: CategoryCreate = None, obj_data: dict = None) -> Category:
         """创建分类"""
-        db_category = Category(
-            name=category_in.name,
-            description=category_in.description
-        )
+        if obj_data:
+            db_category = Category(
+                name=obj_data.get("name"),
+                description=obj_data.get("description")
+            )
+        else:
+            db_category = Category(
+                name=category_in.name,
+                description=category_in.description
+            )
         db.add(db_category)
         db.commit()
         db.refresh(db_category)

@@ -6,7 +6,7 @@
  * 类比 Java：
  *   相当于 UploadService 接口调用
  */
-import { request } from "@/shared/utils/request"
+import { request, uploadRequest } from "@/shared/utils/request"
 import type { ApiResponse } from "@/shared/types/entity"
 
 export interface InitUploadData {
@@ -68,7 +68,7 @@ export function uploadChunk(fileHash: string, chunkIndex: number, chunkData: Blo
   formData.append('chunk_index', chunkIndex.toString())
   formData.append('chunk', chunkData)
   
-  return request.post<ApiResponse>('/upload/chunk', formData, {
+  return uploadRequest.post<ApiResponse>('/upload/chunk', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
@@ -84,7 +84,7 @@ export function uploadChunk(fileHash: string, chunkIndex: number, chunkData: Blo
  * 需求：3.5, 3.6
  */
 export function finishUpload(data: FinishUploadData) {
-  return request.post<FinishUploadResponse>('/upload/finish', data)
+  return uploadRequest.post<FinishUploadResponse>('/upload/finish', data)
 }
 
 /**

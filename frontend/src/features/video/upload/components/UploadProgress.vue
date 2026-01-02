@@ -91,34 +91,39 @@ defineEmits<{
 <style lang="scss" scoped>
 .upload-progress {
   text-align: center;
+  padding: 24px 0; // 增加内边距
 }
 
 .progress-info {
-  margin-bottom: var(--spacing-xl);
+  margin-bottom: 32px; // 增加间距
 
   h3 {
-    font-size: var(--font-size-xl);
+    font-size: 22px;
     color: var(--text-primary);
-    margin-bottom: var(--spacing-sm);
+    margin-bottom: 12px;
+    font-weight: 600;
   }
 }
 
 .progress-detail {
-  font-size: var(--font-size-base);
+  font-size: 15px;
   color: var(--text-secondary);
+  line-height: 1.6;
 }
 
 .progress-bar-wrapper {
-  margin: var(--spacing-2xl) 0;
+  margin: 40px 0; // 增加间距
+  padding: 0 20px;
 }
 
 .progress-details {
   display: flex;
   justify-content: space-around;
-  margin: var(--spacing-xl) 0;
-  padding: var(--spacing-lg);
-  background: var(--bg-light);
-  border-radius: var(--radius-md);
+  margin: 32px 0; // 增加间距
+  padding: 24px; // 增加内边距
+  background: #f8f9fa;
+  border-radius: 8px;
+  gap: 24px; // 增加项之间的间距
 }
 
 .detail-item {
@@ -141,8 +146,10 @@ defineEmits<{
 .progress-actions {
   display: flex;
   justify-content: center;
-  gap: var(--spacing-md);
-  margin-top: var(--spacing-2xl);
+  gap: 16px; // 增加按钮间距
+  margin-top: 40px; // 增加上边距
+  padding-top: 24px;
+  border-top: 1px solid #e5e7eb; // 添加分隔线
 }
 
 @media (max-width: 768px) {

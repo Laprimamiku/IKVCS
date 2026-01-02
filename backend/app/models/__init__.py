@@ -15,6 +15,7 @@ from app.models.comment import Comment
 from app.models.report import Report
 from app.models.ai_training_sample import AiTrainingSample
 from app.models.watch_history import WatchHistory
+from app.models.collection_folder import CollectionFolder
 
 # AI 相关模型（可选）
 try:
@@ -33,6 +34,7 @@ __all__ = [
     "Comment",
     "Report",
     "WatchHistory",
+    "CollectionFolder",
 ]
 
 if _has_agent_analysis:

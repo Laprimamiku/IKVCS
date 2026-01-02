@@ -128,7 +128,33 @@ defineExpose({
 
 <style lang="scss" scoped>
 .video-info-form {
-  max-width: 600px;
+  max-width: 700px; // 增加最大宽度
   margin: 0 auto;
+  padding: 24px 0; // 增加上下内边距
+
+  :deep(.el-form-item) {
+    margin-bottom: 24px; // 增加表单项间距
+
+    .el-form-item__label {
+      font-weight: 500;
+      padding-right: 20px;
+    }
+  }
+
+  :deep(.el-input),
+  :deep(.el-textarea),
+  :deep(.el-select) {
+    .el-input__wrapper,
+    .el-textarea__inner {
+      padding: 12px 16px; // 增加输入框内边距
+      border-radius: 6px;
+    }
+  }
+
+  :deep(.el-textarea) {
+    .el-textarea__inner {
+      min-height: 120px; // 增加文本域高度
+    }
+  }
 }
 </style>

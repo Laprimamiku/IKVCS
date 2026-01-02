@@ -66,7 +66,7 @@ class Video(Base):
     # 基本字段
     id = Column(Integer, primary_key=True, autoincrement=True, comment="视频ID")
     uploader_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, comment="上传者ID")
-    category_id = Column(Integer, ForeignKey('categories.id', ondelete='RESTRICT'), nullable=False, comment="分类ID")
+    category_id = Column(Integer, ForeignKey('categories.id', ondelete='RESTRICT'), nullable=True, comment="分类ID（可选）")
     
     # 视频信息
     title = Column(String(100), nullable=False, comment="视频标题")

@@ -32,13 +32,16 @@ class UserCollection(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     video_id = Column(Integer, ForeignKey('videos.id', ondelete='CASCADE'), nullable=False)
+    folder_id = Column(Integer, ForeignKey('collection_folders.id', ondelete='SET NULL'), nullable=True, comment="所属文件夹ID")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # [新增] 关联视频模型，以便在收藏列表中获取视频详情
     # lazy='joined' 表示查询收藏时自动加载视频信息
     video = relationship("Video", lazy="joined")
+    folder = relationship("CollectionFolder", back_populates="collections", lazy="select")
 
     # 联合唯一索引
     __table_args__ = (
         UniqueConstraint('user_id', 'video_id', name='uq_user_collection_video'),
+        Index('idx_folder_id', 'folder_id'),
     )

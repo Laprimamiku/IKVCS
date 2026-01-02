@@ -14,6 +14,7 @@ class CommentBase(BaseModel):
 # --- 创建模型 ---
 class CommentCreate(CommentBase):
     parent_id: Optional[int] = Field(None, description="父评论ID，如果是回复则必填")
+    reply_to_user_id: Optional[int] = Field(None, description="回复目标用户ID（用于@功能）")
 
 # --- 更新模型 ---
 class CommentUpdate(BaseModel):
@@ -25,11 +26,13 @@ class CommentResponse(CommentBase):
     video_id: int
     user_id: int
     parent_id: Optional[int] = None
+    reply_to_user_id: Optional[int] = None
     like_count: int
     created_at: datetime
     
     # [修正点 2] 使用正确的类型注解 UserBriefResponse
     user: Optional[UserBriefResponse] = None
+    reply_to_user: Optional[UserBriefResponse] = None
     
     # AI 分析字段
     ai_score: Optional[int] = None

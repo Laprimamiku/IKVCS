@@ -76,7 +76,7 @@
           <CommentInput
             :is-reply="true"
             :loading="submitting"
-            :placeholder="`回复 @${comment.user.nickname}：`"
+            :placeholder="replyToUser ? `回复 @${replyToUser.nickname}：` : `回复 @${comment.user.nickname}：`"
             @submit="handleReplySubmit"
           />
         </div>
@@ -104,14 +104,26 @@
                 {{ reply.ai_label }}
               </span>
             </div>
-            <p class="reply-text">{{ reply.content }}</p>
+            <p class="reply-text">
+              <span v-if="reply.reply_to_user" class="reply-to-mention">@{{ reply.reply_to_user.nickname }} </span>
+              {{ reply.content }}
+            </p>
             <div class="reply-footer">
               <span class="reply-time">{{ formatDate(reply.created_at) }}</span>
-              <button class="reply-action">
+              <button 
+                class="reply-action like-btn"
+                :class="{ active: reply.is_liked }"
+                @click="handleReplyLike(reply)"
+              >
                 <el-icon><CircleCheckFilled /></el-icon>
                 <span>{{ reply.like_count || '' }}</span>
               </button>
-              <button class="reply-action">回复</button>
+              <button 
+                class="reply-action" 
+                @click="handleReplyToReply(reply)"
+              >
+                回复
+              </button>
             </div>
           </div>
         </div>
@@ -146,7 +158,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: "reply", content: string, parentId: number): Promise<void>;
+  (e: "reply", content: string, parentId: number, replyToUserId?: number | null): Promise<void>;
 }>();
 
 const userStore = useUserStore();
@@ -155,6 +167,7 @@ const userStore = useUserStore();
 const showReplyBox = ref(false);
 const submitting = ref(false);
 const showAllReplies = ref(false);
+const replyToUser = ref<{ id: number; nickname: string } | null>(null); // 回复目标用户
 
 // Like state (optimistic update)
 const localIsLiked = ref(!!props.comment.is_liked);
@@ -194,16 +207,58 @@ const formatDate = (dateStr: string) => {
 // Toggle reply box
 const toggleReplyBox = () => {
   showReplyBox.value = !showReplyBox.value;
+  if (showReplyBox.value) {
+    // 回复根评论时，@ 评论作者
+    replyToUser.value = props.comment.user;
+  } else {
+    replyToUser.value = null;
+  }
+};
+
+// Handle reply to reply (二级评论的回复)
+const handleReplyToReply = (reply: Comment) => {
+  showReplyBox.value = true;
+  // 回复二级评论时，@ 被回复的用户
+  replyToUser.value = reply.user;
 };
 
 // Submit reply
 const handleReplySubmit = async (content: string) => {
   submitting.value = true;
   try {
-    await emit("reply", content, props.comment.id);
+    await emit("reply", content, props.comment.id, replyToUser.value?.id || null);
     showReplyBox.value = false;
+    replyToUser.value = null;
   } finally {
     submitting.value = false;
+  }
+};
+
+// Handle reply like
+const handleReplyLike = async (reply: Comment) => {
+  if (!userStore.isLoggedIn) {
+    ElMessage.warning("请先登录");
+    return;
+  }
+
+  const prevState = reply.is_liked;
+  const prevCount = reply.like_count || 0;
+
+  // Optimistic update
+  reply.is_liked = !reply.is_liked;
+  reply.like_count = (reply.like_count || 0) + (reply.is_liked ? 1 : -1);
+
+  try {
+    const response = await toggleCommentLike(reply.id);
+    if (response.success && response.data) {
+      reply.is_liked = response.data.is_liked;
+      reply.like_count = response.data.like_count;
+    }
+  } catch (e) {
+    // Rollback
+    reply.is_liked = prevState;
+    reply.like_count = prevCount;
+    ElMessage.error("点赞失败，请重试");
   }
 };
 

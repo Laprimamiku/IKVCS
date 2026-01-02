@@ -97,7 +97,7 @@ import HomeBanner from "@/features/home/components/HomeBanner.vue";
 import VideoCard from "@/features/video/shared/components/VideoCard.vue";
 import AuthDialog from "@/features/auth/components/AuthDialog.vue";
 import { getVideoList } from "@/features/video/shared/api/video.api";
-import { getCategories } from "@/features/video/shared/api/category.api";
+import { getPublicCategories } from "@/features/video/shared/api/category.api";
 import type { Video, Category, PageResult } from "@/shared/types/entity";
 
 const router = useRouter();
@@ -162,7 +162,7 @@ const loadBannerVideos = async () => {
 // Load categories
 const loadCategories = async () => {
   try {
-    const res = await getCategories();
+    const res = await getPublicCategories();
     categories.value = Array.isArray(res) ? res : res.data || [];
   } catch (e) {
     console.error("Failed to load categories:", e);

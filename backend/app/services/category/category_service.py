@@ -37,6 +37,9 @@ class CategoryService:
         - 符合面向对象设计原则
     """
     
+    # 临时分类名称常量
+    TEMP_CATEGORY_NAME = "临时分类"
+    
     @staticmethod
     def get_all_categories(db: Session) -> List[Category]:
         """
@@ -47,7 +50,38 @@ class CategoryService:
         使用 BaseRepository 的通用方法，减少重复代码
         """
         # 使用 Repository 的专用方法
-        return CategoryRepository.get_all_categories(db)
+        return CategoryRepository.get_all(db)
+    
+    @staticmethod
+    def get_public_categories(db: Session) -> List[Category]:
+        """
+        获取公开分类（排除临时分类）
+        
+        用于首页分类栏显示
+        """
+        categories = CategoryRepository.get_all(db)
+        return [cat for cat in categories if cat.name != CategoryService.TEMP_CATEGORY_NAME]
+    
+    @staticmethod
+    def get_or_create_temp_category(db: Session) -> Category:
+        """
+        获取或创建临时分类
+        
+        如果临时分类不存在，则自动创建
+        """
+        temp_category = CategoryRepository.get_by_name(db, CategoryService.TEMP_CATEGORY_NAME)
+        
+        if not temp_category:
+            # 创建临时分类
+            temp_category = CategoryRepository.create(
+                db=db,
+                obj_data={
+                    "name": CategoryService.TEMP_CATEGORY_NAME,
+                    "description": "系统自动创建的临时分类，用于存放被删除分类下的视频"
+                }
+            )
+        
+        return temp_category
     
     @staticmethod
     def create_category(db: Session, category_data: CategoryCreate) -> Category:
@@ -72,7 +106,13 @@ class CategoryService:
                 message=f"分类名称 '{category_data.name}' 已存在"
             )
         
-        # 2. 使用 BaseRepository 的通用创建方法
+        # 2. 禁止创建临时分类名称
+        if category_data.name == CategoryService.TEMP_CATEGORY_NAME:
+            raise ValidationException(
+                message=f"不能创建名为 '{CategoryService.TEMP_CATEGORY_NAME}' 的分类"
+            )
+        
+        # 3. 使用 BaseRepository 的通用创建方法
         return CategoryRepository.create(
             db=db,
             obj_data={
@@ -90,9 +130,9 @@ class CategoryService:
         
         流程：
         1. 检查分类是否存在
-        2. 检查分类下是否有视频
-        3. 如果有视频，拒绝删除
-        4. 如果没有视频，删除分类
+        2. 检查是否为临时分类（不允许删除）
+        3. 如果分类下有视频，将视频移动到临时分类
+        4. 删除分类
         
         使用 BaseRepository 的通用方法进行基础操作，业务逻辑保留在 Service 层
         """
@@ -101,17 +141,30 @@ class CategoryService:
         if not category:
             raise ResourceNotFoundException(resource="分类", resource_id=category_id)
         
-        # 2. 检查分类下是否有视频（业务逻辑）
+        # 2. 检查是否为临时分类（不允许删除）
+        if category.name == CategoryService.TEMP_CATEGORY_NAME:
+            raise ValidationException(
+                message="临时分类不能被删除"
+            )
+        
+        # 3. 检查分类下是否有视频
         video_count = db.query(func.count(Video.id)).filter(
             Video.category_id == category_id
         ).scalar()
         
         if video_count > 0:
-            raise ValidationException(
-                message=f"分类 '{category.name}' 下有 {video_count} 个视频，无法删除"
-            )
+            # 获取或创建临时分类
+            temp_category = CategoryService.get_or_create_temp_category(db)
+            
+            # 将所有视频移动到临时分类
+            db.query(Video).filter(
+                Video.category_id == category_id
+            ).update({"category_id": temp_category.id})
+            
+            # 提交视频移动操作
+            db.commit()
         
-        # 3. 使用 BaseRepository 的通用删除方法
+        # 4. 使用 BaseRepository 的通用删除方法
         CategoryRepository.delete(db, category_id)
     
     @staticmethod
