@@ -14,9 +14,13 @@ from app.models.video import Category, Video
 from app.schemas.category import CategoryCreate
 from app.repositories.category_repository import CategoryRepository
 from app.core.exceptions import ResourceNotFoundException, ValidationException
+from app.core.base_service import BaseService
+from app.core.error_codes import ErrorCode
 
 
-class CategoryService:
+class CategoryService(BaseService[Category, CategoryRepository]):
+    """分类服务"""
+    repository = CategoryRepository
     """
     分类服务类
     
@@ -136,10 +140,12 @@ class CategoryService:
         
         使用 BaseRepository 的通用方法进行基础操作，业务逻辑保留在 Service 层
         """
-        # 1. 检查分类是否存在（使用 BaseRepository）
-        category = CategoryRepository.get_by_id(db, category_id)
-        if not category:
-            raise ResourceNotFoundException(resource="分类", resource_id=category_id)
+        # 1. 检查分类是否存在（使用 BaseService）
+        category = CategoryService.get_by_id_or_raise(
+            db, category_id,
+            resource_name="分类",
+            error_code=ErrorCode.CATEGORY_NOT_FOUND
+        )
         
         # 2. 检查是否为临时分类（不允许删除）
         if category.name == CategoryService.TEMP_CATEGORY_NAME:
@@ -174,10 +180,11 @@ class CategoryService:
         
         辅助方法，用于其他服务调用
         
-        使用 BaseRepository 的通用方法，减少重复代码
+        使用 BaseService 的通用方法，减少重复代码
         """
-        category = CategoryRepository.get_by_id(db, category_id)
-        if not category:
-            raise ResourceNotFoundException(resource="分类", resource_id=category_id)
-        return category
+        return CategoryService.get_by_id_or_raise(
+            db, category_id,
+            resource_name="分类",
+            error_code=ErrorCode.CATEGORY_NOT_FOUND
+        )
 

@@ -1,11 +1,11 @@
 import { ref, type Ref } from "vue";
-import { ElMessage } from "element-plus";
 import { Star, Film, Monitor, Reading } from "@element-plus/icons-vue";
 import { getVideoList } from "@/features/video/shared/api/video.api";
 import { getPublicCategories } from "@/features/video/shared/api/category.api";
 import { resolveFileUrl } from "@/shared/utils/urlHelpers";
 import { formatDuration } from "@/shared/utils/formatters";
-import type { Video, Category, PageResult } from "@/shared/types/entity";
+import { useListFetch } from "@/shared/composables/useListFetch";
+import type { Video, Category } from "@/shared/types/entity";
 
 export interface VideoListItem {
   id: number;
@@ -30,14 +30,57 @@ export interface CategoryItem extends Category {
 }
 
 export function useVideoList() {
-  const loading: Ref<boolean> = ref(false);
-  const hasMore: Ref<boolean> = ref(true);
-  const currentPage: Ref<number> = ref(1);
-  const pageSize: Ref<number> = ref(20);
-  const videos: Ref<VideoListItem[]> = ref([]);
-
   const currentCategory: Ref<number | null> = ref(null);
   const categories: Ref<CategoryItem[]> = ref([]);
+
+  // 使用通用列表获取 Hook
+  const {
+    items: videos,
+    loading,
+    hasMore,
+    currentPage,
+    pageSize,
+    loadData,
+    loadMore: loadMoreVideos,
+  } = useListFetch<Video>({
+    fetchFn: async (params) => {
+      const requestParams: {
+        page: number;
+        page_size: number;
+        category_id?: number | null;
+      } = {
+        page: params.page,
+        page_size: params.page_size,
+      };
+
+      if (currentCategory.value) {
+        requestParams.category_id = currentCategory.value;
+      }
+
+      return getVideoList(requestParams);
+    },
+    transformFn: (video: Video): VideoListItem => ({
+      id: video.id,
+      title: video.title,
+      cover: resolveFileUrl(video.cover_url),
+      duration: formatDuration(video.duration),
+      views: video.view_count,
+      likes: video.like_count || 0,
+      danmaku: video.danmaku_count || 0,
+      author: {
+        name:
+          video.uploader?.nickname ||
+          video.uploader?.username ||
+          "未知用户",
+        avatar: resolveFileUrl(video.uploader?.avatar || ""),
+        verified: false,
+        verifiedType: "personal",
+      },
+      tags: [],
+      publishTime: video.created_at,
+    }),
+    autoLoad: false, // 手动控制加载时机
+  });
 
   const loadCategories = async () => {
     try {
@@ -73,68 +116,7 @@ export function useVideoList() {
   };
 
   const loadVideos = async (append = false) => {
-    if (loading.value) return;
-    loading.value = true;
-
-    try {
-      const params: {
-        page: number;
-        page_size: number;
-        category_id?: number | null;
-      } = {
-        page: currentPage.value,
-        page_size: pageSize.value,
-      };
-
-      if (currentCategory.value) {
-        params.category_id = currentCategory.value;
-      }
-
-      const response = await getVideoList(params);
-
-      if (response.success) {
-        const data = response.data as PageResult<Video>;
-        const newVideos: VideoListItem[] = (data.items || []).map((video) => ({
-          id: video.id,
-          title: video.title,
-          cover: resolveFileUrl(video.cover_url),
-          duration: formatDuration(video.duration),
-          views: video.view_count,
-          likes: video.like_count || 0,
-          danmaku: video.danmaku_count || 0,
-          author: {
-            name:
-              video.uploader?.nickname ||
-              video.uploader?.username ||
-              "未知用户",
-            avatar: resolveFileUrl(video.uploader?.avatar || ""),
-            verified: false,
-            verifiedType: "personal",
-          },
-          tags: [],
-          publishTime: video.created_at,
-        }));
-
-        if (append) {
-          videos.value.push(...newVideos);
-        } else {
-          videos.value = newVideos;
-        }
-
-        hasMore.value = videos.value.length < (data.total || 0);
-      }
-    } catch (error) {
-      console.error("加载视频列表失败:", error);
-      ElMessage.error("加载视频列表失败");
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const loadMoreVideos = async () => {
-    if (!hasMore.value || loading.value) return;
-    currentPage.value++;
-    await loadVideos(true);
+    await loadData({}, append);
   };
 
   const selectCategory = (categoryId: number | null) => {

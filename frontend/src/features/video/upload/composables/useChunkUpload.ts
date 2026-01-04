@@ -1,7 +1,7 @@
 /**
  * 分片上传 Composable
  * 
- * 职责：文件哈希计算、分片上传、断点续传、进度管理
+ * 职责：分片上传、断点续传、进度管理
  */
 import { ref, computed, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -15,6 +15,7 @@ import {
 } from "@/features/video/upload/api/upload.api"
 import { uploadVideoCover, uploadVideoSubtitle } from "@/features/video/shared/api/video.api"
 import { uploadRequest } from "@/shared/utils/request"
+import { useFileHash } from "./useFileHash"
 
 export interface ChunkUploadState {
   uploading: Ref<boolean>
@@ -38,11 +39,13 @@ export function useChunkUpload() {
   const uploadComplete = ref<boolean>(false)
   const uploadStatus = ref<string>('准备上传...')
   const uploadDetail = ref<string>('')
-  const fileHash = ref<string>('')
   const totalChunks = ref<number>(0)
   const uploadedChunks = ref<number>(0)
   const uploadedBytes = ref<number>(0)
   const uploadStartTime = ref<number>(0)
+
+  // 使用文件哈希 composable
+  const { fileHash, calculateFileHash: calculateHash } = useFileHash()
 
   // 封面和字幕上传进度
   const coverUploadProgress = ref<number>(0)
@@ -78,23 +81,11 @@ export function useChunkUpload() {
     return formatTime(remaining)
   })
 
-  // 计算文件哈希（SHA-256）
+  // 计算文件哈希（使用 useFileHash composable）
   const calculateFileHash = async (file: File): Promise<string> => {
     uploadStatus.value = '正在计算文件哈希...'
     uploadDetail.value = '用于秒传检测和断点续传'
-
-    try {
-      const buffer = await file.arrayBuffer()
-      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer)
-      const hashArray = Array.from(new Uint8Array(hashBuffer))
-      const hashHex = hashArray
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('')
-      return hashHex
-    } catch (error) {
-      console.error('计算文件哈希失败:', error)
-      throw new Error('计算文件哈希失败')
-    }
+    return await calculateHash(file)
   }
 
   // 初始化上传

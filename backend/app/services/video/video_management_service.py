@@ -10,6 +10,7 @@ import logging
 
 from app.repositories.video_repository import VideoRepository
 from app.repositories.category_repository import CategoryRepository
+from app.services.cache.redis_service import redis_service
 
 if TYPE_CHECKING:
     from app.models.video import Video
@@ -77,6 +78,10 @@ class VideoManagementService:
         if update_data:
             updated_video = VideoRepository.update(db, video_id, update_data)
             logger.info(f"视频 {video_id} 信息已更新")
+            # 失效相关缓存
+            redis_service.invalidate_video_cache(video_id)
+            logger.debug(f"视频 {video_id} 更新，已失效相关缓存")
+            
             return updated_video
         
         return video
@@ -117,13 +122,17 @@ class VideoManagementService:
             # 注意：这会删除关联的数据，需要谨慎使用
             success = VideoRepository.delete(db, video_id)
             if success:
-                logger.info(f"视频 {video_id} 已硬删除")
+                # 失效相关缓存
+                redis_service.invalidate_video_cache(video_id)
+                logger.info(f"视频 {video_id} 已硬删除，已失效相关缓存")
             return success
         else:
             # 软删除：将 status 设置为 4（已废弃，现在直接硬删除）
             success = VideoRepository.update(db, video_id, {'status': 4})
             if success:
-                logger.info(f"视频 {video_id} 已软删除（status=4）")
+                # 失效相关缓存
+                redis_service.invalidate_video_cache(video_id)
+                logger.info(f"视频 {video_id} 已软删除（status=4），已失效相关缓存")
             return success is not None
 
 

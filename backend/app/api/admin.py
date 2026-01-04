@@ -204,48 +204,8 @@ async def approve_video(
     - 如果视频原本是已发布状态，保持已发布状态（status=2）
     - 如果视频原本是其他状态，设置为已发布（status=2）
     """
-    video = db.query(Video).filter(Video.id == video_id).first()
-    if not video:
-        raise HTTPException(404, "视频不存在")
-
-    # 记录原始状态
-    original_status = video.status
-    
-    # 如果原本是已发布状态，保持已发布；否则设置为已发布
-    if original_status == 2:
-        # 保持已发布状态，不改变
-        video.status = 2
-        status_message = "视频已通过审核（保持已发布状态）"
-    else:
-        # 设置为已发布
-        video.status = 2
-        status_message = "视频已通过审核"
-    
-    video.review_status = 1  # 审核通过
-    # 更新审核报告，记录管理员操作
-    import json
-    from datetime import datetime
-    review_report = {
-        "message": "管理员审核通过",
-        "timestamp": datetime.utcnow().isoformat(),
-        "admin_id": admin.id,
-        "admin_username": admin.username,
-        "original_status": original_status,
-        "final_status": video.status
-    }
-    if video.review_report:
-        try:
-            existing_report = json.loads(video.review_report) if isinstance(video.review_report, str) else video.review_report
-            review_report.update(existing_report)
-            # 清除举报标记（如果存在）
-            if "has_report" in review_report:
-                review_report["has_report"] = False
-        except:
-            pass
-    video.review_report = json.dumps(review_report, ensure_ascii=False)
-    db.commit()
-    logger.info(f"管理员 {admin.username} 通过视频审核: video_id={video_id}, original_status={original_status}, final_status={video.status}")
-    return {"message": status_message}
+    from app.services.admin.video_admin_service import VideoAdminService
+    return VideoAdminService.approve_video(db, video_id, admin)
 
 
 @router.post("/videos/{video_id}/reject", response_model=MessageResponse, summary="拒绝视频审核")
@@ -261,31 +221,8 @@ async def reject_video(
     - 审核中的视频（包括被举报的视频）
     - 将视频状态设置为拒绝（status=3）
     """
-    video = db.query(Video).filter(Video.id == video_id).first()
-    if not video:
-        raise HTTPException(404, "视频不存在")
-
-    video.status = 3  # 拒绝 / 封禁
-    video.review_status = 2  # 审核拒绝
-    # 更新审核报告，记录管理员操作
-    import json
-    from datetime import datetime
-    review_report = {
-        "message": "管理员审核拒绝",
-        "timestamp": datetime.utcnow().isoformat(),
-        "admin_id": admin.id,
-        "admin_username": admin.username
-    }
-    if video.review_report:
-        try:
-            existing_report = json.loads(video.review_report) if isinstance(video.review_report, str) else video.review_report
-            review_report.update(existing_report)
-        except:
-            pass
-    video.review_report = json.dumps(review_report, ensure_ascii=False)
-    db.commit()
-    logger.info(f"管理员 {admin.username} 拒绝视频审核: video_id={video_id}")
-    return {"message": "视频已被拒绝"}
+    from app.services.admin.video_admin_service import VideoAdminService
+    return VideoAdminService.reject_video(db, video_id, admin)
 
 
 # =========================
@@ -378,13 +315,8 @@ async def ban_video(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
-    video = db.query(Video).filter(Video.id == video_id).first()
-    if not video:
-        raise HTTPException(404, "视频不存在")
-
-    video.status = 3
-    db.commit()
-    return {"message": "视频已封禁"}
+    from app.services.admin.video_admin_service import VideoAdminService
+    return VideoAdminService.ban_video(db, video_id)
 
 
 @router.post("/videos/{video_id}/restore", response_model=MessageResponse, summary="恢复视频")
@@ -393,13 +325,8 @@ async def restore_video(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
-    video = db.query(Video).filter(Video.id == video_id).first()
-    if not video:
-        raise HTTPException(404, "视频不存在")
-
-    video.status = 2
-    db.commit()
-    return {"message": "视频已恢复发布"}
+    from app.services.admin.video_admin_service import VideoAdminService
+    return VideoAdminService.restore_video(db, video_id)
 
 
 @router.post("/videos/{video_id}/re-review", summary="重新触发AI初审")

@@ -10,16 +10,19 @@ from fastapi import HTTPException, status
 from app.repositories.interaction_repository import InteractionRepository
 from app.repositories.video_repository import VideoRepository
 from app.repositories.report_repository import ReportRepository
+from app.core.base_service import BaseService
+from app.core.error_codes import ErrorCode
+from app.models.video import Video
 from app.models.user import User
 from app.models.interaction import UserCollection
 from app.schemas.interaction import CollectionCreate, ReportCreate
-from app.core.exceptions import ResourceNotFoundException
 
 logger = logging.getLogger(__name__)
 
 
-class InteractionService:
+class InteractionService(BaseService[Video, VideoRepository]):
     """互动服务"""
+    repository = VideoRepository
     
     @staticmethod
     def collect_video(
@@ -39,9 +42,11 @@ class InteractionService:
             dict: 包含 is_collected 的状态
         """
         # 检查视频是否存在
-        video = VideoRepository.get_by_id(db, video_id)
-        if not video:
-            raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+        InteractionService.get_by_id_or_raise(
+            db, video_id,
+            resource_name="视频",
+            error_code=ErrorCode.VIDEO_NOT_FOUND
+        )
         
         # 检查是否已收藏
         exists = InteractionRepository.get_collection(

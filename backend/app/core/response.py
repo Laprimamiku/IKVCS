@@ -14,6 +14,8 @@ from typing import Optional, Any, Dict
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from app.core.error_codes import ErrorCode
+
 
 class ApiResponse(BaseModel):
     """
@@ -77,7 +79,8 @@ def success_response(
 def error_response(
     message: str = "操作失败",
     detail: Optional[str] = None,
-    status_code: int = 400
+    status_code: int = 400,
+    error_code: Optional[ErrorCode] = None
 ) -> JSONResponse:
     """
     错误响应
@@ -86,12 +89,13 @@ def error_response(
         message: 错误消息
         detail: 详细错误信息
         status_code: HTTP 状态码
+        error_code: 错误码（可选）
         
     Returns:
         JSONResponse: FastAPI 响应对象
         
     使用示例：
-        return error_response(message="用户不存在", status_code=404)
+        return error_response(message="用户不存在", status_code=404, error_code=ErrorCode.USER_NOT_FOUND)
     """
     return JSONResponse(
         status_code=status_code,
@@ -100,7 +104,8 @@ def error_response(
             "data": None,
             "message": message,
             "detail": detail or message,
-            "status_code": status_code
+            "status_code": status_code,
+            "error_code": error_code.value if error_code else ErrorCode.UNKNOWN_ERROR.value
         }
     )
 

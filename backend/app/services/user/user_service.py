@@ -12,11 +12,13 @@ from app.repositories.user_repository import UserRepository
 from app.models.user import User
 from app.schemas.user import UserUpdateRequest
 from app.core.config import settings
-from app.core.exceptions import ResourceNotFoundException
+from app.core.base_service import BaseService
+from app.core.error_codes import ErrorCode
 
 
-class UserService:
+class UserService(BaseService[User, UserRepository]):
     """用户服务"""
+    repository = UserRepository
     
     @staticmethod
     def get_user_by_id(db: Session, user_id: int) -> User:
@@ -33,10 +35,11 @@ class UserService:
         Raises:
             ResourceNotFoundException: 用户不存在
         """
-        user = UserRepository.get_by_id(db, user_id)
-        if not user:
-            raise ResourceNotFoundException(resource="用户", resource_id=user_id)
-        return user
+        return UserService.get_by_id_or_raise(
+            db, user_id,
+            resource_name="用户",
+            error_code=ErrorCode.USER_NOT_FOUND
+        )
     
     @staticmethod
     def update_user_info(

@@ -15,8 +15,8 @@
     video = VideoRepository.get_by_id(db, 1)
     videos = VideoRepository.get_all(db, skip=0, limit=20)
 """
-from typing import Type, TypeVar, Optional, List, Union, Dict, Any
-from sqlalchemy.orm import Session
+from typing import Type, TypeVar, Optional, List, Union, Dict, Any, Sequence
+from sqlalchemy.orm import Session, joinedload, RelationshipProperty
 from sqlalchemy import and_, or_
 
 from app.core.database import Base
@@ -245,4 +245,38 @@ class BaseRepository:
             raise ValueError("子类必须设置 model 属性")
         
         return db.query(cls.model).filter(cls.model.id == id).first() is not None
+    
+    @classmethod
+    def get_by_id_with_relations(
+        cls,
+        db: Session,
+        id: int,
+        relations: Optional[List[str]] = None
+    ) -> Optional[ModelType]:
+        """
+        根据ID查询（包含关联数据）
+        
+        Args:
+            db: 数据库会话
+            id: 主键ID
+            relations: 关联字段列表，如 ["uploader", "category"]
+            
+        Returns:
+            Optional[ModelType]: 模型对象，不存在返回 None
+            
+        使用示例：
+            video = VideoRepository.get_by_id_with_relations(db, 1, ["uploader", "category"])
+        """
+        if cls.model is None:
+            raise ValueError("子类必须设置 model 属性")
+        
+        query = db.query(cls.model).filter(cls.model.id == id)
+        
+        # 如果指定了关联字段，使用 joinedload 预加载
+        if relations:
+            for rel in relations:
+                if hasattr(cls.model, rel):
+                    query = query.options(joinedload(getattr(cls.model, rel)))
+        
+        return query.first()
 

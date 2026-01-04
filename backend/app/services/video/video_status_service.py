@@ -7,13 +7,16 @@ from typing import Optional
 
 from app.repositories.video_repository import VideoRepository
 from app.repositories.upload_repository import UploadSessionRepository
-from app.core.exceptions import ResourceNotFoundException, ValidationException
+from app.core.base_service import BaseService
+from app.core.exceptions import ValidationException
+from app.core.error_codes import ErrorCode
 from app.models.video import Video
 from app.models.upload import UploadSession
 
 
-class VideoStatusService:
+class VideoStatusService(BaseService[Video, VideoRepository]):
     """视频状态服务"""
+    repository = VideoRepository
     
     @staticmethod
     def get_video_status(db: Session, video_id: int) -> dict:
@@ -30,9 +33,11 @@ class VideoStatusService:
         Raises:
             ResourceNotFoundException: 视频不存在
         """
-        video = VideoRepository.get_by_id(db, video_id)
-        if not video:
-            raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+        video = VideoStatusService.get_by_id_or_raise(
+            db, video_id,
+            resource_name="视频",
+            error_code=ErrorCode.VIDEO_NOT_FOUND
+        )
         
         status_map = {0: "转码中", 1: "审核中", 2: "已发布", 3: "已拒绝", -1: "转码失败"}
         
@@ -61,9 +66,11 @@ class VideoStatusService:
             ResourceNotFoundException: 视频不存在
             ValidationException: 没有对应的上传会话
         """
-        video = VideoRepository.get_by_id(db, video_id)
-        if not video:
-            raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+        video = VideoStatusService.get_by_id_or_raise(
+            db, video_id,
+            resource_name="视频",
+            error_code=ErrorCode.VIDEO_NOT_FOUND
+        )
         
         upload_session = UploadSessionRepository.get_by_video_id(db, video_id)
         if not upload_session:

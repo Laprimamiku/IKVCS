@@ -12,6 +12,7 @@ import logging
 
 from app.services.video.video_query_service import VideoQueryService
 from app.services.video.video_stats_service import VideoStatsService
+from app.services.cache.redis_service import redis_service
 
 # 类型检查时导入，避免循环导入
 if TYPE_CHECKING:
@@ -32,7 +33,7 @@ class VideoResponseBuilder:
         keyword: Optional[str] = None
     ) -> "VideoListResponse":
         """
-        获取视频列表响应（包含完整的数据组装）
+        获取视频列表响应（包含完整的数据组装，带缓存）
         
         这个方法封装了数据查询、组装、分页计算等所有业务逻辑
         路由层只需要调用此方法即可
@@ -47,6 +48,7 @@ class VideoResponseBuilder:
         Returns:
             VideoListResponse: 视频列表响应对象
         """
+        import json
         from app.schemas.video import (
             VideoListResponse,
             VideoListItemResponse,
@@ -54,7 +56,20 @@ class VideoResponseBuilder:
             CategoryBriefResponse
         )
         
-        # 获取视频列表和总数
+        # 构建缓存键（包含所有查询参数）
+        cache_key = f"video:list:page:{page}:size:{page_size}:cat:{category_id or 'all'}:kw:{keyword or 'none'}"
+        
+        # 尝试从缓存获取
+        cached_data = redis_service.get_query_cache(cache_key)
+        if cached_data:
+            try:
+                data = json.loads(cached_data)
+                logger.debug(f"视频列表缓存命中：{cache_key}")
+                return VideoListResponse(**data)
+            except Exception as e:
+                logger.warning(f"解析视频列表缓存失败：{e}")
+        
+        # 缓存未命中，从数据库查询
         videos, total = VideoQueryService.get_video_list(
             db=db,
             page=page,
@@ -78,7 +93,7 @@ class VideoResponseBuilder:
                     cover_url=video.cover_url,
                     duration=video.duration,
                     # 直接传入 video 对象，省去一次数据库查询
-view_count=VideoStatsService.get_view_count_from_model(video),
+                    view_count=VideoStatsService.get_view_count_from_model(video),
                     like_count=video.like_count,
                     collect_count=video.collect_count,
                     uploader=UploaderBriefResponse(
@@ -95,13 +110,23 @@ view_count=VideoStatsService.get_view_count_from_model(video),
                 )
             )
         
-        return VideoListResponse(
+        response = VideoListResponse(
             items=items,
             total=total,
             page=page,
             page_size=page_size,
             total_pages=total_pages,
         )
+        
+        # 缓存响应数据（TTL: 5分钟）
+        try:
+            response_dict = response.model_dump()
+            redis_service.set_query_cache(cache_key, json.dumps(response_dict, default=str), ttl=300)
+            logger.debug(f"视频列表缓存已保存：{cache_key}")
+        except Exception as e:
+            logger.warning(f"保存视频列表缓存失败：{e}")
+        
+        return response
 
     @staticmethod
     def get_video_detail_response(
@@ -109,7 +134,7 @@ view_count=VideoStatsService.get_view_count_from_model(video),
         video_id: int
     ) -> Optional["VideoDetailResponse"]:
         """
-        获取视频详情响应（包含完整的数据组装）
+        获取视频详情响应（包含完整的数据组装，带缓存）
         
         Args:
             db: 数据库会话
@@ -118,18 +143,33 @@ view_count=VideoStatsService.get_view_count_from_model(video),
         Returns:
             Optional[VideoDetailResponse]: 视频详情响应对象，不存在返回 None
         """
+        import json
         from app.schemas.video import (
             VideoDetailResponse,
             UploaderBriefResponse,
             CategoryBriefResponse
         )
         
+        # 构建缓存键
+        cache_key = f"video:detail:{video_id}"
+        
+        # 尝试从缓存获取
+        cached_data = redis_service.get_query_cache(cache_key)
+        if cached_data:
+            try:
+                data = json.loads(cached_data)
+                logger.debug(f"视频详情缓存命中：{cache_key}")
+                return VideoDetailResponse(**data)
+            except Exception as e:
+                logger.warning(f"解析视频详情缓存失败：{e}")
+        
+        # 缓存未命中，从数据库查询
         video = VideoQueryService.get_video_detail(db, video_id)
         if not video:
             return None
         
         # 由于使用了 joinedload，video.uploader 和 video.category 已经预加载
-        return VideoDetailResponse(
+        response = VideoDetailResponse(
             id=video.id,
             title=video.title,
             description=video.description,
@@ -153,6 +193,16 @@ view_count=VideoStatsService.get_view_count_from_model(video),
             ),
             created_at=video.created_at,
         )
+        
+        # 缓存响应数据（TTL: 10分钟，详情页缓存时间更长）
+        try:
+            response_dict = response.model_dump()
+            redis_service.set_query_cache(cache_key, json.dumps(response_dict, default=str), ttl=600)
+            logger.debug(f"视频详情缓存已保存：{cache_key}")
+        except Exception as e:
+            logger.warning(f"保存视频详情缓存失败：{e}")
+        
+        return response
     
     @staticmethod
     def get_user_video_list_response(

@@ -5,7 +5,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { usePagination } from '@/shared/composables/usePagination'
+import { useListFetch } from '@/shared/composables/useListFetch'
 import { 
   getMyVideos, 
   updateVideo, 
@@ -15,45 +15,44 @@ import {
   generateVideoOutline
 } from "@/features/video/shared/api/video.api"
 import { getCategories } from "@/features/video/shared/api/category.api"
-import type { Video, Category, PageResult, VideoUpdateData } from "@/shared/types/entity"
+import type { Video, Category, VideoUpdateData } from "@/shared/types/entity"
 
 export function useVideoManagement() {
   const router = useRouter()
 
-  // 使用通用分页 Composable
-  const pagination = usePagination({
-    initialPage: 1,
-    initialPageSize: 20
-  })
-
-  // 状态
-  const videos = ref<Video[]>([])
-  const loading = ref(false)
+  // 状态筛选
   const statusFilter = ref<number | null>(null)
   const categories = ref<Category[]>([])
+
+  // 使用通用列表获取 Composable
+  const {
+    items: videos,
+    loading,
+    currentPage,
+    pageSize,
+    total,
+    totalPages,
+    hasMore,
+    loadData,
+    refresh
+  } = useListFetch<Video>({
+    fetchFn: async (params) => {
+      return getMyVideos({
+        page: params.page,
+        page_size: params.page_size,
+        status: statusFilter.value ?? undefined,
+      })
+    },
+    initialPage: 1,
+    initialPageSize: 20,
+    autoLoad: false
+  })
 
   /**
    * 加载视频列表
    */
   const loadVideos = async () => {
-    loading.value = true
-    try {
-      const response = await getMyVideos({
-        page: pagination.currentPage.value,
-        page_size: pagination.pageSize.value,
-        status: statusFilter.value ?? undefined,
-      })
-      if (response.success) {
-        const data = response.data as PageResult<Video>
-        videos.value = data.items || []
-        pagination.setTotal(data.total || 0)
-      }
-    } catch (error) {
-      console.error('加载视频列表失败:', error)
-      ElMessage.error('加载视频列表失败')
-    } finally {
-      loading.value = false
-    }
+    await loadData()
   }
 
   /**
@@ -77,7 +76,7 @@ export function useVideoManagement() {
    */
   const handleStatusChange = (status: number | null) => {
     statusFilter.value = status
-    pagination.setPage(1)
+    currentPage.value = 1
     loadVideos()
   }
 
@@ -180,12 +179,12 @@ export function useVideoManagement() {
     statusFilter,
     categories,
     
-    // 分页（从 usePagination 导出）
-    currentPage: pagination.currentPage,
-    pageSize: pagination.pageSize,
-    total: pagination.total,
-    totalPages: pagination.totalPages,
-    hasMore: pagination.hasMore,
+    // 分页（从 useListFetch 导出）
+    currentPage,
+    pageSize,
+    total,
+    totalPages,
+    hasMore,
     
     // 方法
     loadVideos,
@@ -195,11 +194,7 @@ export function useVideoManagement() {
     deleteVideoItem,
     updateVideoInfo,
     generateOutline,
-    
-    // 分页方法
-    setPage: pagination.setPage,
-    nextPage: pagination.nextPage,
-    prevPage: pagination.prevPage,
+    refresh
   }
 }
 

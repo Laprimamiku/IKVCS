@@ -14,7 +14,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.api import auth, users, categories, upload, videos, danmaku, websocket, comments, interactions
+from app.api import auth, users, categories, upload, danmaku, websocket, comments, interactions
+from app.api.videos import router as videos_router
 
 # 创建日志目录
 os.makedirs("logs", exist_ok=True)
@@ -71,7 +72,8 @@ async def app_exception_handler(request: Request, exc: AppException):
             "success": False,
             "message": exc.message,
             "detail": exc.detail,
-            "status_code": exc.status_code
+            "status_code": exc.status_code,
+            "error_code": exc.error_code.value  # 添加错误码
         }
     )
 
@@ -98,13 +100,16 @@ async def general_exception_handler(request: Request, exc: Exception):
         }
     )
     
+    from app.core.error_codes import ErrorCode
+    
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "success": False,
             "message": "服务器内部错误",
             "detail": "系统出现异常，请稍后重试或联系管理员",
-            "status_code": 500
+            "status_code": 500,
+            "error_code": ErrorCode.INTERNAL_ERROR.value  # 添加错误码
         }
     )
 
@@ -166,20 +171,23 @@ async def shutdown_event():
     """应用关闭时执行"""
     logger.info("应用关闭中...")
     
-    # GPU 管理：如果 GPU 仍处于配置状态，尝试恢复（按需配置模式下通常已自动恢复）
-    try:
-        from app.utils.gpu_manager import get_gpu_manager
-        gpu_manager = get_gpu_manager()
-        if gpu_manager and gpu_manager._is_configured:
-            logger.info("检测到 GPU 仍处于配置状态，正在恢复...")
-            success = gpu_manager.reset_to_default()
-            if success:
-                logger.info("GPU 已重置到默认状态")
-            else:
-                logger.warning("GPU 重置失败，但服务将继续关闭")
-    except Exception as e:
-        logger.error(f"GPU 重置失败：{e}", exc_info=True)
-        # GPU 重置失败不应阻止服务关闭
+    # GPU 管理：仅在启用本地模型且启用 GPU 管理时执行
+    if not settings.USE_CLOUD_LLM and settings.GPU_MANAGEMENT_ENABLED:
+        try:
+            from app.utils.gpu_manager import get_gpu_manager
+            gpu_manager = get_gpu_manager()
+            if gpu_manager and gpu_manager._is_configured:
+                logger.info("检测到 GPU 仍处于配置状态，正在恢复...")
+                success = gpu_manager.reset_to_default()
+                if success:
+                    logger.info("GPU 已重置到默认状态")
+                else:
+                    logger.warning("GPU 重置失败，但服务将继续关闭")
+        except Exception as e:
+            logger.error(f"GPU 重置失败：{e}", exc_info=True)
+            # GPU 重置失败不应阻止服务关闭
+    else:
+        logger.debug("GPU 管理已禁用（使用云端模型或 GPU 管理未启用）")
     
     logger.info("应用关闭完成")
 
@@ -208,18 +216,20 @@ app.mount("/videos", StaticFiles(directory=video_dir), name="videos")
 
 # 注册路由
 # 类比 Spring Boot：相当于在 Application.java 中配置 Controller 扫描路径
-from app.api import auth, users, categories, upload, videos, danmaku, websocket, comments, interactions, admin
+from app.api import auth, users, categories, upload, danmaku, websocket, comments, interactions
+from app.api.videos import router as videos_router
+from app.api.admin import router as admin_router
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["用户"])
 app.include_router(categories.router, prefix="/api/v1/categories", tags=["分类"])
 app.include_router(upload.router, prefix="/api/v1/upload", tags=["上传"])
-app.include_router(videos.router, prefix="/api/v1/videos", tags=["视频"])
+app.include_router(videos_router, prefix="/api/v1/videos", tags=["视频"])
 app.include_router(websocket.router, prefix="/api/v1/ws", tags=["WebSocket"])
 app.include_router(danmaku.router, prefix="/api/v1", tags=["弹幕"])
 app.include_router(comments.router, prefix="/api/v1", tags=["评论"]) 
 app.include_router(interactions.router, prefix="/api/v1", tags=["互动"])
-app.include_router(admin.router, prefix="/api/v1/admin", tags=["管理"])
+app.include_router(admin_router, prefix="/api/v1/admin", tags=["管理"])
 
 
 @app.get("/")

@@ -261,6 +261,129 @@ class RedisService:
             logger.error(f"Redis 向量语义缓存查询失败: {e}")
             return None
 
+    # ==================== 查询缓存 ====================
+    
+    def get_query_cache(self, cache_key: str) -> Optional[str]:
+        """
+        获取查询缓存
+        
+        Args:
+            cache_key: 缓存键
+            
+        Returns:
+            Optional[str]: 缓存的JSON字符串，未命中返回None
+        """
+        try:
+            return self.redis.get(cache_key)
+        except Exception as e:
+            logger.error(f"Redis 获取查询缓存失败：{e}")
+            return None
+    
+    def set_query_cache(self, cache_key: str, data: str, ttl: int = 300) -> bool:
+        """
+        设置查询缓存
+        
+        Args:
+            cache_key: 缓存键
+            data: 要缓存的数据（JSON字符串）
+            ttl: 过期时间（秒），默认5分钟
+            
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            self.redis.setex(cache_key, ttl, data)
+            return True
+        except Exception as e:
+            logger.error(f"Redis 设置查询缓存失败：{e}")
+            return False
+    
+    def delete_query_cache(self, pattern: str) -> int:
+        """
+        删除匹配模式的缓存（用于缓存失效）
+        
+        Args:
+            pattern: 缓存键模式（支持通配符，如 "video:list:*"）
+            
+        Returns:
+            int: 删除的缓存数量
+        """
+        try:
+            keys = self.redis.keys(pattern)
+            if keys:
+                return self.redis.delete(*keys)
+            return 0
+        except Exception as e:
+            logger.error(f"Redis 删除查询缓存失败：{e}")
+            return 0
+    
+    def invalidate_video_cache(self, video_id: Optional[int] = None) -> int:
+        """
+        失效视频相关缓存
+        
+        Args:
+            video_id: 视频ID，如果为None则失效所有视频缓存
+            
+        Returns:
+            int: 删除的缓存数量
+        """
+        if video_id:
+            # 失效特定视频的缓存
+            patterns = [
+                f"video:detail:{video_id}",
+                f"video:list:*",  # 列表缓存也需要失效（因为可能包含该视频）
+                f"video:count:*",  # 总数缓存也需要失效
+            ]
+        else:
+            # 失效所有视频缓存
+            patterns = [
+                "video:detail:*",
+                "video:list:*",
+                "video:count:*",
+            ]
+        
+        total_deleted = 0
+        for pattern in patterns:
+            total_deleted += self.delete_query_cache(pattern)
+        
+        return total_deleted
+    
+    def get_count_cache(self, cache_key: str) -> Optional[int]:
+        """
+        获取计数缓存
+        
+        Args:
+            cache_key: 缓存键
+            
+        Returns:
+            Optional[int]: 缓存的计数值，未命中返回None
+        """
+        try:
+            count = self.redis.get(cache_key)
+            return int(count) if count else None
+        except Exception as e:
+            logger.error(f"Redis 获取计数缓存失败：{e}")
+            return None
+    
+    def set_count_cache(self, cache_key: str, count: int, ttl: int = 300) -> bool:
+        """
+        设置计数缓存
+        
+        Args:
+            cache_key: 缓存键
+            count: 计数值
+            ttl: 过期时间（秒），默认5分钟
+            
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            self.redis.setex(cache_key, ttl, str(count))
+            return True
+        except Exception as e:
+            logger.error(f"Redis 设置计数缓存失败：{e}")
+            return False
+
     async def save_vector_result(
         self,
         cache_key_prefix: str,

@@ -2,7 +2,7 @@
 评论数据模型
 需求：9.1-9.5, 10.1-10.4
 """
-from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey, DateTime, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -34,6 +34,15 @@ class Comment(Base):
     reply_to_user = relationship("User", foreign_keys=[reply_to_user_id])
     video = relationship("Video", foreign_keys=[video_id])
     parent = relationship("Comment", remote_side=[id], backref="replies")
+    
+    # 索引（提升查询性能）
+    __table_args__ = (
+        Index('idx_video_id', 'video_id'),  # 查询视频的评论
+        Index('idx_video_parent', 'video_id', 'parent_id'),  # 查询视频的根评论
+        Index('idx_user_id', 'user_id'),  # 查询用户的评论
+        Index('idx_created_at', 'created_at'),  # 按时间排序
+        Index('idx_like_count', 'like_count'),  # 按点赞数排序
+    )
     
     def __repr__(self):
         return f"<Comment(id={self.id}, video_id={self.video_id}, user_id={self.user_id})>"

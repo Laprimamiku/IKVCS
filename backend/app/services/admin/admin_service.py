@@ -11,15 +11,17 @@ from app.repositories.report_repository import ReportRepository
 from app.repositories.video_repository import VideoRepository
 from app.repositories.comment_repository import CommentRepository
 from app.repositories.danmaku_repository import DanmakuRepository
+from app.core.base_service import BaseService
+from app.core.error_codes import ErrorCode
 from app.models.report import Report
 from app.models.video import Video
 from app.models.comment import Comment
 from app.models.danmaku import Danmaku
-from app.core.exceptions import ResourceNotFoundException
 
 
-class AdminService:
+class AdminService(BaseService[Report, ReportRepository]):
     """管理员服务"""
+    repository = ReportRepository
     
     @staticmethod
     def get_reports(
@@ -85,9 +87,11 @@ class AdminService:
             ResourceNotFoundException: 举报不存在
             HTTPException: 无效操作
         """
-        report = db.query(Report).filter(Report.id == report_id).first()
-        if not report:
-            raise ResourceNotFoundException(resource="举报", resource_id=report_id)
+        report = AdminService.get_by_id_or_raise(
+            db, report_id,
+            resource_name="举报",
+            error_code=ErrorCode.RESOURCE_NOT_FOUND
+        )
         
         if action == "delete_target":
             # 删除目标内容
@@ -96,7 +100,7 @@ class AdminService:
                 if video:
                     video.status = 4  # 4 表示已删除
             elif report.target_type == "COMMENT":
-                comment = CommentRepository.get(db, report.target_id)
+                comment = CommentRepository.get_by_id_with_relations(db, report.target_id)
                 if comment:
                     comment.is_deleted = True
             elif report.target_type == "DANMAKU":

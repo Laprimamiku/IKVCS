@@ -32,7 +32,10 @@ class Settings(BaseSettings):
     LLM_BASE_URL: str = "https://api.openai.com/v1"  # 默认值，可通过环境变量覆盖
     LLM_MODEL: str = "glm-4-flash"  # 默认值，可通过环境变量覆盖
     
-    # 本地 LLM 配置 (大小模型协同)
+    # 云端/本地模型切换配置
+    USE_CLOUD_LLM: bool = True  # 是否使用云端大模型（True=云端，False=本地），可通过环境变量 USE_CLOUD_LLM 覆盖
+    
+    # 本地 LLM 配置 (大小模型协同) - 仅在 USE_CLOUD_LLM=False 时使用
     LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1"  # 默认 Ollama 地址，可通过环境变量 LOCAL_LLM_BASE_URL 覆盖
     LOCAL_LLM_MODEL: str = "qwen2.5:0.5b"  # 默认使用 0.5B 模型，可通过环境变量 LOCAL_LLM_MODEL 覆盖
     LOCAL_LLM_THRESHOLD_LOW: int = 30  # 本地模型低分置信区间下限
@@ -50,8 +53,8 @@ class Settings(BaseSettings):
     AI_VECTOR_DIMENSION: int = 64  # 用于构造缓存Key的向量维度数（取前N维）
     AI_VECTOR_QUANTIZATION_PRECISION: int = 3  # 向量量化精度（小数位数）
     
-    # 本地 LLM 配置（仅使用本地模型）
-    LOCAL_LLM_ENABLED: bool = True  # 默认启用本地模型，可通过环境变量 LOCAL_LLM_ENABLED 覆盖
+    # 本地 LLM 配置（仅使用本地模型）- 仅在 USE_CLOUD_LLM=False 时使用
+    LOCAL_LLM_ENABLED: bool = False  # 默认禁用本地模型（使用云端），可通过环境变量 LOCAL_LLM_ENABLED 覆盖（注意：此配置会被 USE_CLOUD_LLM 覆盖）
     LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1"  # 可通过环境变量 LOCAL_LLM_BASE_URL 覆盖
     LOCAL_LLM_MODEL: str = "qwen2.5:0.5b-instruct"  # 可通过环境变量 LOCAL_LLM_MODEL 覆盖
     LOCAL_LLM_TIMEOUT: float = 60.0  # 本地模型超时时间（秒），大纲生成需要较长时间
@@ -66,8 +69,8 @@ class Settings(BaseSettings):
     SELF_CORRECTION_AUTO_UPDATE: bool = False  # 是否自动更新Prompt（建议手动审核）
     SELF_CORRECTION_ANALYSIS_DAYS: int = 7  # 默认分析最近N天的错误
 
-    # GPU 管理配置（解决 LLM 推理时的电感啸叫问题）
-    GPU_MANAGEMENT_ENABLED: bool = True  # 是否启用 GPU 管理（默认启用）
+    # GPU 管理配置（解决 LLM 推理时的电感啸叫问题）- 仅在 USE_CLOUD_LLM=False 时使用
+    GPU_MANAGEMENT_ENABLED: bool = False  # 是否启用 GPU 管理（默认禁用，因为使用云端模型），可通过环境变量 GPU_MANAGEMENT_ENABLED 覆盖
     GPU_ID: int = 0  # GPU 设备 ID（默认 0）
     GPU_LOCKED_CLOCK: int = 1500  # 锁定的核心频率（MHz），默认 1500MHz（建议范围：1200-1500）
     GPU_POWER_LIMIT_RATIO: float = 0.75  # 功耗限制比例（0-1），默认 0.75（75%），建议范围：0.7-0.8

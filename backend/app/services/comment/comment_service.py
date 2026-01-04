@@ -5,7 +5,7 @@
 from sqlalchemy.orm import Session
 from typing import Tuple, List, Optional
 
-from app.repositories.comment_repository import comment_repository
+from app.repositories.comment_repository import CommentRepository
 from app.models.comment import Comment
 from app.schemas.comment import CommentCreate
 from app.core.exceptions import ResourceNotFoundException
@@ -38,7 +38,7 @@ class CommentService:
         """
         # 如果是回复，检查父评论是否存在
         if comment_data.parent_id:
-            parent = comment_repository.get(db, comment_data.parent_id)
+            parent = CommentRepository.get_by_id_with_relations(db, comment_data.parent_id)
             if not parent or parent.video_id != video_id:
                 raise ResourceNotFoundException(
                     resource="父评论",
@@ -46,7 +46,7 @@ class CommentService:
                 )
         
         # 创建评论
-        new_comment = comment_repository.create(
+        new_comment = CommentRepository.create_comment(
             db=db,
             video_id=video_id,
             user_id=user_id,
@@ -79,7 +79,7 @@ class CommentService:
             Tuple[List[Comment], int]: (评论列表, 总数)
         """
         skip = (page - 1) * page_size
-        return comment_repository.get_list(
+        return CommentRepository.get_list(
             db=db,
             video_id=video_id,
             skip=skip,

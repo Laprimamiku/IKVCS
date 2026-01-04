@@ -62,9 +62,9 @@ class FFmpegBuilder:
         
         command.extend([
             '-c:v', 'libx264',          # 视频编码器
-            '-preset', 'ultrafast',     # 编码速度：ultrafast 最快速度，最低 CPU 占用
+            '-preset', 'fast',          # 编码速度：fast 平衡速度和质量，降低 CPU 占用
             '-crf', '23',               # 质量因子：23 是较好的平衡点（18-28范围，越小质量越好）
-            '-threads', '1',            # 限制转码线程数为 1（进一步降低 CPU 占用）
+            '-threads', '4',            # 转码线程数：4 线程，平衡 CPU 占用和转码速度
             '-tune', 'zerolatency',     # 低延迟调优，适合流式播放
             '-movflags', '+faststart',   # 优化网络播放（将元数据移到文件开头）
         ])

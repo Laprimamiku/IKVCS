@@ -82,8 +82,28 @@ class VideoRepository(BaseRepository):
         videos = query.order_by(Video.created_at.desc()).offset(offset).limit(page_size).all()
         
         # 获取总数（使用独立的查询，避免影响分页查询的性能）
-        # 注意：如果数据量很大，可以考虑缓存总数或使用估算值
-        total = query.count()
+        # 优化：对于总数查询，不需要加载关联数据，使用更轻量的查询
+        # 优化：尝试从缓存获取总数
+        from app.services.cache.redis_service import redis_service
+        count_cache_key = f"video:count:status:2:cat:{category_id or 'all'}:kw:{keyword or 'none'}"
+        total = redis_service.get_count_cache(count_cache_key)
+        
+        if total is None:
+            # 缓存未命中，从数据库查询
+            count_query = db.query(Video).filter(Video.status == 2)
+            if category_id:
+                count_query = count_query.filter(Video.category_id == category_id)
+            if keyword:
+                keyword_pattern = f"%{keyword}%"
+                count_query = count_query.filter(
+                    or_(
+                        Video.title.like(keyword_pattern),
+                        Video.description.like(keyword_pattern)
+                    )
+                )
+            total = count_query.count()
+            # 缓存总数（TTL: 5分钟）
+            redis_service.set_count_cache(count_cache_key, total, ttl=300)
         
         return videos, total
     

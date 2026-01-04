@@ -105,6 +105,9 @@ class Video(Base):
         Index('idx_status', 'status'),
         Index('idx_category', 'category_id'),
         Index('idx_created', 'created_at'),
+        Index('idx_uploader', 'uploader_id'),  # 查询用户上传的视频
+        Index('idx_uploader_status', 'uploader_id', 'status'),  # 查询用户特定状态的视频（组合索引）
+        Index('idx_title', 'title'),  # 关键词搜索标题
     )
     
     # 关系映射

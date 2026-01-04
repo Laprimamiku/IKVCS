@@ -1,88 +1,12 @@
 <template>
   <div class="bili-creator-center">
     <!-- Header -->
-    <div class="creator-header">
-      <div class="header-container">
-        <div class="header-left">
-          <div class="logo-section">
-            <el-icon class="logo-icon"><VideoCamera /></el-icon>
-            <span class="logo-text">bilibili创作中心</span>
-          </div>
-          <div class="nav-tabs">
-            <div class="nav-tab active">投稿管理</div>
-            <div class="nav-tab">专栏管理</div>
-            <div class="nav-tab">互动视频管理</div>
-            <div class="nav-tab">合集管理</div>
-            <div class="nav-tab">站内管理</div>
-            <div class="nav-tab">视频素材管理</div>
-          </div>
-        </div>
-        <div class="header-right">
-          <div class="search-box">
-            <input type="text" placeholder="搜索内容" class="search-input" />
-            <button class="search-btn">
-              <el-icon><Search /></el-icon>
-            </button>
-          </div>
-          <div class="user-info">
-            <span class="username">用户名</span>
-            <el-avatar :size="32" class="user-avatar">
-              <el-icon><User /></el-icon>
-            </el-avatar>
-          </div>
-        </div>
-      </div>
-    </div>
+    <UploadHeader />
 
     <!-- Main Content -->
     <div class="creator-main">
       <!-- Sidebar -->
-      <div class="creator-sidebar">
-        <div class="sidebar-section">
-          <div class="section-title">
-            <el-icon><DataAnalysis /></el-icon>
-            <span>首页</span>
-          </div>
-          <div class="sidebar-item active">
-            <el-icon class="item-icon"><Document /></el-icon>
-            <span class="item-text">稿件管理</span>
-          </div>
-          <div class="sidebar-item">
-            <el-icon class="item-icon"><DataAnalysis /></el-icon>
-            <span class="item-text">数据中心</span>
-          </div>
-          <div class="sidebar-item">
-            <el-icon class="item-icon"><Money /></el-icon>
-            <span class="item-text">收益管理</span>
-          </div>
-        </div>
-
-        <div class="sidebar-section">
-          <div class="section-title">
-            <el-icon><VideoCamera /></el-icon>
-            <span>互动管理</span>
-          </div>
-          <div class="sidebar-item">
-              <el-icon class="item-icon"><ChatDotRound /></el-icon>
-            <span class="item-text">评论管理</span>
-          </div>
-          <div class="sidebar-item">
-            <el-icon class="item-icon"><UserFilled /></el-icon>
-            <span class="item-text">粉丝管理</span>
-          </div>
-        </div>
-
-        <div class="sidebar-section">
-          <div class="section-title">
-            <el-icon><Setting /></el-icon>
-            <span>创作助手</span>
-          </div>
-          <div class="sidebar-item">
-            <el-icon class="item-icon"><Brush /></el-icon>
-            <span class="item-text">创作中心</span>
-          </div>
-        </div>
-      </div>
+      <UploadSidebar />
 
       <!-- Content Area -->
       <div class="creator-content">
@@ -133,128 +57,48 @@
 
         <!-- Video List -->
         <div class="video-list">
-          <!-- Upload Step Content (conditionally shown) -->
-          <div v-if="showUploadModal" class="upload-modal-overlay" @click="closeUploadModal">
-            <div class="upload-modal" @click.stop>
-              <div class="upload-modal-header">
-                <h3>视频投稿</h3>
-                <button class="close-btn" @click="closeUploadModal">✕</button>
-              </div>
-              <div class="upload-modal-content">
-                <!-- Steps Indicator -->
-                <div class="steps-wrapper">
-                  <div class="steps-bar">
-                    <div 
-                      class="step-item" 
-                      :class="{ active: currentStep >= 0, completed: currentStep > 0 }"
-                    >
-                      <div class="step-circle">
-                        <span v-if="currentStep > 0">✓</span>
-                        <span v-else>1</span>
-                      </div>
-                      <span class="step-label">选择文件</span>
-                    </div>
-                    <div class="step-line" :class="{ active: currentStep > 0 }"></div>
-                    <div 
-                      class="step-item" 
-                      :class="{ active: currentStep >= 1, completed: currentStep > 1 }"
-                    >
-                      <div class="step-circle">
-                        <span v-if="currentStep > 1">✓</span>
-                        <span v-else>2</span>
-                      </div>
-                      <span class="step-label">填写信息</span>
-                    </div>
-                    <div class="step-line" :class="{ active: currentStep > 1 }"></div>
-                    <div 
-                      class="step-item" 
-                      :class="{ active: currentStep >= 2, completed: uploadComplete }"
-                    >
-                      <div class="step-circle">
-                        <span v-if="uploadComplete">✓</span>
-                        <span v-else>3</span>
-                      </div>
-                      <span class="step-label">上传完成</span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Step Content -->
-                <div class="step-content">
-                  <!-- Step 1: File Selection -->
-                  <div v-show="currentStep === 0" class="upload-step">
-                    <FileSelector
-                      :video-file="videoFile"
-                      :cover-file="coverFile"
-                      :subtitle-file="subtitleFile"
-                      :video-preview-url="videoPreviewUrl"
-                      :cover-preview-url="coverPreviewUrl"
-                      @video-selected="handleVideoSelected"
-                      @cover-selected="handleCoverSelected"
-                      @subtitle-selected="handleSubtitleSelected"
-                      @video-removed="handleVideoRemoved"
-                      @cover-removed="handleCoverRemoved"
-                      @subtitle-removed="handleSubtitleRemoved"
-                    />
-                    <div class="step-actions">
-                      <el-button
-                        type="primary"
-                        size="large"
-                        :disabled="!hasVideoFile"
-                        @click="nextStep"
-                      >
-                        下一步
-                      </el-button>
-                    </div>
-                  </div>
-
-                  <!-- Step 2: Video Info -->
-                  <div v-show="currentStep === 1" class="upload-step">
-                    <VideoInfoForm
-                      ref="videoFormRef"
-                      :categories="categories"
-                      :model-value="videoForm"
-                      @update:modelValue="handleVideoFormUpdate"
-                    />
-                    <div class="step-actions">
-                      <el-button size="large" @click="prevStep">上一步</el-button>
-                      <el-button
-                        type="primary"
-                        size="large"
-                        :loading="uploading"
-                        @click="handleStartUpload"
-                      >
-                        开始上传
-                      </el-button>
-                    </div>
-                  </div>
-
-                  <!-- Step 3: Upload Progress -->
-                  <div v-show="currentStep === 2" class="upload-step">
-                    <UploadProgress
-                      :status="uploadStatus"
-                      :detail="uploadDetail"
-                      :progress="totalProgress"
-                      :complete="uploadComplete"
-                      :uploading="uploading"
-                      :uploaded-chunks="uploadedChunks"
-                      :total-chunks="totalChunks"
-                      :speed="uploadSpeed"
-                      :remaining-time="remainingTime"
-                      :cover-progress="coverUploadProgress"
-                      :subtitle-progress="subtitleUploadProgress"
-                      :cover-uploading="coverUploading"
-                      :subtitle-uploading="subtitleUploading"
-                      @resume="handleResumeUpload"
-                      @pause="handlePauseUpload"
-                      @go-home="goToHome"
-                      @upload-another="uploadAnother"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <!-- Upload Modal -->
+          <UploadModal
+            v-model="showUploadModal"
+            :current-step="currentStep"
+            :video-file="videoFile"
+            :cover-file="coverFile"
+            :subtitle-file="subtitleFile"
+            :video-preview-url="videoPreviewUrl"
+            :cover-preview-url="coverPreviewUrl"
+            :has-video-file="hasVideoFile"
+            :categories="categories"
+            :video-form="videoForm"
+            :uploading="uploading"
+            :upload-complete="uploadComplete"
+            :upload-status="uploadStatus"
+            :upload-detail="uploadDetail"
+            :total-progress="totalProgress"
+            :uploaded-chunks="uploadedChunks"
+            :total-chunks="totalChunks"
+            :upload-speed="uploadSpeed"
+            :remaining-time="remainingTime"
+            :cover-progress="coverUploadProgress"
+            :subtitle-progress="subtitleUploadProgress"
+            :cover-uploading="coverUploading"
+            :subtitle-uploading="subtitleUploading"
+            ref="uploadModalRef"
+            @video-selected="handleVideoSelected"
+            @cover-selected="handleCoverSelected"
+            @subtitle-selected="handleSubtitleSelected"
+            @video-removed="handleVideoRemoved"
+            @cover-removed="handleCoverRemoved"
+            @subtitle-removed="handleSubtitleRemoved"
+            @next-step="nextStep"
+            @prev-step="prevStep"
+            @start-upload="handleStartUpload"
+            @resume-upload="handleResumeUpload"
+            @pause-upload="handlePauseUpload"
+            @go-home="goToHome"
+            @upload-another="uploadAnother"
+            @video-form-update="handleVideoFormUpdate"
+            @update:modelValue="showUploadModal = $event"
+          />
 
           <!-- Video Item (Placeholder - to be replaced with actual video list) -->
           <div class="video-item" v-if="false">
@@ -317,10 +161,10 @@
 import { ref, reactive, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
-import { VideoCamera, Search, ChatDotRound, Setting, Upload, View, CircleCheckFilled, Star, DataAnalysis, Document, Money, UserFilled, Brush, User } from "@element-plus/icons-vue";
-import FileSelector from "@/features/video/upload/components/FileSelector.vue";
-import VideoInfoForm from "@/features/video/upload/components/VideoInfoForm.vue";
-import UploadProgress from "@/features/video/upload/components/UploadProgress.vue";
+import { Upload, View, CircleCheckFilled, Star } from "@element-plus/icons-vue";
+import UploadHeader from "@/features/video/upload/components/layout/UploadHeader.vue";
+import UploadSidebar from "@/features/video/upload/components/layout/UploadSidebar.vue";
+import UploadModal from "@/features/video/upload/components/UploadModal.vue";
 import { getCategories } from "@/features/video/shared/api/category.api";
 import { useFileUpload } from "@/features/video/upload/composables/useFileUpload";
 import { useChunkUpload } from "@/features/video/upload/composables/useChunkUpload";
@@ -362,7 +206,7 @@ const {
   startUpload, pauseUpload, resumeUpload, resetUpload,
 } = useChunkUpload();
 
-const videoFormRef = ref<InstanceType<typeof VideoInfoForm> | null>(null);
+const uploadModalRef = ref<InstanceType<typeof UploadModal> | null>(null);
 const videoForm = reactive<{
   title: string;
   description: string;
@@ -446,8 +290,8 @@ const handleStartUpload = async () => {
 
   let valid = false;
   try {
-    if (videoFormRef.value && typeof videoFormRef.value.validate === "function") {
-      valid = (await videoFormRef.value.validate()) ?? false;
+    if (uploadModalRef.value?.videoFormRef && typeof uploadModalRef.value.videoFormRef.validate === "function") {
+      valid = (await uploadModalRef.value.videoFormRef.validate()) ?? false;
     }
   } catch (err) {
     valid = false;
@@ -522,138 +366,6 @@ onMounted(async () => {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* Header */
-.creator-header {
-  background: #fff;
-  border-bottom: 1px solid #e3e5e7;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
-.header-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  height: 64px;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 40px;
-}
-
-.logo-section {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  
-  .logo-icon {
-    font-size: 24px;
-  }
-  
-  .logo-text {
-    font-size: 18px;
-    font-weight: 600;
-    color: #18191c;
-  }
-}
-
-.nav-tabs {
-  display: flex;
-  align-items: center;
-  gap: 32px;
-}
-
-.nav-tab {
-  padding: 8px 0;
-  font-size: 14px;
-  color: #61666d;
-  cursor: pointer;
-  position: relative;
-  transition: color 0.2s;
-  
-  &:hover {
-    color: #00aeec;
-  }
-  
-  &.active {
-    color: #00aeec;
-    font-weight: 500;
-    
-    &::after {
-      content: '';
-      position: absolute;
-      bottom: -1px;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: #00aeec;
-    }
-  }
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-}
-
-.search-box {
-  display: flex;
-  align-items: center;
-  background: #f1f2f3;
-  border-radius: 20px;
-  padding: 0 16px;
-  height: 36px;
-  
-  .search-input {
-    border: none;
-    background: none;
-    outline: none;
-    font-size: 14px;
-    width: 200px;
-    
-    &::placeholder {
-      color: #9499a0;
-    }
-  }
-  
-  .search-btn {
-    border: none;
-    background: none;
-    cursor: pointer;
-    color: #9499a0;
-    font-size: 16px;
-  }
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  
-  .username {
-    font-size: 14px;
-    color: #18191c;
-  }
-  
-  .user-avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: #00aeec;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 16px;
-  }
-}
 
 /* Main Content */
 .creator-main {
@@ -663,60 +375,6 @@ onMounted(async () => {
   min-height: calc(100vh - 64px);
 }
 
-/* Sidebar */
-.creator-sidebar {
-  width: 240px;
-  background: #fff;
-  border-right: 1px solid #e3e5e7;
-  padding: 24px 0;
-}
-
-.sidebar-section {
-  margin-bottom: 32px;
-  
-  &:last-child {
-    margin-bottom: 0;
-  }
-}
-
-.section-title {
-  padding: 0 24px 12px;
-  font-size: 12px;
-  color: #9499a0;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.sidebar-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 24px;
-  color: #61666d;
-  cursor: pointer;
-  transition: all 0.2s;
-  
-  &:hover {
-    background: #f1f2f3;
-    color: #18191c;
-  }
-  
-  &.active {
-    background: #e7f6ff;
-    color: #00aeec;
-    border-right: 3px solid #00aeec;
-  }
-  
-  .item-icon {
-    font-size: 16px;
-  }
-  
-  .item-text {
-    font-size: 14px;
-    font-weight: 400;
-  }
-}
 
 /* Content Area */
 .creator-content {
@@ -1036,189 +694,9 @@ onMounted(async () => {
   }
 }
 
-/* Upload Modal */
-.upload-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 20px;
-}
-
-.upload-modal {
-  background: white;
-  border-radius: 12px;
-  width: 100%;
-  max-width: 800px;
-  max-height: 90vh;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-}
-
-.upload-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px;
-  border-bottom: 1px solid #e3e5e7;
-  
-  h3 {
-    font-size: 18px;
-    font-weight: 600;
-    color: #18191c;
-    margin: 0;
-  }
-  
-  .close-btn {
-    width: 32px;
-    height: 32px;
-    border: none;
-    background: none;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 18px;
-    color: #61666d;
-    transition: all 0.2s;
-    
-    &:hover {
-      background: #f1f2f3;
-      color: #18191c;
-    }
-  }
-}
-
-.upload-modal-content {
-  padding: 32px 40px; // 增加内边距，从 24px 改为 32px 40px
-  max-height: calc(90vh - 80px);
-  overflow-y: auto;
-}
-
-/* Steps in Modal */
-.steps-wrapper {
-  margin-bottom: 32px;
-}
-
-.steps-bar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-}
-
-.step-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.step-circle {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: #f1f2f3;
-  color: #9499a0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 600;
-  transition: all 0.3s;
-
-  .step-item.active & {
-    background: #00aeec;
-    color: white;
-    box-shadow: 0 4px 12px rgba(0, 174, 236, 0.3);
-  }
-
-  .step-item.completed & {
-    background: #52c41a;
-    color: white;
-  }
-}
-
-.step-label {
-  font-size: 13px;
-  color: #9499a0;
-  transition: color 0.3s;
-
-  .step-item.active & {
-    color: #00aeec;
-    font-weight: 500;
-  }
-
-  .step-item.completed & {
-    color: #52c41a;
-  }
-}
-
-.step-line {
-  width: 80px;
-  height: 2px;
-  background: #f1f2f3;
-  margin: 0 16px;
-  margin-bottom: 24px;
-  border-radius: 1px;
-  transition: background 0.3s;
-
-  &.active {
-    background: #00aeec;
-  }
-}
-
-/* Step Content */
-.step-content {
-  animation: fadeIn 0.3s ease-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.upload-step {
-  min-height: 450px; // 增加最小高度
-  display: flex;
-  flex-direction: column;
-  gap: 24px; // 增加内部元素间距
-}
-
-/* Step Actions */
-.step-actions {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-  margin-top: auto;
-  padding-top: 32px; // 增加上内边距
-  padding-bottom: 8px;
-  border-top: 1px solid #f1f2f3;
-}
 
 /* Responsive */
 @media (max-width: 1200px) {
-  .header-container {
-    padding: 0 16px;
-  }
-  
-  .nav-tabs {
-    gap: 24px;
-  }
-  
   .creator-main {
     padding: 0;
   }
@@ -1229,22 +707,6 @@ onMounted(async () => {
 }
 
 @media (max-width: 768px) {
-  .creator-sidebar {
-    display: none;
-  }
-  
-  .header-left {
-    gap: 20px;
-  }
-  
-  .nav-tabs {
-    display: none;
-  }
-  
-  .search-box .search-input {
-    width: 150px;
-  }
-  
   .content-header {
     flex-direction: column;
     align-items: flex-start;
@@ -1267,20 +729,6 @@ onMounted(async () => {
     width: 100%;
     height: auto;
     aspect-ratio: 16/9;
-  }
-  
-  .upload-modal {
-    margin: 10px;
-    max-width: none;
-  }
-  
-  .upload-modal-content {
-    padding: 16px;
-  }
-  
-  .step-line {
-    width: 60px;
-    margin: 0 12px;
   }
 }
 </style>

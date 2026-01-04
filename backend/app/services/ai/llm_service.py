@@ -107,37 +107,47 @@ class LLMService:
         except Exception as e:
             logger.warning(f"Exact cache read failed: {e}")
 
-        # ==================== Layer 2: 本地模型 ====================
-        if not settings.LOCAL_LLM_ENABLED:
-            logger.warning("本地模型未启用，返回默认结果")
+        # ==================== Layer 2: 本地模型 / 云端模型 ====================
+        # 根据配置选择使用本地模型还是云端模型
+        if settings.USE_CLOUD_LLM:
+            # 使用云端大模型
+            logger.info("使用云端大模型进行分析")
+            # TODO: 实现云端大模型调用逻辑
+            # 暂时返回默认结果，等待实现云端模型调用
+            logger.warning("云端大模型调用逻辑待实现，返回默认结果")
             return self.default_response
-
-        try:
-            local_result = await local_model_service.predict(content, content_type)
-            if local_result:
-                logger.info(f"[LocalLLM] score={local_result.get('score')}")
-
-                final_result = {
-                    "score": local_result.get("score", 60),
-                    "category": local_result.get("category", "普通"),
-                    "label": local_result.get("label", "普通"),
-                    "reason": local_result.get("reason", "本地模型分析"),
-                    "is_highlight": local_result.get("is_highlight", False),
-                    "is_inappropriate": local_result.get("is_inappropriate", False),
-                }
-
-                # 保存缓存
-                await self._save_cache(
-                    content, content_type, final_result, None
-                )
-                return final_result
-            else:
-                logger.warning("本地模型返回空结果，返回默认结果")
+        else:
+            # 使用本地模型
+            if not settings.LOCAL_LLM_ENABLED:
+                logger.warning("本地模型未启用，返回默认结果")
                 return self.default_response
 
-        except Exception as e:
-            logger.error(f"Local LLM failed: {e}")
-            return self.default_response
+            try:
+                local_result = await local_model_service.predict(content, content_type)
+                if local_result:
+                    logger.info(f"[LocalLLM] score={local_result.get('score')}")
+
+                    final_result = {
+                        "score": local_result.get("score", 60),
+                        "category": local_result.get("category", "普通"),
+                        "label": local_result.get("label", "普通"),
+                        "reason": local_result.get("reason", "本地模型分析"),
+                        "is_highlight": local_result.get("is_highlight", False),
+                        "is_inappropriate": local_result.get("is_inappropriate", False),
+                    }
+
+                    # 保存缓存
+                    await self._save_cache(
+                        content, content_type, final_result, None
+                    )
+                    return final_result
+                else:
+                    logger.warning("本地模型返回空结果，返回默认结果")
+                    return self.default_response
+
+            except Exception as e:
+                logger.error(f"Local LLM failed: {e}")
+                return self.default_response
 
         # ==================== Layer 3: 云端大模型（已注释，暂时不使用）====================
         # messages = self._build_prompt(content, content_type)
