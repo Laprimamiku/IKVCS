@@ -64,6 +64,15 @@
             class="progress-bar-filled"
             :style="{ width: `${progressPercent}%` }"
           ></div>
+          <!-- 章节标记 -->
+          <div
+            v-for="(chapter, index) in outlineList"
+            :key="index"
+            class="progress-chapter-marker"
+            :style="{ left: `${duration > 0 ? (chapter.start_time / duration) * 100 : 0}%` }"
+            :title="chapter.title"
+            @click.stop="handleChapterJump(chapter.start_time)"
+          ></div>
           <div 
             class="progress-bar-handle"
             :class="{ 'is-visible': isProgressHover || isDragging }"
@@ -71,13 +80,25 @@
             @mousedown.stop="startDrag"
           ></div>
         </div>
-        <!-- 预览时间提示 -->
+        <!-- 预览时间提示（包含知识点/内容点） -->
         <div 
           v-if="previewTime > 0 && isProgressHover"
           class="progress-preview"
           :style="{ left: `${previewPercent}%` }"
         >
-          {{ formatTime(previewTime) }}
+          <div class="preview-time">{{ formatTime(previewTime) }}</div>
+          <div v-if="currentChapter" class="preview-chapter">
+            <div class="preview-chapter-title">{{ currentChapter.title }}</div>
+            <div v-if="currentChapter.key_points && currentChapter.key_points.length > 0" class="preview-key-points">
+              <div 
+                v-for="(point, idx) in currentChapter.key_points.slice(0, 3)"
+                :key="idx"
+                class="preview-key-point"
+              >
+                • {{ point }}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -287,9 +308,12 @@ import {
 import Hls from "hls.js";
 import { resolveFileUrl } from "@/shared/utils/urlHelpers";
 
+import type { VideoOutlineEntry } from '@/shared/types/entity';
+
 const props = defineProps<{
   videoUrl?: string | null;
   subtitleUrl?: string | null;
+  outline?: VideoOutlineEntry[]; // 视频章节大纲
 }>();
 
 const emit = defineEmits<{
@@ -322,6 +346,13 @@ const isProgressHover = ref(false);
 const isDragging = ref(false);
 const previewTime = ref(0);
 const previewPercent = ref(0);
+const currentChapter = ref<VideoOutlineEntry | null>(null); // 当前悬停位置对应的章节
+
+// 视频章节大纲
+const outlineList = computed(() => {
+  if (!props.outline || !Array.isArray(props.outline)) return [];
+  return props.outline.sort((a, b) => a.start_time - b.start_time);
+});
 
 // 菜单显示状态
 const showQualityMenu = ref(false);
@@ -585,6 +616,30 @@ const handleProgressHover = (e: MouseEvent) => {
   const percent = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
   previewPercent.value = percent;
   previewTime.value = (percent / 100) * duration.value;
+  
+  // 查找当前时间点对应的章节
+  currentChapter.value = findChapterAtTime(previewTime.value);
+};
+
+// 查找指定时间点对应的章节
+const findChapterAtTime = (time: number): VideoOutlineEntry | null => {
+  if (!outlineList.value || outlineList.value.length === 0) return null;
+  
+  for (const chapter of outlineList.value) {
+    const startTime = chapter.start_time;
+    const endTime = chapter.end_time || (outlineList.value.find(c => c.start_time > startTime)?.start_time || duration.value);
+    
+    if (time >= startTime && time < endTime) {
+      return chapter;
+    }
+  }
+  
+  return null;
+};
+
+// 跳转到章节
+const handleChapterJump = (time: number) => {
+  seek(time);
 };
 
 const startDrag = (e: MouseEvent) => {
@@ -1171,19 +1226,68 @@ defineExpose({
         }
       }
 
+      .progress-chapter-marker {
+        position: absolute;
+        top: 0;
+        width: 4px;
+        height: 100%;
+        background: var(--bili-pink);
+        cursor: pointer;
+        z-index: 3;
+        transform: translateX(-50%);
+        opacity: 0.7;
+        transition: opacity 0.2s;
+        
+        &:hover {
+          opacity: 1;
+          width: 6px;
+        }
+      }
+      
       .progress-preview {
         position: absolute;
         bottom: 100%;
         margin-bottom: 8px;
         transform: translateX(-50%);
-        background: rgba(0, 0, 0, 0.9);
+        background: rgba(0, 0, 0, 0.95);
         color: #fff;
-        padding: 4px 8px;
-        border-radius: 4px;
+        padding: 8px 12px;
+        border-radius: 6px;
         font-size: 12px;
-        white-space: nowrap;
         pointer-events: none;
         z-index: 1001;
+        min-width: 200px;
+        max-width: 300px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        
+        .preview-time {
+          font-weight: 600;
+          margin-bottom: 4px;
+          color: var(--bili-pink);
+        }
+        
+        .preview-chapter {
+          margin-top: 6px;
+          padding-top: 6px;
+          border-top: 1px solid rgba(255, 255, 255, 0.2);
+          
+          .preview-chapter-title {
+            font-weight: 500;
+            margin-bottom: 4px;
+            color: #fff;
+          }
+          
+          .preview-key-points {
+            margin-top: 4px;
+            
+            .preview-key-point {
+              font-size: 11px;
+              color: rgba(255, 255, 255, 0.8);
+              line-height: 1.4;
+              margin-top: 2px;
+            }
+          }
+        }
       }
     }
 

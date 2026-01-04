@@ -29,6 +29,11 @@ class LocalModelService:
         """
         调用本地模型进行预测
         
+        注意：GPU 管理已改为手动模式
+        - 如需消除电感啸叫，请在调用前手动锁定 GPU 频率
+        - 调用后手动恢复 GPU 设置
+        - 详见：backend/docs/GPU_MANAGEMENT.md
+        
         Returns:
             Dict: 预测结果（包含 score, category, label, confidence 等）
             None: 如果调用失败、超时或解析错误，返回 None (触发降级)

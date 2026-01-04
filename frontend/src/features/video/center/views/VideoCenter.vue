@@ -166,6 +166,15 @@
                     <el-icon><DataAnalysis /></el-icon>
                     智能分析
                   </el-button>
+                  <el-button 
+                    size="small" 
+                    @click="handleGenerateOutline(video)"
+                    :disabled="!video.subtitle_url"
+                    :title="!video.subtitle_url ? '该视频没有字幕文件，无法生成章节' : '生成视频章节大纲'"
+                  >
+                    <el-icon><List /></el-icon>
+                    生成章节
+                  </el-button>
                   <el-button size="small" @click="handleEdit(video)">
                     <el-icon><Edit /></el-icon>
                     编辑
@@ -377,6 +386,7 @@ import {
   Lightning,
   Cloudy,
   DataAnalysis,
+  List,
 } from "@element-plus/icons-vue";
 import AppHeader from "@/shared/components/layout/AppHeader.vue";
 import StatCard from "@/shared/components/atoms/StatCard.vue";
@@ -419,6 +429,7 @@ const {
   viewVideo,
   deleteVideoItem,
   updateVideoInfo,
+  generateOutline,
 } = useVideoManagement();
 
 const editDialogVisible = ref(false);
@@ -690,6 +701,10 @@ const handleView = (videoId: number) => {
 
 const handleAnalyze = (video: Video) => {
   router.push(`/center/analysis/${video.id}`);
+};
+
+const handleGenerateOutline = async (video: Video) => {
+  await generateOutline(video);
 };
 
 const handleEdit = (video: Video) => {

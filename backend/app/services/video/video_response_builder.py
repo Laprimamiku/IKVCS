@@ -197,12 +197,30 @@ view_count=VideoStatsService.get_view_count_from_model(video),
         # 组装响应数据
         items = []
         for video in videos:
+            # 处理字幕 URL：如果 subtitle_url 为空或不是绝对路径，尝试通过 video_id 查找
+            subtitle_url = video.subtitle_url
+            if not subtitle_url or not subtitle_url.startswith('/'):
+                # 尝试在 UPLOAD_SUBTITLE_DIR 中查找以 video_id 开头的字幕文件
+                from app.core.config import settings
+                from pathlib import Path
+                import os
+                
+                subtitle_dir = Path(settings.UPLOAD_SUBTITLE_DIR)
+                if subtitle_dir.exists():
+                    # 查找以 video_id 开头的字幕文件
+                    subtitle_files = list(subtitle_dir.glob(f"{video.id}_subtitle_*"))
+                    if subtitle_files:
+                        # 使用找到的第一个字幕文件
+                        subtitle_file = subtitle_files[0]
+                        subtitle_url = f"/uploads/subtitles/{subtitle_file.name}"
+            
             items.append(
                 VideoListItemResponse(
                     id=video.id,
                     title=video.title,
                     description=video.description,
                     cover_url=video.cover_url,
+                    subtitle_url=subtitle_url,  # 添加字幕 URL
                     duration=video.duration,
                     view_count=VideoStatsService.get_merged_view_count(db, video.id),
                     like_count=video.like_count,

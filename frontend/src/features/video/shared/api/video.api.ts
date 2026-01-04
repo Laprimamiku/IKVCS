@@ -125,6 +125,20 @@ export async function getVideoOutline(videoId: number) {
 }
 
 /**
+ * 生成视频大纲
+ */
+export function generateVideoOutline(videoId: number) {
+  return request.post<{ outline: any[]; message: string }>(`/videos/${videoId}/outline/generate`);
+}
+
+/**
+ * 获取大纲生成进度
+ */
+export function getOutlineProgress(videoId: number) {
+  return request.get<{ progress: number; message: string; status: string }>(`/videos/${videoId}/outline/progress`);
+}
+
+/**
  * 获取视频摘要
  */
 export async function getVideoSummary(videoId: number) {

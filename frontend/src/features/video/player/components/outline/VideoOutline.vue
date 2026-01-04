@@ -19,26 +19,38 @@
       <p>暂无章节信息</p>
     </div>
 
-    <div v-else class="outline-list">
+    <div v-else class="outline-list mindmap">
       <div
         v-for="(item, index) in outlineList"
         :key="index"
-        class="outline-item"
+        class="outline-item mindmap-item"
         :class="{ active: isActive(item.start_time) }"
         @click="handleJump(item.start_time)"
       >
-        <div class="outline-item-content">
-          <div class="outline-item-header">
-            <span class="outline-item-index">{{ index + 1 }}</span>
-            <span class="outline-item-title">{{ item.title }}</span>
-            <span class="outline-item-time">{{ formatTime(item.start_time) }}</span>
+        <div class="mindmap-node">
+          <div class="mindmap-node-content">
+            <div class="mindmap-node-header">
+              <span class="mindmap-node-index">{{ index + 1 }}</span>
+              <span class="mindmap-node-title">{{ item.title }}</span>
+              <span class="mindmap-node-time">{{ formatTime(item.start_time) }}</span>
+            </div>
+            <div v-if="item.description" class="mindmap-node-desc">
+              {{ item.description }}
+            </div>
+            <!-- 关键知识点/内容点 -->
+            <div v-if="item.key_points && item.key_points.length > 0" class="mindmap-node-points">
+              <div 
+                v-for="(point, idx) in item.key_points"
+                :key="idx"
+                class="mindmap-node-point"
+              >
+                <el-icon class="point-icon"><Star /></el-icon>
+                <span>{{ point }}</span>
+              </div>
+            </div>
           </div>
-          <div v-if="item.description" class="outline-item-desc">
-            {{ item.description }}
-          </div>
-        </div>
-        <div v-if="item.thumbnail" class="outline-item-thumbnail">
-          <img :src="item.thumbnail" :alt="item.title" />
+          <!-- 连接线（思维导图样式） -->
+          <div v-if="index < outlineList.length - 1" class="mindmap-connector"></div>
         </div>
       </div>
     </div>
@@ -129,6 +141,28 @@ const loadOutline = async () => {
       
       // 确保是数组并按时间排序
       if (Array.isArray(outline)) {
+        // 确保每个条目的 key_points 是数组格式
+        outline = outline.map((item: any) => {
+          if (item.key_points) {
+            // 如果 key_points 是字符串，尝试解析或分割
+            if (typeof item.key_points === 'string') {
+              try {
+                item.key_points = JSON.parse(item.key_points);
+              } catch {
+                // 如果解析失败，按逗号分割
+                item.key_points = item.key_points.split(',').map((p: string) => p.trim()).filter((p: string) => p);
+              }
+            }
+            // 确保是数组
+            if (!Array.isArray(item.key_points)) {
+              item.key_points = [];
+            }
+          } else {
+            item.key_points = [];
+          }
+          return item;
+        });
+        
         outlineData.value = outline.sort((a, b) => a.start_time - b.start_time);
       } else {
         outlineData.value = [];
@@ -215,6 +249,22 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  
+  &.mindmap {
+    position: relative;
+    padding-left: 20px;
+    
+    &::before {
+      content: '';
+      position: absolute;
+      left: 10px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--bili-pink), rgba(251, 114, 153, 0.3));
+      border-radius: 2px;
+    }
+  }
 }
 
 .outline-item {
@@ -236,9 +286,62 @@ onMounted(() => {
     background: var(--bili-pink-light);
     border-color: var(--bili-pink);
     
-    .outline-item-title {
+    .outline-item-title,
+    .mindmap-node-title {
       color: var(--bili-pink);
       font-weight: var(--font-weight-semibold);
+    }
+  }
+  
+  &.mindmap-item {
+    position: relative;
+    padding-left: 0;
+    
+    .mindmap-node {
+      position: relative;
+      width: 100%;
+      
+      .mindmap-node-content {
+        background: var(--bg-white);
+        border: 1px solid var(--divider-color);
+        border-radius: var(--radius-md);
+        padding: var(--space-3);
+        transition: var(--transition-fast);
+        
+        &:hover {
+          border-color: var(--bili-pink);
+          box-shadow: 0 2px 8px rgba(251, 114, 153, 0.1);
+        }
+      }
+      
+      .mindmap-connector {
+        position: absolute;
+        left: -20px;
+        top: 50%;
+        width: 20px;
+        height: 2px;
+        background: var(--bili-pink);
+        transform: translateY(-50%);
+        z-index: 1;
+        
+        &::after {
+          content: '';
+          position: absolute;
+          right: -4px;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 0;
+          height: 0;
+          border-left: 6px solid var(--bili-pink);
+          border-top: 4px solid transparent;
+          border-bottom: 4px solid transparent;
+        }
+      }
+    }
+    
+    &.active .mindmap-node-content {
+      background: var(--bili-pink-light);
+      border-color: var(--bili-pink);
     }
   }
 }
@@ -312,6 +415,90 @@ onMounted(() => {
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+}
+
+.mindmap-node-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.mindmap-node-index {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-circle);
+  background: var(--bg-gray-1);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  flex-shrink: 0;
+}
+
+.mindmap-item.active .mindmap-node-index {
+  background: var(--bili-pink);
+  color: var(--text-white);
+}
+
+.mindmap-node-title {
+  flex: 1;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mindmap-node-time {
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.mindmap-node-desc {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-top: var(--space-1);
+  margin-bottom: var(--space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.mindmap-node-points {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--divider-color);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.mindmap-node-point {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.4;
+  
+  .point-icon {
+    color: var(--bili-pink);
+    font-size: 14px;
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
+  
+  span {
+    flex: 1;
   }
 }
 

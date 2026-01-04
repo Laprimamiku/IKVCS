@@ -15,6 +15,7 @@
               ref="playerRef"
               :video-url="videoData.video_url"
               :subtitle-url="videoData.subtitle_url"
+              :outline="parsedOutline"
               @timeupdate="handleTimeUpdate"
               @play="handlePlay"
               @playing="handlePlay"
@@ -196,7 +197,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
@@ -230,7 +231,8 @@ import {
   useDanmaku,
   DANMAKU_DURATION,
 } from "@/features/video/player/composables/useDanmaku";
-import { incrementViewCount } from "@/features/video/shared/api/video.api";
+import { incrementViewCount, getVideoOutline } from "@/features/video/shared/api/video.api";
+import type { VideoOutlineEntry } from "@/shared/types/entity";
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -244,6 +246,76 @@ const hasPlayStarted = ref(false); // 记录是否已经开始播放过
 
 // Video data
 const { videoData, recommendVideos, videoIdRef } = useVideoPlayer();
+
+// 视频大纲数据
+const outlineData = ref<VideoOutlineEntry[]>([]);
+
+// 解析视频大纲数据（可能是JSON字符串或对象数组）
+const parsedOutline = computed<VideoOutlineEntry[]>(() => {
+  // 优先使用主动加载的 outline 数据
+  if (outlineData.value.length > 0) {
+    return outlineData.value;
+  }
+  
+  // 如果没有主动加载的数据，尝试从 videoData 中解析
+  if (!videoData.value?.outline) return [];
+  
+  let outline = videoData.value.outline;
+  
+  // 如果是字符串，尝试解析为JSON
+  if (typeof outline === 'string') {
+    try {
+      outline = JSON.parse(outline);
+    } catch (e) {
+      console.error('解析大纲JSON失败:', e);
+      return [];
+    }
+  }
+  
+  // 确保是数组并按时间排序
+  if (Array.isArray(outline)) {
+    return outline.sort((a, b) => a.start_time - b.start_time);
+  }
+  
+  return [];
+});
+
+// 加载视频大纲
+const loadOutline = async () => {
+  if (!videoIdRef.value) return;
+  
+  try {
+    const response = await getVideoOutline(videoIdRef.value);
+    if (response.success && response.data) {
+      let outline = response.data.outline;
+      
+      // 处理大纲数据（可能是JSON字符串）
+      if (typeof outline === 'string') {
+        try {
+          outline = JSON.parse(outline);
+        } catch (e) {
+          console.error('解析大纲JSON失败:', e);
+          outline = [];
+        }
+      }
+      
+      // 确保是数组并按时间排序
+      if (Array.isArray(outline)) {
+        outlineData.value = outline.sort((a, b) => a.start_time - b.start_time);
+      } else {
+        outlineData.value = [];
+      }
+    }
+  } catch (error) {
+    console.error('加载视频大纲失败:', error);
+  }
+};
+
+// 监听 videoId 变化，加载大纲
+watch(() => videoIdRef.value, () => {
+  outlineData.value = [];
+  loadOutline();
+}, { immediate: true });
 
 // Player state
 const {

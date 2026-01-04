@@ -18,6 +18,8 @@ class OutlineEntry(TypedDict):
     title: str
     start_time: float
     description: NotRequired[str]
+    key_points: NotRequired[List[str]]  # 关键知识点/内容点列表
+    end_time: NotRequired[float]  # 章节结束时间
 
 
 # 用于 Repository filters 的类型（动态筛选条件）

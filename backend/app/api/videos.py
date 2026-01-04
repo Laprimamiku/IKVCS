@@ -12,6 +12,7 @@
 import os
 import uuid
 import logging
+import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, status, UploadFile, File, Body
@@ -536,7 +537,8 @@ async def get_video_outline(
     """
     获取视频内容大纲
     
-    如果大纲不存在且视频有字幕，则自动生成
+    注意：此接口只返回已有的大纲，不会自动生成
+    如需生成大纲，请使用 POST /videos/{video_id}/outline/generate
     """
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
@@ -545,7 +547,6 @@ async def get_video_outline(
     # 如果已有大纲，直接返回
     if video.outline:
         try:
-            import json
             outline_data = json.loads(video.outline)
             return success_response(
                 data={"outline": outline_data},
@@ -554,25 +555,39 @@ async def get_video_outline(
         except:
             pass
     
-    # 如果没有大纲但有字幕，尝试生成
-    if video.subtitle_url:
-        from app.services.video.outline_service import OutlineService
-        outline = await OutlineService.extract_outline(video_id, video.subtitle_url)
-        
-        if outline:
-            # 保存大纲到数据库
-            import json
-            video.outline = json.dumps(outline, ensure_ascii=False)
-            db.commit()
-            
-            return success_response(
-                data={"outline": outline},
-                message="大纲生成成功"
-            )
-    
+    # 如果没有大纲，返回空列表（不自动生成）
     return success_response(
         data={"outline": []},
         message="暂无大纲"
+    )
+
+
+@router.get("/{video_id}/outline/progress", response_model=dict)
+async def get_outline_progress(
+    video_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取大纲生成进度
+    """
+    from app.core.redis import get_redis
+    redis_client = get_redis()
+    progress_key = f"outline:progress:{video_id}"
+    
+    progress_data = redis_client.get(progress_key)
+    if progress_data:
+        try:
+            data = json.loads(progress_data)
+            return success_response(
+                data=data,
+                message="获取进度成功"
+            )
+        except:
+            pass
+    
+    return success_response(
+        data={"progress": 0, "message": "未找到进度信息", "status": "unknown"},
+        message="获取进度成功"
     )
 
 
@@ -600,19 +615,49 @@ async def generate_video_outline(
     from app.services.video.outline_service import OutlineService
     
     async def generate_and_save():
-        outline = await OutlineService.extract_outline(video_id, video.subtitle_url)
-        if outline:
-            # 使用新的数据库会话保存
-            from app.core.database import SessionLocal
-            db_session = SessionLocal()
+        # 使用新的数据库会话保存
+        from app.core.database import SessionLocal
+        db_session = SessionLocal()
+        try:
+            logger.info(f"[视频 {video_id}] 开始生成大纲...")
+            
+            # 直接删除原有大纲（不保留）
+            video_obj = db_session.query(Video).filter(Video.id == video_id).first()
+            if video_obj:
+                video_obj.outline = None  # 直接删除
+                db_session.commit()
+            
+            # 生成新大纲（不使用进度回调）
+            outline = await OutlineService.extract_outline(
+                video_id, 
+                video.subtitle_url,
+                progress_callback=None  # 不使用进度回调
+            )
+            
+            # 保存新大纲（仅当生成成功时保存，失败则不保存）
+            video_obj = db_session.query(Video).filter(Video.id == video_id).first()
+            if video_obj:
+                if outline and len(outline) > 0:
+                    # 生成成功，保存新大纲
+                    video_obj.outline = json.dumps(outline, ensure_ascii=False)
+                    db_session.commit()
+                    logger.info(f"[视频 {video_id}] 视频大纲已生成完毕，共 {len(outline)} 个章节")
+                else:
+                    # 生成失败，不保存（保持为 None）
+                    db_session.commit()
+                    logger.error(f"[视频 {video_id}] 视频大纲生成出错：生成结果为空")
+        except Exception as e:
+            logger.error(f"[视频 {video_id}] 视频大纲生成出错：{str(e)}", exc_info=True)
+            # 确保大纲被删除
             try:
                 video_obj = db_session.query(Video).filter(Video.id == video_id).first()
                 if video_obj:
-                    import json
-                    video_obj.outline = json.dumps(outline, ensure_ascii=False)
+                    video_obj.outline = None
                     db_session.commit()
-            finally:
-                db_session.close()
+            except:
+                pass
+        finally:
+            db_session.close()
     
     background_tasks.add_task(generate_and_save)
     

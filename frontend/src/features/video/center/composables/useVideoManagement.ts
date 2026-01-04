@@ -11,7 +11,8 @@ import {
   updateVideo, 
   deleteVideo, 
   uploadVideoCover, 
-  uploadVideoSubtitle 
+  uploadVideoSubtitle,
+  generateVideoOutline
 } from "@/features/video/shared/api/video.api"
 import { getCategories } from "@/features/video/shared/api/category.api"
 import type { Video, Category, PageResult, VideoUpdateData } from "@/shared/types/entity"
@@ -141,6 +142,37 @@ export function useVideoManagement() {
     }
   }
 
+  /**
+   * 生成视频章节大纲
+   */
+  const generateOutline = async (video: Video) => {
+    if (!video.subtitle_url) {
+      ElMessage.warning('该视频没有字幕文件，无法生成章节大纲')
+      return false
+    }
+
+    try {
+      ElMessage.info('正在生成章节大纲，请稍候...')
+      const response = await generateVideoOutline(video.id)
+      if (response.success) {
+        ElMessage.success('大纲生成任务已启动，请稍后刷新查看结果')
+        // 延迟后刷新视频列表
+        setTimeout(async () => {
+          await loadVideos()
+        }, 3000)
+        return true
+      } else {
+        ElMessage.error('启动大纲生成任务失败')
+        return false
+      }
+    } catch (error: any) {
+      console.error('生成章节大纲失败:', error)
+      const errorMsg = error?.response?.data?.detail || error?.message || '生成章节大纲失败，请重试'
+      ElMessage.error(errorMsg)
+      return false
+    }
+  }
+
   return {
     // 状态
     videos,
@@ -162,6 +194,7 @@ export function useVideoManagement() {
     viewVideo,
     deleteVideoItem,
     updateVideoInfo,
+    generateOutline,
     
     // 分页方法
     setPage: pagination.setPage,

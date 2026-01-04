@@ -118,7 +118,7 @@ app.add_middleware(
     allow_headers=["*"],  # 允许所有 HTTP 头
 )
 
-# 启动事件：创建数据库表 + 启动 Redis 监听
+# 启动事件：创建数据库表 + 启动 Redis 监听 + GPU 管理
 @app.on_event("startup")
 async def startup_event():
     """
@@ -152,6 +152,12 @@ async def startup_event():
     app.state.redis_task = asyncio.create_task(start_redis_listener())
     logger.info("后台 Redis 监听任务已启动并绑定")
     
+    # GPU 管理：当前为手动模式
+    # 注意：GPU 配置需要手动执行命令，详见 backend/docs/GPU_MANAGEMENT.md
+    # 锁定命令：nvidia-smi -i 0 -lgc 1500
+    # 恢复命令：nvidia-smi -i 0 -rgc
+    logger.info("GPU 管理：当前为手动模式，请参考 backend/docs/GPU_MANAGEMENT.md 了解如何手动锁定和恢复 GPU")
+    
     logger.info("应用启动完成")
 
 # 关闭事件
@@ -159,6 +165,23 @@ async def startup_event():
 async def shutdown_event():
     """应用关闭时执行"""
     logger.info("应用关闭中...")
+    
+    # GPU 管理：如果 GPU 仍处于配置状态，尝试恢复（按需配置模式下通常已自动恢复）
+    try:
+        from app.utils.gpu_manager import get_gpu_manager
+        gpu_manager = get_gpu_manager()
+        if gpu_manager and gpu_manager._is_configured:
+            logger.info("检测到 GPU 仍处于配置状态，正在恢复...")
+            success = gpu_manager.reset_to_default()
+            if success:
+                logger.info("GPU 已重置到默认状态")
+            else:
+                logger.warning("GPU 重置失败，但服务将继续关闭")
+    except Exception as e:
+        logger.error(f"GPU 重置失败：{e}", exc_info=True)
+        # GPU 重置失败不应阻止服务关闭
+    
+    logger.info("应用关闭完成")
 
 # 初始化存储目录（在挂载静态文件之前）
 from app.utils.storage_utils import ensure_storage_structure

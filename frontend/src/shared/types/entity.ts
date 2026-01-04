@@ -69,7 +69,9 @@ export interface AiAnalysisResult {
 export interface VideoOutlineEntry {
   title: string;
   start_time: number; // 开始时间（秒）
+  end_time?: number; // 结束时间（秒）
   description?: string;
+  key_points?: string[]; // 关键知识点/内容点列表
   thumbnail?: string; // 缩略图URL（可选）
 }
 
