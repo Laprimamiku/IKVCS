@@ -31,6 +31,8 @@ class AdminService:
         """
         获取举报列表
         
+        注意：只返回弹幕和评论的举报，视频举报应该在视频审核页面处理
+        
         Args:
             db: 数据库会话
             report_status: 举报状态（0=待处理,1=已处理,2=已忽略）
@@ -43,7 +45,11 @@ class AdminService:
         from sqlalchemy.orm import joinedload
         from sqlalchemy import desc
         
-        query = db.query(Report).filter(Report.status == report_status)
+        # 查询所有类型的举报（包括视频、弹幕、评论）
+        # 视频举报会在举报界面显示，管理员可以查看并处理
+        query = db.query(Report).filter(
+            Report.status == report_status
+        )
         total = query.count()
         offset = (page - 1) * page_size
         
@@ -113,6 +119,13 @@ class AdminService:
         report.handler_id = admin_id
         report.handled_at = datetime.utcnow()
         db.commit()
+
+
+
+
+
+
+
 
 
 

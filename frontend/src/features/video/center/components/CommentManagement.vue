@@ -12,11 +12,12 @@
             <el-icon><Search /></el-icon>
           </template>
         </el-input>
-        <el-select v-model="filterStatus" placeholder="筛选状态" style="width: 150px; margin-left: 12px;">
+        <el-select v-model="filterStatus" placeholder="筛选评分" style="width: 150px; margin-left: 12px;">
           <el-option label="全部" value="all" />
-          <el-option label="已审核" value="approved" />
-          <el-option label="待审核" value="pending" />
-          <el-option label="已删除" value="deleted" />
+          <el-option label="优秀 (90-100分)" value="excellent" />
+          <el-option label="良好 (70-89分)" value="good" />
+          <el-option label="一般 (60-79分)" value="average" />
+          <el-option label="较差 (0-59分)" value="poor" />
         </el-select>
       </div>
       <div class="toolbar-right">
@@ -51,9 +52,6 @@
               </div>
             </div>
             <div class="comment-actions">
-              <el-tag v-if="comment.ai_score && comment.ai_score >= 85" type="success" size="small">
-                优质评论
-              </el-tag>
               <el-button
                 v-if="!comment.is_deleted"
                 type="danger"
@@ -84,6 +82,16 @@
               <el-icon><ChatDotRound /></el-icon>
               {{ comment.reply_count || 0 }} 条回复
             </span>
+            <span v-if="comment.ai_score !== null && comment.ai_score !== undefined" class="comment-stats">
+              AI评分: {{ comment.ai_score }}
+            </span>
+            <el-tag 
+              v-if="comment.ai_label && comment.ai_label !== '普通'" 
+              :type="getLabelType(comment.ai_label)" 
+              size="small"
+            >
+              {{ comment.ai_label }}
+            </el-tag>
           </div>
         </div>
       </div>
@@ -129,10 +137,25 @@ const filteredComments = computed(() => {
     );
   }
 
-  if (filterStatus.value === "approved") {
-    result = result.filter((c) => !c.is_deleted);
-  } else if (filterStatus.value === "deleted") {
-    result = result.filter((c) => c.is_deleted);
+  // 基于 AI 评分筛选
+  if (filterStatus.value !== "all") {
+    result = result.filter((c) => {
+      const score = c.ai_score;
+      if (score === null || score === undefined) return false;
+      
+      switch (filterStatus.value) {
+        case "excellent":
+          return score >= 90 && score <= 100;
+        case "good":
+          return score >= 70 && score < 90;
+        case "average":
+          return score >= 60 && score < 70;
+        case "poor":
+          return score < 60;
+        default:
+          return true;
+      }
+    });
   }
 
   return result;
@@ -150,13 +173,18 @@ const loadComments = async () => {
       page_size: pageSize.value,
       sort_by: 'new'
     });
-    if (response.data) {
+    if (response.success && response.data) {
       comments.value = response.data.items || [];
       total.value = response.data.total || 0;
+    } else {
+      comments.value = [];
+      total.value = 0;
     }
   } catch (error) {
     console.error("加载评论失败:", error);
     ElMessage.error("加载评论失败");
+    comments.value = [];
+    total.value = 0;
   } finally {
     loading.value = false;
   }
@@ -183,6 +211,17 @@ const handleDelete = async (commentId: number) => {
 const handleRestore = async (commentId: number) => {
   // TODO: 实现恢复评论功能
   ElMessage.info("恢复功能开发中");
+};
+
+const getLabelType = (label: string): string => {
+  const labelMap: Record<string, string> = {
+    "优质": "success",
+    "普通": "info",
+    "低价值": "warning",
+    "违规": "danger",
+    "疑似违规": "warning",
+  };
+  return labelMap[label] || "info";
 };
 
 onMounted(() => {

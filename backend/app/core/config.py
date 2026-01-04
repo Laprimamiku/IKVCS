@@ -50,12 +50,10 @@ class Settings(BaseSettings):
     AI_VECTOR_DIMENSION: int = 64  # 用于构造缓存Key的向量维度数（取前N维）
     AI_VECTOR_QUANTIZATION_PRECISION: int = 3  # 向量量化精度（小数位数）
     
-    # AI 大小模型协同配置（Layer 2.5）
-    LOCAL_LLM_ENABLED: bool = False  # 可通过环境变量 LOCAL_LLM_ENABLED 覆盖
+    # 本地 LLM 配置（仅使用本地模型）
+    LOCAL_LLM_ENABLED: bool = True  # 默认启用本地模型，可通过环境变量 LOCAL_LLM_ENABLED 覆盖
     LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1"  # 可通过环境变量 LOCAL_LLM_BASE_URL 覆盖
     LOCAL_LLM_MODEL: str = "qwen2.5:0.5b-instruct"  # 可通过环境变量 LOCAL_LLM_MODEL 覆盖
-    LOCAL_LLM_THRESHOLD_HIGH: int = 80
-    LOCAL_LLM_THRESHOLD_LOW: int = 30
     LOCAL_LLM_TIMEOUT: float = 5.0
 
     # AI 多智能体配置（Layer 3.1-3.4）
@@ -90,12 +88,25 @@ class Settings(BaseSettings):
     CHUNK_SIZE: int = 5242880  # 分片大小：5MB
     UPLOAD_SESSION_EXPIRE: int = 604800  # 上传会话过期时间：7天（秒）
     
+    # 视频帧提取配置
+    MAX_FRAMES_PER_VIDEO: int = 50  # 每个视频最多提取的帧数量（避免存储过大）
+    FRAME_EXTRACT_MAX_COUNT: int = 30  # 兼容旧配置
+    FRAME_EXTRACT_INTERVAL: int = 5  # 均匀采样间隔（秒），从10秒改为5秒，提高采样密度
+    FRAME_EXTRACT_MIN_FRAMES: int = 10  # 每个视频最少提取的帧数量（确保短视频也能有足够的采样）
+    FRAME_REVIEW_MAX_CONCURRENT: int = 3  # 帧审核最大并发数（避免超出模型算力，可根据 GPU 显存调整）
+    # GPU 优化建议（根据显存大小调整）：
+    # - 4GB 显存（如 RTX 3050）：3 并发（推荐，避免 OOM）
+    # - 8GB 显存：5-6 并发
+    # - 16GB+ 显存：8-12 并发
+    # 注意：如果遇到 GPU OOM 错误，请降低并发数
+    
     # 转码配置
     TRANSCODE_MAX_CONCURRENT: int = 1  # 最大并发转码任务数
     # 转码清晰度配置（格式：name:resolution:video_bitrate:audio_bitrate）
     # 第一阶段（立即转码，快速可用）：360p、480p
-    # 第二阶段（后台转码，渐进增强）：720p、1080p
-    TRANSCODE_RESOLUTIONS: str = "360p:640x360:500k:96k,480p:854x480:800k:128k,720p:1280x720:2000k:128k,1080p:1920x1080:4000k:192k"
+    # 第二阶段（后台转码，渐进增强）：720p、1080p（暂时注释，后期改善）
+    # TRANSCODE_RESOLUTIONS: str = "360p:640x360:500k:96k,480p:854x480:800k:128k,720p:1280x720:2000k:128k,1080p:1920x1080:4000k:192k"
+    TRANSCODE_RESOLUTIONS: str = "360p:640x360:500k:96k,480p:854x480:800k:128k"  # 暂时只转码360p和480p
     # 转码策略：progressive（渐进式，先转低清晰度）或 all（一次性转所有清晰度）
     TRANSCODE_STRATEGY: str = "progressive"  # progressive 或 all
     # 第一阶段转码清晰度（快速转码，让用户能立即观看）

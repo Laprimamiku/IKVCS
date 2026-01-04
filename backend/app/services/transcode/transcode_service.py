@@ -34,13 +34,13 @@ def _parse_resolutions() -> list:
             parts = item.strip().split(':')
             if len(parts) == 4:
                 resolutions.append((parts[0], parts[1], parts[2], parts[3]))
-    # 默认配置（4种清晰度）
+    # 默认配置（暂时只支持360p和480p，720p和1080p后期改善）
     if not resolutions:
         resolutions = [
             ("360p", "640x360", "500k", "96k"),
             ("480p", "854x480", "800k", "128k"),
-            ("720p", "1280x720", "2000k", "128k"),
-            ("1080p", "1920x1080", "4000k", "192k"),
+            # ("720p", "1280x720", "2000k", "128k"),  # 暂时注释，后期改善
+            # ("1080p", "1920x1080", "4000k", "192k"),  # 暂时注释，后期改善
         ]
     return resolutions
 
@@ -319,7 +319,7 @@ class TranscodeService:
         
         # 更新视频 URL 和状态
         video.video_url = f"/videos/hls/{video_id}/master.m3u8"
-        video.status = 2  # 2=已发布
+        video.status = 1  # 1=审核中（转码完成后先进入审核流程）
         
         # 获取视频时长（使用原始文件）
         duration = TranscodeExecutor.get_video_duration(input_path)
@@ -327,7 +327,44 @@ class TranscodeService:
             video.duration = duration
         
         db.commit()
-        logger.info(f"视频状态更新为已发布：video_id={video_id}")
+        logger.info(f"视频转码完成，进入审核流程：video_id={video_id}")
+        
+        # 异步触发审核（使用后台线程，不阻塞转码流程）
+        def trigger_review_async():
+            """在后台线程中触发审核"""
+            try:
+                import asyncio
+                from app.services.ai.video_review_service import video_review_service
+                
+                # 获取字幕路径
+                subtitle_path = video.subtitle_url if video.subtitle_url else None
+                if subtitle_path and not os.path.isabs(subtitle_path):
+                    # 处理相对路径
+                    from app.core.config import settings
+                    subtitle_path = os.path.join(settings.STORAGE_ROOT, subtitle_path.lstrip("/"))
+                
+                # 创建新的事件循环（在后台线程中）
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(
+                        video_review_service.review_video(
+                            video_id=video_id,
+                            video_path=input_path,
+                            subtitle_path=subtitle_path
+                        )
+                    )
+                finally:
+                    loop.close()
+                    
+            except Exception as e:
+                logger.error(f"触发视频审核失败: {e}", exc_info=True)
+                # 审核失败，保持审核中状态，等待人工处理
+        
+        # 启动后台线程执行审核
+        review_thread = threading.Thread(target=trigger_review_async, daemon=True)
+        review_thread.start()
+        logger.info(f"视频审核任务已启动（后台线程）: video_id={video_id}")
     
     @staticmethod
     def _transcode_other_resolutions_sync(
@@ -389,7 +426,8 @@ class TranscodeService:
                     unique_resolutions[res[0]] = res
                 all_resolutions = list(unique_resolutions.values())
                 # 按清晰度排序（从低到高）
-                resolution_order = {"360p": 1, "480p": 2, "720p": 3, "1080p": 4}
+                resolution_order = {"360p": 1, "480p": 2}  # 暂时只支持360p和480p
+                # resolution_order = {"360p": 1, "480p": 2, "720p": 3, "1080p": 4}  # 后期改善时恢复
                 all_resolutions.sort(key=lambda x: resolution_order.get(x[0], 99))
                 
                 # 更新播放列表

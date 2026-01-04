@@ -85,88 +85,178 @@ class SelfCorrectionService:
     async def _analyze_error_patterns(
         self, corrections: List[AiCorrection]
     ) -> List[Dict[str, Any]]:
-        """使用元 Prompt 分析错误模式"""
-        from app.services.ai.llm_service import llm_service
+        """使用元 Prompt 分析错误模式（优化版：使用本地模型，更精确的错误模式识别）"""
+        from app.services.ai.local_model_service import local_model_service
         
-        # 格式化修正案例（最多20个）
-        cases_text = self._format_corrections(corrections[:20])
+        # 格式化修正案例（最多15个，避免超出token限制）
+        cases_text = self._format_corrections(corrections[:15])
+        
+        # 统计错误类型频率
+        error_stats = self._calculate_error_statistics(corrections)
         
         meta_prompt = f"""你是 AI 系统优化专家。以下是最近 {len(corrections)} 个误判案例：
 
 {cases_text}
 
-请分析：
-1. 这些错误的共同模式是什么？
-2. 当前 System Prompt 的哪些部分需要改进？
-3. 应该添加哪些新的规则或示例？
-4. 哪些类型的错误出现频率最高？
+错误统计：
+{error_stats}
 
-请以 JSON 格式返回分析结果：
+请深入分析：
+1. **共同模式识别**：这些错误的共同特征是什么？（内容类型、评分偏差、分类错误等）
+2. **Prompt弱点**：当前 System Prompt 的哪些部分容易导致误判？
+3. **规则建议**：应该添加哪些新的判断规则或示例？
+4. **高频错误**：哪些类型的错误出现频率最高？需要优先修复。
+
+请以严格的 JSON 格式返回分析结果（不要包含任何Markdown标记）：
 {{
-    "common_patterns": ["模式1", "模式2"],
-    "weak_points": ["弱点1", "弱点2"],
-    "suggested_rules": ["规则1", "规则2"],
-    "high_frequency_errors": ["错误类型1", "错误类型2"]
+    "common_patterns": ["模式1：...", "模式2：..."],
+    "weak_points": ["弱点1：...", "弱点2：..."],
+    "suggested_rules": ["规则1：...", "规则2：..."],
+    "high_frequency_errors": ["错误类型1：...", "错误类型2：..."],
+    "priority_fixes": ["优先修复项1", "优先修复项2"]
 }}"""
         
-        messages = [
-            {
-                "role": "system",
-                "content": "你是 AI 系统优化专家，擅长分析错误模式并提出改进建议。"
-            },
-            {"role": "user", "content": meta_prompt}
-        ]
-        
-        response_text = await llm_service._call_llm_api(messages)
-        if not response_text:
-            logger.warning("[SelfCorrection] 错误模式分析失败")
-            return []
-        
         try:
-            clean_text = response_text.replace("```json", "").replace("```", "").strip()
-            patterns = json.loads(clean_text)
-            logger.info(f"[SelfCorrection] 识别到 {len(patterns.get('common_patterns', []))} 个错误模式")
+            # 使用本地模型进行分析
+            result = await local_model_service.predict(meta_prompt, "comment")
+            if not result:
+                logger.warning("[SelfCorrection] 本地模型分析失败，尝试降级处理")
+                return self._fallback_pattern_analysis(corrections)
+            
+            # 从结果中提取分析内容
+            if isinstance(result, dict) and "reason" in result:
+                # 如果返回的是标准格式，尝试从reason中提取JSON
+                reason_text = result.get("reason", "")
+                try:
+                    patterns = json.loads(reason_text)
+                    logger.info(f"[SelfCorrection] 识别到 {len(patterns.get('common_patterns', []))} 个错误模式")
+                    return patterns
+                except json.JSONDecodeError:
+                    pass
+            
+            # 如果无法从reason提取，尝试直接解析整个结果
+            patterns = {
+                "common_patterns": [result.get("category", "未知模式")],
+                "weak_points": [result.get("label", "未知弱点")],
+                "suggested_rules": [result.get("reason", "需要进一步分析")],
+                "high_frequency_errors": [result.get("category", "未知错误")],
+                "priority_fixes": []
+            }
+            logger.info(f"[SelfCorrection] 使用降级分析，识别到基础模式")
             return patterns
-        except json.JSONDecodeError:
-            logger.warning("[SelfCorrection] 错误模式分析返回格式错误")
-            return []
+            
+        except Exception as e:
+            logger.error(f"[SelfCorrection] 错误模式分析异常: {e}")
+            return self._fallback_pattern_analysis(corrections)
+    
+    def _calculate_error_statistics(self, corrections: List[AiCorrection]) -> str:
+        """计算错误统计信息"""
+        stats = {
+            "content_types": {},
+            "score_diffs": [],
+            "categories": {}
+        }
+        
+        for corr in corrections:
+            # 统计内容类型
+            stats["content_types"][corr.content_type] = stats["content_types"].get(corr.content_type, 0) + 1
+            
+            # 计算评分差异
+            original_score = corr.original_result.get("score", 0) if isinstance(corr.original_result, dict) else 0
+            corrected_score = corr.corrected_result.get("score", 0) if isinstance(corr.corrected_result, dict) else 0
+            stats["score_diffs"].append(abs(original_score - corrected_score))
+            
+            # 统计错误分类
+            original_cat = corr.original_result.get("category", "未知") if isinstance(corr.original_result, dict) else "未知"
+            stats["categories"][original_cat] = stats["categories"].get(original_cat, 0) + 1
+        
+        avg_diff = sum(stats["score_diffs"]) / len(stats["score_diffs"]) if stats["score_diffs"] else 0
+        
+        return f"""
+- 内容类型分布: {json.dumps(stats['content_types'], ensure_ascii=False)}
+- 平均评分差异: {avg_diff:.1f}分
+- 错误分类分布: {json.dumps(stats['categories'], ensure_ascii=False)}
+"""
+    
+    def _fallback_pattern_analysis(self, corrections: List[AiCorrection]) -> Dict[str, Any]:
+        """降级分析：当LLM分析失败时，使用规则基础分析"""
+        # 简单的规则基础分析
+        content_types = {}
+        score_diffs = []
+        
+        for corr in corrections:
+            content_types[corr.content_type] = content_types.get(corr.content_type, 0) + 1
+            original_score = corr.original_result.get("score", 0) if isinstance(corr.original_result, dict) else 0
+            corrected_score = corr.corrected_result.get("score", 0) if isinstance(corr.corrected_result, dict) else 0
+            score_diffs.append(abs(original_score - corrected_score))
+        
+        avg_diff = sum(score_diffs) / len(score_diffs) if score_diffs else 0
+        most_common_type = max(content_types.items(), key=lambda x: x[1])[0] if content_types else "未知"
+        
+        return {
+            "common_patterns": [f"{most_common_type}类型内容误判率较高"],
+            "weak_points": [f"平均评分偏差 {avg_diff:.1f}分，需要优化评分逻辑"],
+            "suggested_rules": ["增加更多示例，提高判断准确性"],
+            "high_frequency_errors": [most_common_type],
+            "priority_fixes": [f"优先优化{most_common_type}类型的判断逻辑"]
+        }
     
     async def _generate_suggestions(
         self, error_patterns: Dict[str, Any], corrections: List[AiCorrection]
     ) -> str:
-        """生成优化建议"""
-        from app.services.ai.llm_service import llm_service
+        """生成优化建议（优化版：使用本地模型，更精炼的建议）"""
+        from app.services.ai.local_model_service import local_model_service
         
         if not error_patterns:
             return "未发现明显的错误模式，建议继续收集更多样本。"
         
-        suggestion_prompt = f"""基于以下错误模式分析：
+        suggestion_prompt = f"""基于以下错误模式分析，请生成具体的 System Prompt 优化建议：
 
 {json.dumps(error_patterns, ensure_ascii=False, indent=2)}
 
-请生成具体的 System Prompt 优化建议，包括：
+请生成优化建议（要求精炼，不超过200字）：
 1. 需要修改的具体部分
-2. 建议添加的新规则或示例
-3. 需要删除或弱化的规则
+2. 建议添加的新规则或示例（最多3条）
+3. 需要删除或弱化的规则（最多2条）
 
-请以 Markdown 格式返回，便于阅读和审核。"""
+请以简洁的文本格式返回，不要使用Markdown。"""
         
-        messages = [
-            {
-                "role": "system",
-                "content": "你是 Prompt 工程专家，擅长优化 System Prompt。"
-            },
-            {"role": "user", "content": suggestion_prompt}
-        ]
+        try:
+            # 使用本地模型生成建议
+            result = await local_model_service.predict(suggestion_prompt, "comment")
+            if not result:
+                logger.warning("[SelfCorrection] 本地模型生成建议失败，使用规则基础建议")
+                return self._generate_fallback_suggestions(error_patterns)
+            
+            # 从结果中提取建议文本
+            suggestion_text = result.get("reason", "") or result.get("label", "")
+            if suggestion_text:
+                logger.info("[SelfCorrection] 优化建议生成完成")
+                return suggestion_text
+            else:
+                return self._generate_fallback_suggestions(error_patterns)
+                
+        except Exception as e:
+            logger.error(f"[SelfCorrection] 生成优化建议异常: {e}")
+            return self._generate_fallback_suggestions(error_patterns)
+    
+    def _generate_fallback_suggestions(self, error_patterns: Dict[str, Any]) -> str:
+        """降级建议生成：当LLM失败时，使用规则基础建议"""
+        suggestions = []
         
-        response_text = await llm_service._call_llm_api(messages)
+        if error_patterns.get("common_patterns"):
+            suggestions.append(f"发现 {len(error_patterns['common_patterns'])} 个共同模式，建议在Prompt中添加相应示例。")
         
-        if not response_text:
-            logger.warning("[SelfCorrection] 生成优化建议失败")
-            return "生成建议失败"
+        if error_patterns.get("weak_points"):
+            suggestions.append(f"识别到 {len(error_patterns['weak_points'])} 个Prompt弱点，需要针对性优化。")
         
-        logger.info("[SelfCorrection] 优化建议生成完成")
-        return response_text
+        if error_patterns.get("suggested_rules"):
+            suggestions.append(f"建议添加 {len(error_patterns['suggested_rules'])} 条新规则以提高准确性。")
+        
+        if error_patterns.get("priority_fixes"):
+            suggestions.append(f"优先修复：{', '.join(error_patterns['priority_fixes'][:2])}")
+        
+        return "\n".join(suggestions) if suggestions else "建议继续收集更多样本进行深入分析。"
     
     def _format_corrections(self, corrections: List[AiCorrection]) -> str:
         """格式化修正案例"""

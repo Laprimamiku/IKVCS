@@ -46,6 +46,7 @@ from app.services.video import (
     VideoManagementService,
     VideoResponseBuilder,
 )
+from app.repositories.video_repository import VideoRepository
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -172,10 +173,27 @@ async def get_video_detail(
     """
     获取视频详情并增加播放量
     
+    权限说明：
+    - 已发布的视频（status=2）：所有用户都可以查看
+    - 非发布状态的视频：只有上传者和管理员可以查看
+    
     路由层只负责调用 Service，所有业务逻辑在 Service 层
     """
-    # 增加播放量
-    VideoStatsService.increment_view_count(db, video_id)
+    # 先获取视频基本信息，用于权限检查
+    video = VideoRepository.get_by_id(db, video_id)
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    
+    # 权限检查：非发布状态的视频，只有上传者和管理员可以查看
+    if video.status != 2:  # 非已发布状态
+        if not current_user:
+            raise ForbiddenException("该视频正在审核中，请登录后查看")
+        if current_user.id != video.uploader_id and current_user.role != "admin":
+            raise ForbiddenException("该视频正在审核中，只有上传者和管理员可以查看")
+    
+    # 增加播放量（仅对已发布的视频）
+    if video.status == 2:
+        VideoStatsService.increment_view_count(db, video_id)
     
     # 如果用户已登录，记录观看历史
     if current_user:
@@ -623,13 +641,16 @@ async def get_video_ai_analysis(
     total_count = comment_count + danmaku_count
 
     if total_count == 0:
-        return {
-            "sentiment": {"positive": 0, "neutral": 0, "negative": 0},
-            "risks": [],
-            "summary": "暂无数据：该视频尚未产生足够的互动（评论/弹幕），无法进行AI智能分析。",
-            "expert_results": [],
-            "conflict_resolved": False
-        }
+        return success_response(
+            data={
+                "sentiment": {"positive": 0, "neutral": 0, "negative": 0},
+                "risks": [],
+                "summary": "暂无数据：该视频尚未产生足够的互动（评论/弹幕），无法进行AI智能分析。",
+                "expert_results": [],
+                "conflict_resolved": False
+            },
+            message="暂无分析数据"
+        )
 
     # 3. 统计情感分布 (基于 ai_score)
     # score < 40: 负面/争议
@@ -720,3 +741,85 @@ async def get_video_ai_analysis(
         "expert_results": expert_results,
         "conflict_resolved": False
     }
+
+
+@router.get("/{video_id}/summary", summary="获取视频摘要")
+async def get_video_summary(
+    video_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取视频摘要（简短摘要和详细摘要）
+    
+    如果摘要不存在，返回空字符串
+    """
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    
+    # 从独立字段获取摘要
+    return success_response(
+        data={
+            "summary_short": video.summary_short or "",
+            "summary_detailed": video.summary_detailed or ""
+        }
+    )
+
+
+@router.post("/{video_id}/summary", summary="生成视频摘要")
+async def generate_video_summary(
+    video_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user)
+):
+    """
+    生成视频摘要和核心知识点
+    
+    基于字幕（权重70%）、弹幕（权重20%）、评论（权重10%）生成摘要
+    """
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    
+    # 权限检查：只有上传者或管理员可以触发生成
+    if current_user and video.uploader_id != current_user.id and current_user.role != "admin":
+        raise ForbiddenException("只有视频上传者或管理员可以生成摘要")
+    
+    # 异步生成摘要（避免阻塞）
+    from app.services.video.summary_service import summary_service
+    background_tasks.add_task(summary_service.generate_summary, video_id)
+    
+    return success_response(
+        data={},
+        message="摘要生成任务已启动，请稍后查询"
+    )
+
+
+@router.get("/{video_id}/knowledge", summary="获取核心知识点")
+async def get_video_knowledge(
+    video_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    获取视频核心知识点
+    
+    返回：概念、步骤、数据、观点
+    """
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    
+    # 从独立字段获取知识点
+    knowledge_points = video.knowledge_points or {
+        "concepts": [],
+        "steps": [],
+        "data": [],
+        "opinions": []
+    }
+    
+    return success_response(
+        data={
+            "knowledge_points": knowledge_points
+        }
+    )

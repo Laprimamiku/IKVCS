@@ -6,7 +6,7 @@
 - 5.1-5.5（视频列表与检索）
 - 6.1-6.3（视频分类管理）
 """
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Index
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Index, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -76,6 +76,20 @@ class Video(Base):
     subtitle_url = Column(String(255), nullable=True, comment="字幕文件URL")
     outline = Column(Text, nullable=True, comment="视频内容大纲（JSON格式）")
     duration = Column(Integer, default=0, comment="视频时长（秒）")
+    
+    # AI分析相关字段
+    summary_short = Column(Text, nullable=True, comment="简短摘要（50-100字）")
+    summary_detailed = Column(Text, nullable=True, comment="详细摘要（200-300字）")
+    knowledge_points = Column(JSON, nullable=True, comment="核心知识点（JSON格式）")
+    
+    # 审核相关字段
+    review_score = Column(Integer, nullable=True, comment="综合审核评分（0-100）")
+    review_status = Column(Integer, default=0, comment="审核状态：0=待审核，1=通过，2=拒绝")
+    review_report = Column(JSON, nullable=True, comment="审核报告详情（JSON格式）")
+    
+    # 反馈相关字段
+    feedback_score = Column(Integer, nullable=True, comment="反馈评分（0-100，基于评论/弹幕）")
+    feedback_summary = Column(Text, nullable=True, comment="反馈摘要")
     
     # 状态和统计
     status = Column(Integer, default=0, comment="状态：0=转码中, 1=审核中, 2=已发布, 3=拒绝, 4=软删除")

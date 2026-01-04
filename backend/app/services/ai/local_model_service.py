@@ -69,9 +69,7 @@ class LocalModelService:
                 if not parsed_result:
                     return None
 
-                # 3. 计算置信度
-                confidence = self._calculate_confidence(parsed_result)
-                parsed_result["confidence"] = confidence
+                # 3. 添加元数据（移除置信度计算，不再需要）
                 parsed_result["source"] = "local_model"
                 parsed_result["model_name"] = self.model
 
@@ -98,22 +96,6 @@ class LocalModelService:
             logger.warning(f"[LocalLLM] JSON 解析失败: {text[:50]}...")
             return None
 
-    def _calculate_confidence(self, result: AIContentAnalysisResult) -> float:
-        """
-        基于评分的启发式置信度计算
-        策略：评分越极端（接近0或100），置信度越高；中间分段置信度低。
-        """
-        score = result.get("score", 60)
-        
-        # 极端情况 (明确的好或明确的坏) -> 高置信度
-        if score <= 30 or score >= 85:
-            return 0.95
-        # 偏向情况 -> 中等置信度
-        elif score <= 40 or score >= 75:
-            return 0.70
-        # 中间摇摆 -> 低置信度 (交给大模型复核)
-        else:
-            return 0.40
 
 # 单例模式导出
 local_model_service = LocalModelService()

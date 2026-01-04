@@ -30,6 +30,32 @@
       </div>
     </div>
 
+    <!-- 封面和字幕上传进度 -->
+    <div v-if="coverUploading || subtitleUploading" class="additional-uploads">
+      <div v-if="coverUploading" class="upload-item">
+        <div class="upload-label">
+          <span>封面上传：</span>
+          <span class="upload-percentage">{{ coverProgress || 0 }}%</span>
+        </div>
+        <el-progress
+          :percentage="coverProgress || 0"
+          :stroke-width="8"
+          :show-text="false"
+        />
+      </div>
+      <div v-if="subtitleUploading" class="upload-item">
+        <div class="upload-label">
+          <span>字幕上传：</span>
+          <span class="upload-percentage">{{ subtitleProgress || 0 }}%</span>
+        </div>
+        <el-progress
+          :percentage="subtitleProgress || 0"
+          :stroke-width="8"
+          :show-text="false"
+        />
+      </div>
+    </div>
+
     <!-- 操作按钮 -->
     <div class="progress-actions">
       <el-button
@@ -78,6 +104,10 @@ defineProps<{
   totalChunks: number
   speed: string
   remainingTime: string
+  coverProgress?: number
+  subtitleProgress?: number
+  coverUploading?: boolean
+  subtitleUploading?: boolean
 }>()
 
 defineEmits<{
@@ -150,6 +180,35 @@ defineEmits<{
   margin-top: 40px; // 增加上边距
   padding-top: 24px;
   border-top: 1px solid #e5e7eb; // 添加分隔线
+}
+
+.additional-uploads {
+  margin-top: 24px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.upload-item {
+  margin-bottom: 16px;
+}
+
+.upload-item:last-child {
+  margin-bottom: 0;
+}
+
+.upload-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.upload-percentage {
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 @media (max-width: 768px) {

@@ -24,7 +24,6 @@ from app.core.types import AIContentAnalysisResult
 from app.core.database import SessionLocal
 from app.models.danmaku import Danmaku
 from app.models.comment import Comment
-from app.models.ai_training_sample import AiTrainingSample
 from app.services.ai.prompts import (
     DANMAKU_SYSTEM_PROMPT,
     COMMENT_SYSTEM_PROMPT
@@ -56,10 +55,11 @@ def _get_multi_agent_service():
 
 class LLMService:
     def __init__(self):
-        self.api_key = settings.LLM_API_KEY
-        self.base_url = settings.LLM_BASE_URL
-        self.model = settings.LLM_MODEL
-        self.timeout = 30.0
+        # 云端大模型配置（已注释，暂时不使用）
+        # self.api_key = settings.LLM_API_KEY
+        # self.base_url = settings.LLM_BASE_URL
+        # self.model = settings.LLM_MODEL
+        self.timeout = 30.0  # 保留 timeout，可能被其他方法使用
 
         self.default_response: AIContentAnalysisResult = {
             "score": 60,
@@ -79,14 +79,13 @@ class LLMService:
 
     async def analyze_content(self, content: str, content_type: str) -> AIContentAnalysisResult:
         """
-        智能内容分析（简化架构）
+        智能内容分析（简化架构 - 仅使用本地模型）
 
         Layer 1   : 规则过滤
         Layer 1.5 : 精确缓存（MD5）
-        Layer 2.5 : 本地小模型（Local LLM）
-        Layer 3   : 云端大模型（Cloud LLM）
+        Layer 2   : 本地模型（Local LLM）
         
-        注：暂时移除Layer 2语义缓存，采用简化方案
+        注：云端大模型调用已注释，暂时不使用
         """
         if not content:
             return self.default_response
@@ -108,80 +107,47 @@ class LLMService:
         except Exception as e:
             logger.warning(f"Exact cache read failed: {e}")
 
-        # ==================== Layer 2: 语义缓存 ====================
-        # 暂时注释语义缓存，采用简化方案
-        # embedding = await embedding_service.get_text_embedding(content)
-        # sem_prefix = f"ai:semcache:{content_type}"
-
-        # if embedding is not None:
-        #     sem_cached = await redis_service.search_similar_vector(
-        #         cache_key_prefix=sem_prefix,
-        #         embedding=embedding,
-        #         threshold=settings.AI_SEMANTIC_CACHE_THRESHOLD,
-        #     )
-        #     if sem_cached:
-        #         try:
-        #             result = json.loads(sem_cached)
-        #             await redis_service.async_redis.setex(
-        #                 exact_cache_key,
-        #                 settings.AI_SEMANTIC_CACHE_TTL,
-        #                 json.dumps(result),
-        #             )
-        #             logger.info(f"AI Semantic Cache Hit: {content[:10]}...")
-        #             return result
-        #         except Exception:
-        #             logger.warning("Semantic cache parse error")
-
-        # ==================== Layer 2.5: 本地小模型 ====================
-        local_result = None
-        should_use_cloud = True
-
-        if settings.LOCAL_LLM_ENABLED:
-            try:
-                local_result = await local_model_service.predict(content, content_type)
-                if local_result:
-                    confidence = local_result.get("confidence", 0.0)
-                    threshold = settings.LOCAL_LLM_THRESHOLD_HIGH / 100.0
-
-                    logger.info(
-                        f"[LocalLLM] score={local_result.get('score')} conf={confidence:.2f}"
-                    )
-
-                    if confidence >= threshold:
-                        logger.info("✅ 本地模型高置信度命中，跳过云端")
-
-                        final_result = {
-                            "score": local_result["score"],
-                            "category": local_result["category"],
-                            "label": local_result["label"],
-                            "reason": local_result.get("reason", "本地模型分析"),
-                        }
-
-                        await self._save_training_sample(
-                            content, local_result, "local_hit"
-                        )
-                        await self._save_cache(
-                            content, content_type, final_result, None  # embedding=None
-                        )
-                        return final_result
-
-            except Exception as e:
-                logger.error(f"Local LLM failed, downgrade: {e}")
-
-        # ==================== Layer 3: 云端大模型 ====================
-        messages = self._build_prompt(content, content_type)
-        response_text = await self._call_llm_api(messages)
-        if not response_text:
+        # ==================== Layer 2: 本地模型 ====================
+        if not settings.LOCAL_LLM_ENABLED:
+            logger.warning("本地模型未启用，返回默认结果")
             return self.default_response
 
-        result = self._parse_response(response_text, content_type)
+        try:
+            local_result = await local_model_service.predict(content, content_type)
+            if local_result:
+                logger.info(f"[LocalLLM] score={local_result.get('score')}")
 
-        if local_result:
-            await self._save_training_sample(content, local_result, "local_low_conf")
-            await self._save_training_sample(content, result, "cloud_final")
+                final_result = {
+                    "score": local_result.get("score", 60),
+                    "category": local_result.get("category", "普通"),
+                    "label": local_result.get("label", "普通"),
+                    "reason": local_result.get("reason", "本地模型分析"),
+                    "is_highlight": local_result.get("is_highlight", False),
+                    "is_inappropriate": local_result.get("is_inappropriate", False),
+                }
 
-        await self._save_cache(content, content_type, result, None)  # embedding=None
-        return result
+                # 保存缓存
+                await self._save_cache(
+                    content, content_type, final_result, None
+                )
+                return final_result
+            else:
+                logger.warning("本地模型返回空结果，返回默认结果")
+                return self.default_response
+
+        except Exception as e:
+            logger.error(f"Local LLM failed: {e}")
+            return self.default_response
+
+        # ==================== Layer 3: 云端大模型（已注释，暂时不使用）====================
+        # messages = self._build_prompt(content, content_type)
+        # response_text = await self._call_llm_api(messages)
+        # if not response_text:
+        #     return self.default_response
+        #
+        # result = self._parse_response(response_text, content_type)
+        # await self._save_cache(content, content_type, result, None)
+        # return result
 
     # ==================== 缓存辅助 ====================
 
@@ -281,35 +247,45 @@ class LLMService:
             {"role": "user", "content": f"输入内容: {content}"},
         ]
 
-    # ==================== LLM API ====================
+    # ==================== LLM API（已注释云端调用，暂时不使用）====================
 
     async def _call_llm_api(self, messages: list) -> Optional[str]:
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": 0.3,
-            "max_tokens": 512,
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                resp = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    json=payload,
-                    headers=headers,
-                )
-                if resp.status_code != 200:
-                    logger.error(f"LLM API Error {resp.status_code}: {resp.text}")
-                    return None
-                return resp.json()["choices"][0]["message"]["content"]
-        except Exception as e:
-            logger.error(f"LLM API call failed: {e}")
-            return None
+        """
+        云端大模型API调用（已注释，暂时不使用）
+        
+        注意：其他服务可能仍在使用此方法，因此保留方法签名
+        但实际API调用已注释，返回 None
+        """
+        # 云端大模型调用已注释，暂时不使用
+        # headers = {
+        #     "Authorization": f"Bearer {self.api_key}",
+        #     "Content-Type": "application/json",
+        # }
+        #
+        # payload = {
+        #     "model": self.model,
+        #     "messages": messages,
+        #     "temperature": 0.3,
+        #     "max_tokens": 512,
+        # }
+        #
+        # try:
+        #     async with httpx.AsyncClient(timeout=self.timeout) as client:
+        #         resp = await client.post(
+        #             f"{self.base_url}/chat/completions",
+        #             json=payload,
+        #             headers=headers,
+        #         )
+        #         if resp.status_code != 200:
+        #             logger.error(f"LLM API Error {resp.status_code}: {resp.text}")
+        #             return None
+        #         return resp.json()["choices"][0]["message"]["content"]
+        # except Exception as e:
+        #     logger.error(f"LLM API call failed: {e}")
+        #     return None
+        
+        logger.warning("云端大模型调用已禁用，返回 None")
+        return None
 
     # ==================== 解析 ====================
 
@@ -325,34 +301,6 @@ class LLMService:
         except Exception:
             logger.warning(f"JSON parse error: {response_text}")
             return self.default_response
-
-    # ==================== 训练样本 ====================
-
-    async def _save_training_sample(
-        self, content: str, result: AIContentAnalysisResult, source_tag: str
-    ):
-        try:
-            db = SessionLocal()
-            try:
-                model_name = (
-                    settings.LLM_MODEL
-                    if source_tag == "cloud_final"
-                    else settings.LOCAL_LLM_MODEL
-                )
-                sample = AiTrainingSample(
-                    content=content,
-                    ai_score=result.get("score", 0),
-                    ai_category=result.get("category", "unknown"),
-                    ai_label=result.get("label", "unknown"),
-                    source_model=model_name,
-                    local_confidence=result.get("confidence", 1.0),
-                )
-                db.add(sample)
-                db.commit()
-            finally:
-                db.close()
-        except Exception as e:
-            logger.error(f"Save training sample failed: {e}")
 
     # ==================== 异步任务 ====================
 

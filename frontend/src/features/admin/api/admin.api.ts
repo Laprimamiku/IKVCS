@@ -38,11 +38,24 @@ export interface AuditVideoItem {
   title: string;
   cover_url: string;
   video_url: string;
+  subtitle_url?: string; // 字幕文件 URL
   duration: number;
   description: string;
   created_at: string;
   uploader: User;
   category: { id: number; name: string };
+  status?: number; // 视频状态：0=转码中, 1=审核中, 2=已发布, 3=已拒绝, 4=已删除
+  review_score?: number; // 综合审核评分（0-100）
+  review_status?: number; // 审核状态：0=待审核，1=通过，2=拒绝
+  review_report?: {
+    timestamp?: string;
+    frame_review?: any;
+    subtitle_review?: any;
+    final_score?: number;
+    final_status?: number;
+    error?: string;
+    message?: string;
+  }; // 审核报告详情
 }
 
 // ==================== API 方法 ====================
@@ -56,8 +69,15 @@ export const adminApi = {
   // 2. 视频审核
   getPendingVideos: (page = 1, pageSize = 20) => 
     request.get('/admin/videos/pending', { params: { page, page_size: pageSize } }),
+  manageVideos: (page = 1, pageSize = 20, status?: number | null, keyword?: string) =>
+    request.get('/admin/videos/manage', { params: { page, page_size: pageSize, status, keyword } }),
   approveVideo: (id: number) => request.post(`/admin/videos/${id}/approve`),
   rejectVideo: (id: number) => request.post(`/admin/videos/${id}/reject`),
+  reReviewVideo: (id: number) => request.post(`/admin/videos/${id}/re-review`), // 重新触发AI初审（帧+字幕）
+  reviewFramesOnly: (id: number) => request.post(`/admin/videos/${id}/review-frames`), // 仅审核视频帧
+  reviewSubtitleOnly: (id: number) => request.post(`/admin/videos/${id}/review-subtitle`), // 仅审核字幕
+  getOriginalVideoUrl: (id: number) => request.get(`/admin/videos/${id}/original`), // 获取原始视频文件 URL
+  getSubtitleContent: (id: number) => request.get(`/admin/videos/${id}/subtitle-content`), // 获取字幕内容
 
   // 3. 用户管理
   getUsers: (page = 1, keyword = '') => 

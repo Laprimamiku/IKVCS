@@ -12,7 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Path
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, func
 from pydantic import BaseModel
@@ -27,7 +27,14 @@ from app.models.report import Report
 from app.models.comment import Comment
 from app.models.danmaku import Danmaku
 from app.schemas.user import UserResponse, MessageResponse
-from app.schemas.video import VideoListResponse
+from app.schemas.video import (
+    VideoListResponse, 
+    AdminVideoListItemResponse, 
+    AdminVideoListResponse,
+    UploaderBriefResponse,
+    CategoryBriefResponse
+)
+from app.services.video.video_stats_service import VideoStatsService
 from app.repositories.category_repository import CategoryRepository
 from app.schemas.category import CategoryCreate, CategoryResponse, CategoryUpdate
 
@@ -189,13 +196,56 @@ async def approve_video(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
+    """
+    管理员通过视频审核
+    
+    使用场景：
+    - 审核中的视频（包括被举报的视频）
+    - 如果视频原本是已发布状态，保持已发布状态（status=2）
+    - 如果视频原本是其他状态，设置为已发布（status=2）
+    """
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(404, "视频不存在")
 
-    video.status = 2  # 已发布
+    # 记录原始状态
+    original_status = video.status
+    
+    # 如果原本是已发布状态，保持已发布；否则设置为已发布
+    if original_status == 2:
+        # 保持已发布状态，不改变
+        video.status = 2
+        status_message = "视频已通过审核（保持已发布状态）"
+    else:
+        # 设置为已发布
+        video.status = 2
+        status_message = "视频已通过审核"
+    
+    video.review_status = 1  # 审核通过
+    # 更新审核报告，记录管理员操作
+    import json
+    from datetime import datetime
+    review_report = {
+        "message": "管理员审核通过",
+        "timestamp": datetime.utcnow().isoformat(),
+        "admin_id": admin.id,
+        "admin_username": admin.username,
+        "original_status": original_status,
+        "final_status": video.status
+    }
+    if video.review_report:
+        try:
+            existing_report = json.loads(video.review_report) if isinstance(video.review_report, str) else video.review_report
+            review_report.update(existing_report)
+            # 清除举报标记（如果存在）
+            if "has_report" in review_report:
+                review_report["has_report"] = False
+        except:
+            pass
+    video.review_report = json.dumps(review_report, ensure_ascii=False)
     db.commit()
-    return {"message": "视频已通过审核"}
+    logger.info(f"管理员 {admin.username} 通过视频审核: video_id={video_id}, original_status={original_status}, final_status={video.status}")
+    return {"message": status_message}
 
 
 @router.post("/videos/{video_id}/reject", response_model=MessageResponse, summary="拒绝视频审核")
@@ -204,12 +254,37 @@ async def reject_video(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
+    """
+    管理员拒绝视频审核
+    
+    使用场景：
+    - 审核中的视频（包括被举报的视频）
+    - 将视频状态设置为拒绝（status=3）
+    """
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(404, "视频不存在")
 
     video.status = 3  # 拒绝 / 封禁
+    video.review_status = 2  # 审核拒绝
+    # 更新审核报告，记录管理员操作
+    import json
+    from datetime import datetime
+    review_report = {
+        "message": "管理员审核拒绝",
+        "timestamp": datetime.utcnow().isoformat(),
+        "admin_id": admin.id,
+        "admin_username": admin.username
+    }
+    if video.review_report:
+        try:
+            existing_report = json.loads(video.review_report) if isinstance(video.review_report, str) else video.review_report
+            review_report.update(existing_report)
+        except:
+            pass
+    video.review_report = json.dumps(review_report, ensure_ascii=False)
     db.commit()
+    logger.info(f"管理员 {admin.username} 拒绝视频审核: video_id={video_id}")
     return {"message": "视频已被拒绝"}
 
 
@@ -217,7 +292,7 @@ async def reject_video(
 # 视频管理
 # =========================
 
-@router.get("/videos/manage", response_model=VideoListResponse, summary="视频管理列表")
+@router.get("/videos/manage", response_model=AdminVideoListResponse, summary="视频管理列表")
 async def manage_videos(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1),
@@ -244,13 +319,57 @@ async def manage_videos(
         .all()
     )
 
-    return {
-        "items": videos,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": math.ceil(total / page_size)
-    }
+    # 构建包含审核信息的响应
+    import json
+    items = []
+    for video in videos:
+        # 解析 review_report JSON 字符串
+        review_report_dict = None
+        if video.review_report:
+            try:
+                if isinstance(video.review_report, str):
+                    review_report_dict = json.loads(video.review_report)
+                else:
+                    review_report_dict = video.review_report
+            except (json.JSONDecodeError, TypeError):
+                review_report_dict = None
+        
+        items.append(AdminVideoListItemResponse(
+            id=video.id,
+            title=video.title,
+            description=video.description,
+            cover_url=video.cover_url,
+            video_url=video.video_url or "",
+            subtitle_url=video.subtitle_url,  # 添加字幕 URL
+            duration=video.duration,
+            view_count=VideoStatsService.get_merged_view_count(db, video.id),
+            like_count=video.like_count,
+            collect_count=video.collect_count,
+            danmaku_count=0,  # 可以后续添加
+            uploader=UploaderBriefResponse(
+                id=video.uploader.id,
+                username=video.uploader.username,
+                nickname=video.uploader.nickname,
+                avatar=video.uploader.avatar,
+            ),
+            category=CategoryBriefResponse(
+                id=video.category.id,
+                name=video.category.name
+            ),
+            created_at=video.created_at,
+            status=video.status,
+            review_score=video.review_score,
+            review_status=video.review_status,
+            review_report=review_report_dict,
+        ))
+
+    return AdminVideoListResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=math.ceil(total / page_size)
+    )
 
 
 @router.post("/videos/{video_id}/ban", response_model=MessageResponse, summary="封禁视频")
@@ -281,6 +400,300 @@ async def restore_video(
     video.status = 2
     db.commit()
     return {"message": "视频已恢复发布"}
+
+
+@router.post("/videos/{video_id}/re-review", summary="重新触发AI初审")
+async def re_review_video(
+    video_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    """
+    管理员重新触发视频AI初审
+    
+    使用场景：
+    - 视频被举报后，管理员可以重新触发AI审核
+    - 审核结果会更新到 review_score, review_status, review_report 字段
+    - 视频状态会根据审核结果自动更新
+    """
+    from app.services.ai.video_review_service import video_review_service
+    from app.repositories.upload_repository import UploadSessionRepository
+    import os
+    from app.core.config import settings
+    
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(404, "视频不存在")
+    
+    # 获取视频文件路径
+    upload_session = UploadSessionRepository.get_by_video_id(db, video_id)
+    if not upload_session:
+        raise HTTPException(404, "视频文件不存在")
+    
+    input_path = os.path.join(
+        settings.VIDEO_ORIGINAL_DIR,
+        f"{upload_session.file_hash}_{upload_session.file_name}"
+    )
+    
+    if not os.path.exists(input_path):
+        raise HTTPException(404, "视频文件不存在")
+    
+    # 获取字幕路径
+    subtitle_path = video.subtitle_url if video.subtitle_url else None
+    if subtitle_path and not os.path.isabs(subtitle_path):
+        subtitle_path = os.path.join(settings.STORAGE_ROOT, subtitle_path.lstrip("/"))
+    
+    # 异步触发审核任务
+    background_tasks.add_task(
+        video_review_service.review_video,
+        video_id=video_id,
+        video_path=input_path,
+        subtitle_path=subtitle_path
+    )
+    
+    logger.info(f"管理员 {admin.username} 重新触发视频AI初审（帧+字幕）: video_id={video_id}")
+    
+    return {
+        "message": "AI初审任务已启动（帧审核+字幕审核），请稍后查看审核结果",
+        "video_id": video_id
+    }
+
+
+@router.post("/videos/{video_id}/review-frames", summary="仅审核视频帧（Moondream）")
+async def review_frames_only(
+    video_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    """
+    管理员仅触发视频帧审核（使用 Moondream）
+    
+    使用场景：
+    - 仅需要重新审核视频帧时使用
+    - 不会审核字幕
+    """
+    from app.services.ai.video_review_service import video_review_service
+    from app.repositories.upload_repository import UploadSessionRepository
+    import os
+    from app.core.config import settings
+    
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(404, "视频不存在")
+    
+    # 获取视频文件路径
+    upload_session = UploadSessionRepository.get_by_video_id(db, video_id)
+    if not upload_session:
+        raise HTTPException(404, "视频文件不存在")
+    
+    input_path = os.path.join(
+        settings.VIDEO_ORIGINAL_DIR,
+        f"{upload_session.file_hash}_{upload_session.file_name}"
+    )
+    
+    if not os.path.exists(input_path):
+        raise HTTPException(404, "视频文件不存在")
+    
+    # 异步触发帧审核（后台任务）
+    background_tasks.add_task(
+        video_review_service.review_frames_only,
+        video_id=video_id,
+        video_path=input_path
+    )
+    
+    logger.info(f"管理员 {admin.username} 触发视频帧审核: video_id={video_id}")
+    return {
+        "message": "帧审核任务已启动（Moondream），请稍后查看审核结果",
+        "video_id": video_id
+    }
+
+
+@router.post("/videos/{video_id}/review-subtitle", summary="仅审核字幕（qwen2.5:0.5b-instruct）")
+async def review_subtitle_only(
+    video_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    """
+    管理员仅触发字幕审核（使用 qwen2.5:0.5b-instruct）
+    
+    使用场景：
+    - 仅需要重新审核字幕时使用
+    - 不会审核视频帧
+    
+    注意：字幕文件可能被重命名，但文件名开头包含视频ID，会根据视频ID匹配字幕文件
+    """
+    from app.services.ai.video_review_service import video_review_service
+    import os
+    from app.core.config import settings
+    from pathlib import Path
+    
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(404, "视频不存在")
+    
+    # 根据视频ID查找字幕文件（字幕文件可能被重命名，但开头包含视频ID）
+    subtitle_path = None
+    subtitle_dir = settings.UPLOAD_SUBTITLE_DIR
+    
+    if os.path.exists(subtitle_dir):
+        # 查找以 {video_id}_ 开头的字幕文件
+        subtitle_files = list(Path(subtitle_dir).glob(f"{video_id}_*"))
+        if subtitle_files:
+            # 使用第一个匹配的文件
+            subtitle_path = str(subtitle_files[0])
+            logger.info(f"根据视频ID找到字幕文件: video_id={video_id}, subtitle_path={subtitle_path}")
+        else:
+            # 如果没有找到，尝试使用 video.subtitle_url
+            if video.subtitle_url:
+                subtitle_path = video.subtitle_url
+                if not os.path.isabs(subtitle_path):
+                    if subtitle_path.startswith("/"):
+                        subtitle_path = os.path.join(settings.STORAGE_ROOT, subtitle_path.lstrip("/"))
+                    else:
+                        subtitle_path = os.path.join(subtitle_dir, subtitle_path)
+                logger.info(f"使用视频记录中的字幕路径: video_id={video_id}, subtitle_path={subtitle_path}")
+            else:
+                logger.warning(f"未找到视频对应的字幕文件: video_id={video_id}, subtitle_dir={subtitle_dir}")
+    else:
+        logger.warning(f"字幕目录不存在: {subtitle_dir}")
+    
+    # 异步触发字幕审核（后台任务）
+    background_tasks.add_task(
+        video_review_service.review_subtitle_only,
+        video_id=video_id,
+        subtitle_path=subtitle_path
+    )
+    
+    logger.info(f"管理员 {admin.username} 触发字幕审核: video_id={video_id}, subtitle_path={subtitle_path}")
+    return {
+        "message": "字幕审核任务已启动（qwen2.5:0.5b-instruct），请稍后查看审核结果",
+        "video_id": video_id
+    }
+
+
+@router.get("/videos/{video_id}/original", summary="获取原始视频文件 URL（用于人工审核）")
+async def get_original_video_url(
+    video_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    """
+    获取原始视频文件的访问 URL（用于管理员人工审核）
+    
+    返回原始视频文件路径，管理员可以直接下载或在线查看
+    """
+    from app.repositories.upload_repository import UploadSessionRepository
+    import os
+    from app.core.config import settings
+    
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(404, "视频不存在")
+    
+    # 获取视频文件路径
+    upload_session = UploadSessionRepository.get_by_video_id(db, video_id)
+    if not upload_session:
+        raise HTTPException(404, "视频文件不存在")
+    
+    input_path = os.path.join(
+        settings.VIDEO_ORIGINAL_DIR,
+        f"{upload_session.file_hash}_{upload_session.file_name}"
+    )
+    
+    if not os.path.exists(input_path):
+        raise HTTPException(404, "视频文件不存在")
+    
+    # 返回文件路径（前端可以通过 /videos/originals/ 访问，因为静态文件挂载在 /videos）
+    # 注意：静态文件挂载在 /videos，所以路径应该是 /videos/originals/{file_name}
+    # 文件名格式：{file_hash}_{file_name}，但显示时只显示原始文件名
+    stored_file_name = f"{upload_session.file_hash}_{upload_session.file_name}"
+    file_url = f"/videos/originals/{stored_file_name}"
+    
+    # 获取视频标题，用于显示（原始文件名可能与标题相似）
+    display_name = video.title if video.title else upload_session.file_name
+    
+    return {
+        "video_id": video_id,
+        "file_path": input_path,
+        "file_url": file_url,
+        "file_name": upload_session.file_name,  # 原始文件名（不含哈希）
+        "display_name": display_name,  # 显示名称（视频标题）
+        "stored_file_name": stored_file_name,  # 存储的文件名（含哈希）
+        "file_size": os.path.getsize(input_path) if os.path.exists(input_path) else 0
+    }
+
+
+@router.get("/videos/{video_id}/subtitle-content", summary="获取字幕内容（用于人工审核）")
+async def get_subtitle_content(
+    video_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    """
+    获取字幕文件内容（用于管理员人工审核）
+    
+    返回字幕文件的完整内容，支持 SRT/VTT/JSON/ASS 格式
+    """
+    from app.services.video.subtitle_parser import SubtitleParser
+    import os
+    from app.core.config import settings
+    
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(404, "视频不存在")
+    
+    # 根据视频ID查找字幕文件（字幕文件可能被重命名，但开头包含视频ID）
+    subtitle_dir = settings.UPLOAD_SUBTITLE_DIR
+    full_path = None
+    
+    if os.path.exists(subtitle_dir):
+        # 查找以 {video_id}_ 开头的字幕文件
+        from pathlib import Path
+        subtitle_files = list(Path(subtitle_dir).glob(f"{video_id}_*"))
+        if subtitle_files:
+            # 使用第一个匹配的文件
+            full_path = str(subtitle_files[0])
+            logger.info(f"根据视频ID找到字幕文件: video_id={video_id}, subtitle_path={full_path}")
+        else:
+            # 如果没有找到，尝试使用 video.subtitle_url
+            if video.subtitle_url:
+                subtitle_path = video.subtitle_url
+                if os.path.isabs(subtitle_path):
+                    full_path = subtitle_path
+                elif subtitle_path.startswith("/"):
+                    full_path = os.path.join(settings.STORAGE_ROOT, subtitle_path.lstrip("/"))
+                else:
+                    full_path = os.path.join(subtitle_dir, subtitle_path)
+                logger.info(f"使用视频记录中的字幕路径: video_id={video_id}, subtitle_path={full_path}")
+    
+    if not full_path or not os.path.exists(full_path):
+        raise HTTPException(404, f"该视频没有字幕文件（video_id={video_id}，已搜索目录：{subtitle_dir}）")
+    
+    # 解析字幕文件
+    try:
+        parser = SubtitleParser()
+        subtitles = parser.parse_subtitle_file(full_path)
+        
+        # 读取原始文件内容（用于显示）
+        with open(full_path, 'r', encoding='utf-8') as f:
+            raw_content = f.read()
+        
+        return {
+            "video_id": video_id,
+            "subtitle_url": video.subtitle_url,
+            "file_path": full_path,
+            "file_name": os.path.basename(full_path),
+            "parsed_subtitles": subtitles,  # 解析后的字幕列表
+            "raw_content": raw_content,  # 原始文件内容
+            "total_entries": len(subtitles)
+        }
+    except Exception as e:
+        logger.error(f"读取字幕文件失败: {e}", exc_info=True)
+        raise HTTPException(500, f"读取字幕文件失败: {str(e)}")
 
 
 # =========================

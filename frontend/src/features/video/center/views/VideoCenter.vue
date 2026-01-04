@@ -65,28 +65,35 @@
                   :class="{ active: statusFilter === null }"
                   @click="handleStatusChange(null)"
                 >
-                  全部 ({{ total }})
+                  全部
+                </div>
+                <div 
+                  class="status-tab" 
+                  :class="{ active: statusFilter === 2 }"
+                  @click="handleStatusChange(2)"
+                >
+                  已发布
                 </div>
                 <div 
                   class="status-tab" 
                   :class="{ active: statusFilter === 1 }"
                   @click="handleStatusChange(1)"
                 >
-                  已发布 ({{ publishedCount }})
+                  审核中
+                </div>
+                <div 
+                  class="status-tab" 
+                  :class="{ active: statusFilter === 3 }"
+                  @click="handleStatusChange(3)"
+                >
+                  已拒绝
                 </div>
                 <div 
                   class="status-tab" 
                   :class="{ active: statusFilter === 0 }"
                   @click="handleStatusChange(0)"
                 >
-                  审核中 ({{ pendingCount }})
-                </div>
-                <div 
-                  class="status-tab" 
-                  :class="{ active: statusFilter === -1 }"
-                  @click="handleStatusChange(-1)"
-                >
-                  未通过 ({{ rejectedCount }})
+                  转码中
                 </div>
               </div>
             </div>
@@ -124,9 +131,6 @@
               <div class="video-cover" @click="handleView(video.id)">
                 <img :src="video.cover_url || '/placeholder-video.jpg'" :alt="video.title" />
                 <div class="video-duration">{{ formatDuration(video.duration) }}</div>
-                <div class="video-status" :class="getStatusClass(video.status || 0)">
-                  {{ getStatusText(video.status || 0) }}
-                </div>
                 <div class="video-overlay">
                   <el-icon class="play-icon"><VideoPlay /></el-icon>
                 </div>
@@ -177,7 +181,6 @@
                     <template #dropdown>
                       <el-dropdown-menu>
                         <el-dropdown-item command="share">分享</el-dropdown-item>
-                        <el-dropdown-item command="download">下载</el-dropdown-item>
                         <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
@@ -466,15 +469,19 @@ const totalComments = computed(() => {
 });
 
 const publishedCount = computed(() => {
-  return videos.value.filter(video => video.status === 1).length;
+  return videos.value.filter(video => video.status === 2).length; // 状态 2 为已发布
 });
 
 const pendingCount = computed(() => {
-  return videos.value.filter(video => video.status === 0).length;
+  return videos.value.filter(video => video.status === 1).length; // 状态 1 为审核中
 });
 
 const rejectedCount = computed(() => {
-  return videos.value.filter(video => video.status === -1).length;
+  return videos.value.filter(video => video.status === 3).length; // 状态 3 为已拒绝
+});
+
+const transcodingCount = computed(() => {
+  return videos.value.filter(video => video.status === 0).length; // 状态 0 为转码中
 });
 
 /**
@@ -503,24 +510,30 @@ const formatTime = (dateStr: string): string => {
 
 /**
  * 获取状态样式类
+ * 状态定义：0=转码中, 1=审核中, 2=已发布, 3=拒绝, 4=软删除
  */
 const getStatusClass = (status: number): string => {
   switch (status) {
-    case 1: return 'published';
-    case 0: return 'pending';
-    case -1: return 'rejected';
+    case 0: return 'transcoding';  // 转码中
+    case 1: return 'reviewing';    // 审核中
+    case 2: return 'published';    // 已发布
+    case 3: return 'rejected';   // 已拒绝
+    case 4: return 'deleted';     // 已删除
     default: return 'unknown';
   }
 };
 
 /**
  * 获取状态文本
+ * 状态定义：0=转码中, 1=审核中, 2=已发布, 3=拒绝, 4=软删除
  */
 const getStatusText = (status: number): string => {
   switch (status) {
-    case 1: return '已发布';
-    case 0: return '审核中';
-    case -1: return '未通过';
+    case 0: return '转码中';
+    case 1: return '审核中';
+    case 2: return '已发布';
+    case 3: return '已拒绝';
+    case 4: return '已删除';
     default: return '未知';
   }
 };
@@ -689,10 +702,6 @@ const handleAction = async (command: string, video: Video) => {
     case 'share':
       // 分享功能
       ElMessage.info('分享功能开发中');
-      break;
-    case 'download':
-      // 下载功能
-      ElMessage.info('下载功能开发中');
       break;
     case 'delete':
       await handleDelete(video);

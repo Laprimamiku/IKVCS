@@ -7,6 +7,7 @@
 from sqlalchemy.orm import Session
 from typing import Optional, TYPE_CHECKING
 from math import ceil
+from datetime import timezone
 import logging
 
 from app.services.video.video_query_service import VideoQueryService
@@ -270,5 +271,5 @@ view_count=VideoStatsService.get_view_count_from_model(video),
                 "id": video.category.id,
                 "name": video.category.name
             },
-            "created_at": video.created_at.isoformat() if hasattr(video.created_at, 'isoformat') else str(video.created_at),
+            "created_at": video.created_at.replace(tzinfo=timezone.utc).isoformat() if video.created_at.tzinfo is None else video.created_at.isoformat(),
         }

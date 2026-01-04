@@ -144,15 +144,17 @@ const banners = computed(() => {
 // 获取轮播图视频（最新上传的3个视频）
 const loadBannerVideos = async () => {
   try {
+    // 推荐页（currentCategory 为 null）显示所有分类的最新视频
+    // 其他分类页只显示该分类下的最新视频
     const res = await getVideoList({
       page: 1,
       page_size: 3, // 获取最新的3个视频作为轮播图
-      category_id: null,
+      category_id: currentCategory.value, // 如果是推荐页则为 null，其他分类页则为对应的 category_id
     });
     
     if (res.success) {
       const data = res.data as PageResult<Video>;
-      bannerVideos.value = data.items || [];
+      bannerVideos.value = (data.items || []).slice(0, 3); // 确保最多3个视频
     }
   } catch (e) {
     console.error("Failed to load banner videos:", e);
@@ -216,9 +218,11 @@ const loadVideos = async (append = false) => {
 // Event handlers
 const loadMoreVideos = () => loadVideos(true);
 
-const handleCategorySelect = (id: number | null) => {
+const handleCategorySelect = async (id: number | null) => {
   currentCategory.value = id;
-  loadVideos();
+  // 先加载轮播图，再加载视频列表
+  await loadBannerVideos();
+  await loadVideos();
 };
 
 const handleVideoClick = (v: Video) => {

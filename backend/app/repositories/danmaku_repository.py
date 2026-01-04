@@ -3,7 +3,7 @@
 提供弹幕相关的数据访问方法
 """
 from typing import Optional, List
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.repository import BaseRepository
 from app.models.danmaku import Danmaku
@@ -20,7 +20,7 @@ class DanmakuRepository(BaseRepository):
         video_id: int
     ) -> List[Danmaku]:
         """
-        根据视频ID查询弹幕列表
+        根据视频ID查询弹幕列表（包含用户信息）
         
         Args:
             db: 数据库会话
@@ -29,7 +29,9 @@ class DanmakuRepository(BaseRepository):
         Returns:
             List[Danmaku]: 弹幕列表
         """
-        return db.query(Danmaku).filter(
+        return db.query(Danmaku).options(
+            joinedload(Danmaku.user)
+        ).filter(
             Danmaku.video_id == video_id,
             Danmaku.is_deleted == False
         ).order_by(Danmaku.video_time).all()

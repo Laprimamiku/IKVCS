@@ -3,6 +3,7 @@
 需求：7.1-7.5, 8.1-8.5
 """
 from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, DateTime, Index
+from sqlalchemy.orm import relationship
 from datetime import datetime
 
 from app.core.database import Base
@@ -21,6 +22,9 @@ class Danmaku(Base):
     is_highlight = Column(Boolean, default=False)  # 是否高亮显示
     is_deleted = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # 关系
+    user = relationship("User", foreign_keys=[user_id], lazy="joined")
     
     # 索引：通常会根据视频ID和时间查询
     __table_args__ = (

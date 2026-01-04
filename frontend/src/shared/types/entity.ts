@@ -65,6 +65,22 @@ export interface AiAnalysisResult {
   conflict_resolved?: boolean; // Whether a Judge Agent was triggered
 }
 
+// 视频大纲条目
+export interface VideoOutlineEntry {
+  title: string;
+  start_time: number; // 开始时间（秒）
+  description?: string;
+  thumbnail?: string; // 缩略图URL（可选）
+}
+
+// 核心知识点
+export interface KnowledgePoints {
+  concepts?: string[]; // 概念定义
+  steps?: string[]; // 操作步骤
+  data?: string[]; // 关键数据/统计
+  opinions?: string[]; // 重要观点/结论
+}
+
 // 视频信息
 export interface Video {
   id: number;
@@ -86,6 +102,12 @@ export interface Video {
   
   // [New] AI 分析数据
   ai_analysis_result?: AiAnalysisResult;
+
+  // [New] AI 智能分析模块新增字段
+  outline?: VideoOutlineEntry[] | string; // 视频大纲（JSON字符串或对象数组）
+  summary_short?: string; // 简短摘要（50-100字）
+  summary_detailed?: string; // 详细摘要（200-300字）
+  knowledge_points?: KnowledgePoints; // 核心知识点
 
   status?: number; // 0: 转码中, 1: 审核中, 2: 已发布, 3: 已拒绝, 4: 已删除
   category_id?: number;

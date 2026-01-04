@@ -14,6 +14,11 @@
       <!-- Gradient Mask -->
       <div class="cover-mask"></div>
       
+      <!-- Status Badge -->
+      <div v-if="video.status !== undefined && video.status !== 2" class="status-badge" :class="getStatusClass(video.status)">
+        {{ getStatusText(video.status) }}
+      </div>
+      
       <!-- Stats Bar -->
       <div class="stats-bar">
         <div class="stats-left">
@@ -143,6 +148,30 @@ const goToUploader = () => {
 const handleWatchLater = () => {
   console.log("Add to watch later:", props.video.id);
 };
+
+// Get status class
+const getStatusClass = (status: number): string => {
+  switch (status) {
+    case 0: return 'status-transcoding';  // 转码中
+    case 1: return 'status-reviewing';   // 审核中
+    case 2: return 'status-published';   // 已发布（通常不显示，但保留样式）
+    case 3: return 'status-rejected';    // 拒绝
+    case 4: return 'status-deleted';      // 软删除
+    default: return '';
+  }
+};
+
+// Get status text
+const getStatusText = (status: number): string => {
+  switch (status) {
+    case 0: return '转码中';
+    case 1: return '审核中';
+    case 2: return '已发布';
+    case 3: return '已拒绝';
+    case 4: return '已删除';
+    default: return '未知';
+  }
+};
 </script>
 
 <style lang="scss" scoped>
@@ -208,6 +237,38 @@ const handleWatchLater = () => {
     background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
     pointer-events: none;
     z-index: 1;
+  }
+  
+  .status-badge {
+    position: absolute;
+    top: var(--space-2);
+    left: var(--space-2);
+    padding: var(--space-0-5) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-white);
+    z-index: 4;
+    
+    &.status-transcoding {
+      background: rgba(255, 193, 7, 0.9);
+    }
+    
+    &.status-reviewing {
+      background: rgba(33, 150, 243, 0.9);
+    }
+    
+    &.status-rejected {
+      background: rgba(244, 67, 54, 0.9);
+    }
+    
+    &.status-published {
+      background: rgba(76, 175, 80, 0.9);
+    }
+    
+    &.status-deleted {
+      background: rgba(158, 158, 158, 0.9);
+    }
   }
 }
 

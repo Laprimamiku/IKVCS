@@ -8,9 +8,9 @@
 
 相当于 Java 的 DTO 类
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # ==================== 请求模型 ====================
@@ -83,6 +83,8 @@ class VideoListItemResponse(BaseModel):
     title: str
     description: Optional[str]
     cover_url: Optional[str]
+    video_url: Optional[str] = None  # 视频 URL（m3u8 格式）
+    subtitle_url: Optional[str] = None  # 字幕文件 URL
     duration: int
     view_count: int
     like_count: int
@@ -94,6 +96,34 @@ class VideoListItemResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+class AdminVideoListItemResponse(VideoListItemResponse):
+    """
+    管理员视频列表项响应
+    
+    包含审核相关字段，用于管理员后台
+    """
+    status: Optional[int] = None  # 视频状态：0=转码中, 1=审核中, 2=已发布, 3=已拒绝, 4=已删除
+    review_score: Optional[int] = None  # 综合审核评分（0-100）
+    review_status: Optional[int] = None  # 审核状态：0=待审核，1=通过，2=拒绝
+    review_report: Optional[dict] = None  # 审核报告详情（JSON格式）
+    
+    class Config:
+        from_attributes = True
+
+
+class AdminVideoListResponse(BaseModel):
+    """
+    管理员视频列表响应（分页）
+    
+    包含审核相关字段
+    """
+    items: list[AdminVideoListItemResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class VideoListResponse(BaseModel):
@@ -128,6 +158,13 @@ class VideoBrief(BaseModel):
     uploader: UploaderBriefResponse
     created_at: datetime
     
+    @field_serializer('created_at')
+    def serialize_created_at(self, value: datetime) -> str:
+        """序列化时间为ISO格式，确保包含UTC时区信息"""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.isoformat()
+    
     class Config:
         from_attributes = True
 
@@ -153,6 +190,13 @@ class VideoDetailResponse(BaseModel):
     uploader: UploaderBriefResponse
     category: CategoryBriefResponse
     created_at: datetime
+    
+    @field_serializer('created_at')
+    def serialize_created_at(self, value: datetime) -> str:
+        """序列化时间为ISO格式，确保包含UTC时区信息"""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.isoformat()
     
     class Config:
         from_attributes = True

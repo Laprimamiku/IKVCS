@@ -32,8 +32,7 @@
           :class="{ active: isLiked }"
           @click="$emit('like')"
         >
-          <el-icon v-if="isLiked"><Select /></el-icon>
-          <el-icon v-else><Pointer /></el-icon>
+          <el-icon class="like-icon" :class="{ 'is-liked': isLiked }"><CircleCheckFilled /></el-icon>
           <span class="text">{{
             likeCount > 0 ? formatNumber(likeCount) : "点赞"
           }}</span>
@@ -88,11 +87,10 @@ import {
   VideoPlay,
   ChatDotRound,
   Warning,
-  Pointer,
+  CircleCheckFilled,
   Star,
   Share,
   Coin,
-  Select,
 } from "@element-plus/icons-vue";
 
 defineProps<{
@@ -203,6 +201,14 @@ const handleCoin = () => {
 
       &.active {
         color: var(--primary-color);
+      }
+      
+      .like-icon {
+        transition: transform 0.2s, color 0.2s;
+        &.is-liked {
+          color: var(--primary-color);
+          transform: rotate(-15deg) scale(1.1);
+        }
       }
 
       &.text-only {

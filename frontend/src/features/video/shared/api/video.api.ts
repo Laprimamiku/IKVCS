@@ -117,6 +117,34 @@ export function getAnalysis(videoId: number) {
   return request.get<any>(`/videos/${videoId}/ai-analysis`);
 }
 
+/**
+ * 获取视频大纲
+ */
+export async function getVideoOutline(videoId: number) {
+  return request.get<{ outline: any[] }>(`/videos/${videoId}/outline`);
+}
+
+/**
+ * 获取视频摘要
+ */
+export async function getVideoSummary(videoId: number) {
+  return request.get<{ summary_short?: string; summary_detailed?: string }>(`/videos/${videoId}/summary`);
+}
+
+/**
+ * 生成视频摘要
+ */
+export function generateVideoSummary(videoId: number) {
+  return request.post(`/videos/${videoId}/summary`);
+}
+
+/**
+ * 获取核心知识点
+ */
+export async function getVideoKnowledge(videoId: number) {
+  return request.get<{ knowledge_points: any }>(`/videos/${videoId}/knowledge`);
+}
+
 // ==========================================
 // 统一导出对象 (修复 SmartAnalysis.vue 报错)
 // ==========================================

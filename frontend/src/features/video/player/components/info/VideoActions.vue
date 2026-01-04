@@ -5,9 +5,8 @@
       :class="{ active: isLiked }"
       @click="$emit('like')"
     >
-      <el-icon :size="22">
-        <CircleCheckFilled v-if="isLiked" style="color: var(--bili-pink);" />
-        <CircleCheckFilled v-else />
+      <el-icon :size="22" class="like-icon" :class="{ 'is-liked': isLiked }">
+        <CircleCheckFilled />
       </el-icon>
       <span>{{ formatNumber(likeCount) || "点赞" }}</span>
     </div>
@@ -94,6 +93,18 @@ defineEmits<{
       
       .el-icon {
         color: var(--primary-color);
+      }
+      
+      .like-icon {
+        transform: rotate(-15deg) scale(1.1);
+      }
+    }
+    
+    .like-icon {
+      transition: transform 0.2s;
+      &.is-liked {
+        color: var(--bili-pink);
+        transform: rotate(-15deg) scale(1.1);
       }
     }
 

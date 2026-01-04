@@ -33,7 +33,7 @@ export default defineConfig({
         target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true
       },
-      '/videos/hls': {
+      '/videos': {
         target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true
       },

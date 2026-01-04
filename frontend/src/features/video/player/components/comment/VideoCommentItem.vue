@@ -48,7 +48,7 @@
           :class="{ active: localIsLiked }"
           @click="handleLike"
         >
-          <el-icon class="btn-icon"><component :is="localIsLiked ? 'CircleCheckFilled' : 'CircleCheckFilled'" /></el-icon>
+          <el-icon class="btn-icon like-icon" :class="{ 'is-liked': localIsLiked }"><CircleCheckFilled /></el-icon>
           <span class="btn-text">{{ localLikeCount || '' }}</span>
         </button>
 
@@ -115,7 +115,7 @@
                 :class="{ active: reply.is_liked }"
                 @click="handleReplyLike(reply)"
               >
-                <el-icon><CircleCheckFilled /></el-icon>
+                <el-icon><Like /></el-icon>
                 <span>{{ reply.like_count || '' }}</span>
               </button>
               <button 
@@ -510,6 +510,19 @@ const handleReport = async () => {
 
   &.like-btn.active {
     color: var(--primary-color);
+    
+    .like-icon.is-liked {
+      color: var(--primary-color);
+      transform: rotate(-15deg) scale(1.1);
+    }
+  }
+  
+  .like-icon {
+    transition: transform 0.2s, color 0.2s;
+    &.is-liked {
+      color: var(--primary-color);
+      transform: rotate(-15deg) scale(1.1);
+    }
   }
 }
 

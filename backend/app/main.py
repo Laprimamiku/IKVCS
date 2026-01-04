@@ -8,7 +8,6 @@ import logging
 import asyncio
 import os
 
-from logging.handlers import RotatingFileHandler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -20,20 +19,11 @@ from app.api import auth, users, categories, upload, videos, danmaku, websocket,
 # 创建日志目录
 os.makedirs("logs", exist_ok=True)
 
-# 配置日志系统
-logging.basicConfig(
-    level=logging.INFO if not settings.DEBUG else logging.DEBUG,
-    format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
-    handlers=[
-        # 控制台输出
-        logging.StreamHandler(),
-        # 文件输出（自动轮转，最大 10MB，保留 10 个文件）
-        RotatingFileHandler(
-            'logs/app.log',
-            maxBytes=10485760,  # 10MB
-            backupCount=10
-        )
-    ]
+# 配置日志系统（使用自定义格式化器）
+from app.core.logging_config import setup_logging
+setup_logging(
+    debug=settings.DEBUG,
+    log_file='logs/app.log'
 )
 
 logger = logging.getLogger(__name__)

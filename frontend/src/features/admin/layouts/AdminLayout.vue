@@ -44,7 +44,7 @@
           
           <router-link to="/admin/ai" class="nav-item" active-class="active">
             <el-icon class="nav-icon"><Setting /></el-icon>
-            <span class="nav-text">AI 控制台</span>
+            <span class="nav-text">AI 智能治理</span>
           </router-link>
         </div>
 

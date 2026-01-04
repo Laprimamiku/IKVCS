@@ -3,10 +3,10 @@
     <div class="header-section">
       <h2>
         <el-icon><Setting /></el-icon>
-        AI 进化控制台
+        AI 智能治理中心
       </h2>
       <p class="subtitle">
-        监控系统自进化状态，管理 Prompt 版本与多智能体共识。
+        监控 AI 系统运行状态，管理 Prompt 版本迭代与智能体优化策略。
       </p>
     </div>
 
@@ -52,11 +52,14 @@
     <div class="main-content">
       <div class="panel evolution-panel">
         <div class="panel-header">
-          <h3>🧬 Prompt 进化基因</h3>
-          <select v-model="selectedPromptType" @change="fetchVersions">
-            <option value="COMMENT">评论区审核 (Comment)</option>
-            <option value="DANMAKU">弹幕审核 (Danmaku)</option>
-          </select>
+          <h3>
+            <el-icon><Document /></el-icon>
+            Prompt 版本管理
+          </h3>
+          <el-select v-model="selectedPromptType" @change="fetchVersions" size="small" style="width: 200px;">
+            <el-option label="评论区审核" value="COMMENT" />
+            <el-option label="弹幕审核" value="DANMAKU" />
+          </el-select>
         </div>
 
         <div class="timeline">
@@ -179,7 +182,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { Edit, Search, Setting, MagicStick } from "@element-plus/icons-vue";
+import { Edit, Search, Setting, MagicStick, Document } from "@element-plus/icons-vue";
 import {
   adminAiApi,
   type PromptVersion,
@@ -354,7 +357,7 @@ onMounted(() => {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: var(--space-5);
   margin-bottom: var(--space-6);
 
@@ -363,6 +366,12 @@ onMounted(() => {
     padding: var(--space-5);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-card);
+    transition: transform 0.2s, box-shadow 0.2s;
+    
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
 
     &.warning {
       border-left: 4px solid var(--warning-color);
@@ -372,37 +381,27 @@ onMounted(() => {
       font-size: var(--font-size-sm);
       color: var(--text-tertiary);
       margin-bottom: var(--space-2);
+      font-weight: var(--font-weight-medium);
     }
     .value {
       font-size: var(--font-size-3xl);
       font-weight: var(--font-weight-bold);
       color: var(--text-primary);
+      margin-bottom: var(--space-2);
     }
     .unit {
       font-size: var(--font-size-sm);
       font-weight: normal;
+      color: var(--text-secondary);
     }
     .desc {
       font-size: 12px;
-      color: #aaa;
-      margin-top: 4px;
+      color: var(--text-tertiary);
+      margin-top: var(--space-2);
     }
 
-    .action button {
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 14px;
-      width: 100%;
-      margin-top: 10px;
-
-      &:disabled {
-        opacity: 0.7;
-        cursor: not-allowed;
-      }
+    .action {
+      margin-top: var(--space-3);
     }
   }
 }
@@ -421,21 +420,28 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: box-shadow 0.2s;
+  
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
 
   .panel-header {
-    padding: 16px;
-    border-bottom: 1px solid #eee;
+    padding: var(--space-4);
+    border-bottom: 1px solid var(--border-light);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    background: var(--bg-hover);
+    
     h3 {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
       margin: 0;
-      font-size: 16px;
-    }
-    select {
-      padding: 4px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
     }
   }
 }
@@ -447,47 +453,58 @@ onMounted(() => {
     padding: 16px;
 
     .timeline-item {
-      padding: 12px;
-      border-left: 2px solid #ddd;
-      margin-left: 8px;
+      padding: var(--space-3);
+      border-left: 3px solid var(--border-color);
+      margin-left: var(--space-2);
       position: relative;
       cursor: pointer;
       transition: all 0.2s;
+      border-radius: var(--radius-sm);
+      margin-bottom: var(--space-2);
 
       &:hover {
-        background: #f5f5f5;
+        background: var(--bg-hover);
+        border-left-color: var(--primary-color);
       }
       &.active {
-        border-left-color: #764ba2;
-        background: #f0f4ff;
+        border-left-color: var(--primary-color);
+        background: var(--bg-primary-light);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
       }
 
       &::before {
         content: "";
         position: absolute;
-        left: -5px;
-        top: 18px;
-        width: 8px;
-        height: 8px;
+        left: -6px;
+        top: 20px;
+        width: 10px;
+        height: 10px;
         border-radius: 50%;
-        background: #ddd;
+        background: var(--border-color);
+        border: 2px solid white;
+        transition: all 0.2s;
       }
       &.active::before {
-        background: #764ba2;
+        background: var(--primary-color);
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(118, 75, 162, 0.2);
       }
 
       .time {
-        font-size: 12px;
-        color: #999;
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+        margin-bottom: var(--space-1);
       }
       .reason {
-        font-size: 14px;
-        margin: 4px 0;
-        font-weight: 500;
+        font-size: var(--font-size-sm);
+        margin: var(--space-1) 0;
+        font-weight: var(--font-weight-medium);
+        color: var(--text-primary);
       }
       .meta {
-        font-size: 12px;
-        color: #bbb;
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+        margin-top: var(--space-1);
       }
     }
   }

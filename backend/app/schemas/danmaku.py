@@ -30,9 +30,20 @@ class DanmakuQueryRequest(BaseModel):
 
 # ==================== 响应模型 ====================
 
+class UserBriefInDanmaku(BaseModel):
+    """弹幕中的用户简要信息"""
+    id: int
+    username: str
+    nickname: str
+    avatar: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
 class DanmakuResponse(BaseModel):
     """
-    弹幕响应模型
+    弹幕响应模型（包含用户信息）
     """
     id: int
     video_id: int
@@ -44,6 +55,7 @@ class DanmakuResponse(BaseModel):
     ai_category: Optional[str] = None
     is_highlight: bool = False
     created_at: datetime
+    user: Optional[UserBriefInDanmaku] = None  # 用户信息
     
     class Config:
         from_attributes = True

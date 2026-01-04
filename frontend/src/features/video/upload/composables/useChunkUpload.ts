@@ -14,6 +14,7 @@ import {
   type FinishUploadResponse,
 } from "@/features/video/upload/api/upload.api"
 import { uploadVideoCover, uploadVideoSubtitle } from "@/features/video/shared/api/video.api"
+import { uploadRequest } from "@/shared/utils/request"
 
 export interface ChunkUploadState {
   uploading: Ref<boolean>
@@ -42,6 +43,12 @@ export function useChunkUpload() {
   const uploadedChunks = ref<number>(0)
   const uploadedBytes = ref<number>(0)
   const uploadStartTime = ref<number>(0)
+
+  // 封面和字幕上传进度
+  const coverUploadProgress = ref<number>(0)
+  const subtitleUploadProgress = ref<number>(0)
+  const coverUploading = ref<boolean>(false)
+  const subtitleUploading = ref<boolean>(false)
 
   // 计算总进度
   const totalProgress = computed(() => {
@@ -273,33 +280,67 @@ export function useChunkUpload() {
         throw new Error('未获取到视频ID，请稍后重试')
       }
 
+      // 更新上传详情显示
+      const updateUploadDetail = () => {
+        const parts: string[] = []
+        if (coverFile) {
+          parts.push(`封面: ${coverUploadProgress.value}%`)
+        }
+        if (subtitleFile) {
+          parts.push(`字幕: ${subtitleUploadProgress.value}%`)
+        }
+        if (parts.length > 0) {
+          uploadDetail.value = parts.join(' | ')
+        } else {
+          uploadDetail.value = '并行上传中，请勿关闭窗口'
+        }
+      }
+
       // 并行上传封面和字幕（如果有）
       const uploadTasks: Promise<any>[] = []
       
       if (coverFile) {
+        coverUploading.value = true
+        coverUploadProgress.value = 0
         uploadStatus.value = '正在上传封面和字幕...'
         uploadDetail.value = '并行上传中，请勿关闭窗口'
         uploadTasks.push(
-          uploadVideoCover(videoId, coverFile).catch((error) => {
+          uploadVideoCoverWithProgress(videoId, coverFile, (progress) => {
+            coverUploadProgress.value = progress
+            updateUploadDetail()
+          }).catch((error) => {
             console.error('封面上传失败:', error)
             ElMessage.warning('封面上传失败，可稍后重新上传')
+            coverUploading.value = false
             // 不抛出错误，允许继续
             return null
+          }).finally(() => {
+            coverUploading.value = false
           })
         )
       }
 
       if (subtitleFile) {
+        subtitleUploading.value = true
+        subtitleUploadProgress.value = 0
         if (!coverFile) {
           uploadStatus.value = '正在上传字幕...'
           uploadDetail.value = '支持 SRT、VTT、JSON、ASS'
+        } else {
+          uploadStatus.value = '正在上传封面和字幕...'
         }
         uploadTasks.push(
-          uploadVideoSubtitle(videoId, subtitleFile).catch((error) => {
+          uploadVideoSubtitleWithProgress(videoId, subtitleFile, (progress) => {
+            subtitleUploadProgress.value = progress
+            updateUploadDetail()
+          }).catch((error) => {
             console.error('字幕上传失败:', error)
             ElMessage.warning('字幕上传失败，可稍后重新上传')
+            subtitleUploading.value = false
             // 不抛出错误，允许继续
             return null
+          }).finally(() => {
+            subtitleUploading.value = false
           })
         )
       }
@@ -443,6 +484,46 @@ export function useChunkUpload() {
     }
   }
 
+  // 带进度回调的封面上传函数
+  const uploadVideoCoverWithProgress = async (
+    videoId: number,
+    file: File,
+    onProgress: (progress: number) => void
+  ): Promise<any> => {
+    const formData = new FormData()
+    formData.append('cover', file)
+    
+    return uploadRequest.post(`/videos/${videoId}/cover`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (progressEvent) => {
+        if (progressEvent.total) {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          onProgress(progress)
+        }
+      }
+    })
+  }
+
+  // 带进度回调的字幕上传函数
+  const uploadVideoSubtitleWithProgress = async (
+    videoId: number,
+    file: File,
+    onProgress: (progress: number) => void
+  ): Promise<any> => {
+    const formData = new FormData()
+    formData.append('subtitle', file)
+    
+    return uploadRequest.post(`/videos/${videoId}/subtitle`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (progressEvent) => {
+        if (progressEvent.total) {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          onProgress(progress)
+        }
+      }
+    })
+  }
+
   // 重置上传状态
   const resetUpload = () => {
     uploading.value = false
@@ -454,6 +535,10 @@ export function useChunkUpload() {
     uploadedChunks.value = 0
     uploadedBytes.value = 0
     uploadStartTime.value = 0
+    coverUploadProgress.value = 0
+    subtitleUploadProgress.value = 0
+    coverUploading.value = false
+    subtitleUploading.value = false
   }
 
   // 工具函数
@@ -485,6 +570,11 @@ export function useChunkUpload() {
     totalProgress,
     uploadSpeed,
     remainingTime,
+    // 封面和字幕上传进度
+    coverUploadProgress,
+    subtitleUploadProgress,
+    coverUploading,
+    subtitleUploading,
     // 方法
     startUpload,
     pauseUpload,

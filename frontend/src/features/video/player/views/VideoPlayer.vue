@@ -72,7 +72,7 @@
           <div class="action-bar">
             <div class="action-item like-btn" :class="{ active: isLiked }" @click="handleLike">
               <div class="action-icon">
-                <el-icon :size="20"><CircleCheckFilled /></el-icon>
+                <el-icon :size="20" class="like-icon" :class="{ 'is-liked': isLiked }"><CircleCheckFilled /></el-icon>
               </div>
               <span class="action-text">{{ formatNumber(likeCount) }}</span>
             </div>
@@ -91,10 +91,11 @@
               <span class="action-text">分享</span>
             </div>
             
-            <div class="action-item more-btn" @click="showMoreActions = !showMoreActions">
+            <div class="action-item report-btn" @click="handleReport">
               <div class="action-icon">
-                <el-icon :size="20"><More /></el-icon>
+                <el-icon :size="20"><Warning /></el-icon>
               </div>
+              <span class="action-text">举报</span>
             </div>
           </div>
 
@@ -107,6 +108,17 @@
               {{ descExpanded ? '收起' : '展开' }}
               <el-icon><ArrowDown v-if="!descExpanded" /><ArrowUp v-else /></el-icon>
             </div>
+          </div>
+
+          <!-- Video Summary -->
+          <div class="video-summary-wrapper">
+            <VideoSummary
+              :video-id="videoData.id"
+              :summary-short="videoData.summary_short"
+              :summary-detailed="videoData.summary_detailed"
+              :knowledge-points="videoData.knowledge_points"
+              :show-generate-button="true"
+            />
           </div>
 
           <!-- Tags -->
@@ -140,6 +152,15 @@
           <el-button class="follow-btn" :class="{ followed: isFollowed }" @click="handleFollow">
             {{ isFollowed ? '已关注' : '+ 关注' }}
           </el-button>
+        </div>
+
+        <!-- Video Outline -->
+        <div class="outline-section">
+          <VideoOutline
+            :video-id="videoData.id"
+            :current-time="currentTime"
+            @jump="handleOutlineJump"
+          />
         </div>
 
         <!-- Recommend Videos -->
@@ -187,6 +208,7 @@ import {
   ArrowDown,
   ArrowUp,
   CircleCheckFilled,
+  Warning,
 } from "@element-plus/icons-vue";
 
 import AppHeader from "@/shared/components/layout/AppHeader.vue";
@@ -197,6 +219,8 @@ import DanmakuDisplay from "@/features/video/player/components/danmaku/DanmakuDi
 import DanmakuToolbar from "@/features/video/player/components/danmaku/DanmakuToolbar.vue";
 import RecommendList from "@/features/video/player/components/recommend/RecommendList.vue";
 import VideoCommentSection from "@/features/video/player/components/comment/VideoCommentSection.vue";
+import VideoSummary from "@/features/video/player/components/summary/VideoSummary.vue";
+import VideoOutline from "@/features/video/player/components/outline/VideoOutline.vue";
 
 import { useUserStore } from "@/shared/stores/user";
 import { useVideoPlayer } from "@/features/video/player/composables/useVideoPlayer";
@@ -304,6 +328,14 @@ const handleRecommendClick = (id: number) => {
   router.push(`/videos/${id}`);
 };
 
+// Handle outline jump
+const playerRef = ref<InstanceType<typeof VideoPlayerCore> | null>(null);
+const handleOutlineJump = (time: number) => {
+  if (playerRef.value) {
+    playerRef.value.seek(time);
+  }
+};
+
 const handleFollow = () => {
   if (!userStore.isLoggedIn) {
     showAuthDialog.value = true;
@@ -324,6 +356,52 @@ const handleCollectClick = async () => {
   if (result === 'need-folder-selection') {
     // 需要选择文件夹，弹出对话框
     showFolderDialog.value = true;
+  }
+};
+
+// Handle report
+const handleReport = async () => {
+  if (!userStore.isLoggedIn) {
+    ElMessage.warning("请先登录");
+    return;
+  }
+  
+  if (!videoData.value) return;
+  
+  try {
+    const { createReport } = await import('@/features/video/player/api/report.api');
+    const res = await ElMessageBox.prompt(
+      '请输入举报原因',
+      '举报视频',
+      {
+        confirmButtonText: '提交',
+        cancelButtonText: '取消',
+        inputPlaceholder: '请简要说明举报原因',
+        inputValidator: (value) => {
+          if (!value || value.trim().length === 0) return '请输入举报原因';
+          if (value.length > 100) return '举报原因不能超过100个字符';
+          return true;
+        }
+      }
+    );
+    
+    const response = await createReport({
+      target_type: 'VIDEO',
+      target_id: videoData.value.id,
+      reason: res.value,
+      description: res.value
+    });
+    
+    if (response.success) {
+      ElMessage.success(response.data?.message || '举报提交成功');
+    } else {
+      ElMessage.error('举报提交失败');
+    }
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('举报失败:', error);
+      ElMessage.error(error?.response?.data?.detail || '举报提交失败');
+    }
   }
 };
 
@@ -519,6 +597,27 @@ const handleFolderConfirm = async (folderId: number | null) => {
         color: var(--bili-pink);
       }
     }
+    
+    .like-icon {
+      transition: transform 0.2s, color 0.2s;
+      &.is-liked {
+        transform: rotate(-15deg) scale(1.1);
+        color: var(--bili-pink);
+      }
+    }
+  }
+  
+  &.report-btn {
+    margin-left: auto;
+    &:hover {
+      .action-icon {
+        background: rgba(245, 108, 108, 0.1);
+        color: #F56C6C;
+      }
+      .action-text {
+        color: #F56C6C;
+      }
+    }
   }
   
   // 收藏按钮特殊样式
@@ -703,6 +802,20 @@ const handleFolderConfirm = async (folderId: number | null) => {
       }
     }
   }
+}
+
+/* Video Summary Wrapper */
+.video-summary-wrapper {
+  margin: var(--space-4) 0;
+}
+
+/* Outline Section */
+.outline-section {
+  background: var(--bg-white);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card);
+  margin-bottom: var(--space-4);
 }
 
 /* Recommend Section - B站风格 */

@@ -241,6 +241,10 @@
                       :total-chunks="totalChunks"
                       :speed="uploadSpeed"
                       :remaining-time="remainingTime"
+                      :cover-progress="coverUploadProgress"
+                      :subtitle-progress="subtitleUploadProgress"
+                      :cover-uploading="coverUploading"
+                      :subtitle-uploading="subtitleUploading"
                       @resume="handleResumeUpload"
                       @pause="handlePauseUpload"
                       @go-home="goToHome"
@@ -353,6 +357,8 @@ const {
   uploading, uploadComplete, uploadStatus, uploadDetail,
   totalChunks, uploadedChunks, totalProgress,
   uploadSpeed, remainingTime,
+  coverUploadProgress, subtitleUploadProgress,
+  coverUploading, subtitleUploading,
   startUpload, pauseUpload, resumeUpload, resetUpload,
 } = useChunkUpload();
 
