@@ -326,15 +326,81 @@ async def llm_extract_outline_segmented(
     return all_outlines
 
 
+async def _call_cloud_llm_for_outline(
+    prompt: str,
+    subtitles: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """调用云端 LLM 提取大纲"""
+    try:
+        # 云端模型配置
+        api_key = settings.LLM_API_KEY
+        base_url = settings.LLM_BASE_URL.rstrip("/")
+        model = settings.LLM_MODEL
+        timeout = 60.0  # 云端模型超时时间
+        
+        messages = [
+            {
+                "role": "system", 
+                "content": "你是一个专业的视频内容分析助手，擅长从字幕中提取视频章节大纲。\n\n**重要：你必须只返回纯 JSON 数组格式，不要包含任何 Markdown 代码块标记（不要使用 ```json 或 ```）。\n\nJSON 格式示例：\n[\n  {\n    \"title\": \"章节标题\",\n    \"start_time\": 0,\n    \"description\": \"章节描述\",\n    \"key_points\": [\"关键点1\", \"关键点2\"]\n  }\n]\n\n注意：\n- 必须使用英文字段名（title, start_time, description, key_points）\n- start_time 必须是数字，不是字符串\n- 不要使用中文字段名（如\"开始时间\"）\n- 不要包含 Markdown 标记"
+            },
+            {"role": "user", "content": prompt}
+        ]
+        
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.3,
+            "max_tokens": 3000,
+        }
+        
+        logger.info(f"[OutlineLLM] 正在调用云端模型: {model} (超时: {timeout}s)")
+        
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                f"{base_url}/chat/completions",
+                json=payload,
+                headers=headers,
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"云端模型调用失败: {response.status_code} - {response.text}")
+                return []
+            
+            response_data = response.json()
+            response_text = response_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            
+            if not response_text:
+                logger.warning("云端模型返回空响应")
+                return []
+            
+            logger.info(f"[OutlineLLM] 云端模型调用成功，响应长度: {len(response_text)} 字符")
+            
+            # 解析响应
+            outline = parse_llm_response(response_text)
+            
+            return outline
+            
+    except httpx.TimeoutException:
+        logger.error(f"云端模型调用超时 ({timeout}s)")
+        return []
+    except Exception as e:
+        logger.error(f"云端 LLM 提取大纲失败: {e}", exc_info=True)
+        return []
+
+
 async def call_llm_for_outline(
     prompt: str,
     subtitles: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
     """调用 LLM 提取大纲（通用方法）"""
-    # 如果使用云端模型，暂时返回空列表（待实现云端模型调用）
+    # 如果使用云端模型，调用云端API
     if settings.USE_CLOUD_LLM:
-        logger.warning("[OutlineLLM] 云端模型调用逻辑待实现，返回空列表")
-        return []
+        return await _call_cloud_llm_for_outline(prompt, subtitles)
     
     try:
         # 使用信号量控制并发，避免 GPU 负载波动（仅在本地模型模式下）

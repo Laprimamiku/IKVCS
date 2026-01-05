@@ -7,9 +7,16 @@ LLM 智能分析服务
 2. 规则预过滤，减少 LLM Token 消耗
 3. Prompt 模板化
 4. 结果结构化解析
-5. Redis 精确缓存 + 语义缓存
-6. 本地小模型 + 云端大模型协同
-7. 异步后台任务，直接更新数据库
+5. Redis 精确缓存（MD5哈希）
+6. 云端大模型（CLI Proxy）+ 本地小模型协同
+7. 图像识别分析（云端模型）
+8. 异步后台任务，直接更新数据库
+
+架构：
+- Layer 1: 规则过滤
+- Layer 1.5: 精确缓存（Redis）
+- Layer 2: 云端模型（gemini-claude-sonnet-4-5-thinking）或本地模型（qwen2.5）
+- 图像分析: gemini-3-flash-preview
 """
 
 import httpx
@@ -55,11 +62,17 @@ def _get_multi_agent_service():
 
 class LLMService:
     def __init__(self):
-        # 云端大模型配置（已注释，暂时不使用）
-        # self.api_key = settings.LLM_API_KEY
-        # self.base_url = settings.LLM_BASE_URL
-        # self.model = settings.LLM_MODEL
-        self.timeout = 30.0  # 保留 timeout，可能被其他方法使用
+        # 云端大模型配置
+        self.api_key = settings.LLM_API_KEY
+        self.base_url = settings.LLM_BASE_URL
+        self.model = settings.LLM_MODEL
+        
+        # 云端图像识别模型配置
+        self.vision_api_key = getattr(settings, 'LLM_VISION_API_KEY', settings.LLM_API_KEY) or settings.LLM_API_KEY
+        self.vision_base_url = getattr(settings, 'LLM_VISION_BASE_URL', settings.LLM_BASE_URL) or settings.LLM_BASE_URL
+        self.vision_model = getattr(settings, 'LLM_VISION_MODEL', settings.LLM_MODEL) or settings.LLM_MODEL
+        
+        self.timeout = 30.0
 
         self.default_response: AIContentAnalysisResult = {
             "score": 60,
@@ -69,6 +82,17 @@ class LLMService:
             "is_highlight": False,
             "is_inappropriate": False
         }
+        
+        # 记录当前配置
+        logger.info(f"LLM Service 初始化完成:")
+        logger.info(f"  USE_CLOUD_LLM: {settings.USE_CLOUD_LLM}")
+        if settings.USE_CLOUD_LLM:
+            logger.info(f"  文本模型: {self.model}")
+            logger.info(f"  图像模型: {self.vision_model}")
+            logger.info(f"  API地址: {self.base_url}")
+        else:
+            logger.info(f"  本地模型: {settings.LOCAL_LLM_MODEL}")
+            logger.info(f"  本地地址: {settings.LOCAL_LLM_BASE_URL}")
 
     # ==================== 工具方法 ====================
 
@@ -79,13 +103,14 @@ class LLMService:
 
     async def analyze_content(self, content: str, content_type: str) -> AIContentAnalysisResult:
         """
-        智能内容分析（简化架构 - 仅使用本地模型）
+        智能内容分析（支持云端和本地模型）
 
         Layer 1   : 规则过滤
         Layer 1.5 : 精确缓存（MD5）
-        Layer 2   : 本地模型（Local LLM）
+        Layer 2   : 云端大模型（USE_CLOUD_LLM=true）或本地模型（USE_CLOUD_LLM=false）
         
-        注：云端大模型调用已注释，暂时不使用
+        云端模型：gemini-claude-sonnet-4-5-thinking（文本分析）
+        本地模型：qwen2.5:0.5b-instruct（备用方案）
         """
         if not content:
             return self.default_response
@@ -112,10 +137,20 @@ class LLMService:
         if settings.USE_CLOUD_LLM:
             # 使用云端大模型
             logger.info("使用云端大模型进行分析")
-            # TODO: 实现云端大模型调用逻辑
-            # 暂时返回默认结果，等待实现云端模型调用
-            logger.warning("云端大模型调用逻辑待实现，返回默认结果")
-            return self.default_response
+            try:
+                messages = self._build_prompt(content, content_type)
+                response_text = await self._call_llm_api(messages)
+                if response_text:
+                    result = self._parse_response(response_text, content_type)
+                    # 保存缓存
+                    await self._save_cache(content, content_type, result, None)
+                    return result
+                else:
+                    logger.warning("云端大模型调用失败，返回默认结果")
+                    return self.default_response
+            except Exception as e:
+                logger.error(f"云端大模型调用异常: {e}")
+                return self.default_response
         else:
             # 使用本地模型
             if not settings.LOCAL_LLM_ENABLED:
@@ -257,45 +292,102 @@ class LLMService:
             {"role": "user", "content": f"输入内容: {content}"},
         ]
 
-    # ==================== LLM API（已注释云端调用，暂时不使用）====================
+    # ==================== 图像分析功能 ====================
+
+    async def analyze_image(self, image_data: str, prompt: str = "请分析这张图片的内容") -> Optional[str]:
+        """
+        图像分析功能
+        
+        Args:
+            image_data: base64编码的图像数据
+            prompt: 分析提示词
+            
+        Returns:
+            分析结果文本，失败返回None
+        """
+        if not settings.USE_CLOUD_LLM:
+            logger.warning("图像分析需要云端模型支持，当前使用本地模型")
+            return None
+            
+        if not self.vision_model:
+            logger.warning("未配置图像识别模型")
+            return None
+
+        headers = {
+            "Authorization": f"Bearer {self.vision_api_key}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "model": self.vision_model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": prompt
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{image_data}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "temperature": 0.3,
+            "max_tokens": 1000
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:  # 图像处理需要更长时间
+                resp = await client.post(
+                    f"{self.vision_base_url}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                )
+                if resp.status_code != 200:
+                    logger.error(f"Vision API Error {resp.status_code}: {resp.text}")
+                    return None
+                return resp.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            logger.error(f"Vision API call failed: {e}")
+            return None
+
+    # ==================== LLM API 调用 ====================
 
     async def _call_llm_api(self, messages: list) -> Optional[str]:
         """
-        云端大模型API调用（已注释，暂时不使用）
-        
-        注意：其他服务可能仍在使用此方法，因此保留方法签名
-        但实际API调用已注释，返回 None
+        云端大模型API调用
         """
-        # 云端大模型调用已注释，暂时不使用
-        # headers = {
-        #     "Authorization": f"Bearer {self.api_key}",
-        #     "Content-Type": "application/json",
-        # }
-        #
-        # payload = {
-        #     "model": self.model,
-        #     "messages": messages,
-        #     "temperature": 0.3,
-        #     "max_tokens": 512,
-        # }
-        #
-        # try:
-        #     async with httpx.AsyncClient(timeout=self.timeout) as client:
-        #         resp = await client.post(
-        #             f"{self.base_url}/chat/completions",
-        #             json=payload,
-        #             headers=headers,
-        #         )
-        #         if resp.status_code != 200:
-        #             logger.error(f"LLM API Error {resp.status_code}: {resp.text}")
-        #             return None
-        #         return resp.json()["choices"][0]["message"]["content"]
-        # except Exception as e:
-        #     logger.error(f"LLM API call failed: {e}")
-        #     return None
-        
-        logger.warning("云端大模型调用已禁用，返回 None")
-        return None
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": 0.3,
+            "max_tokens": 512,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                resp = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                )
+                if resp.status_code != 200:
+                    logger.error(f"LLM API Error {resp.status_code}: {resp.text}")
+                    return None
+                return resp.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            logger.error(f"LLM API call failed: {e}")
+            return None
 
     # ==================== 解析 ====================
 

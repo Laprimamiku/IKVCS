@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     LLM_BASE_URL: str = "https://api.openai.com/v1"  # 默认值，可通过环境变量覆盖
     LLM_MODEL: str = "glm-4-flash"  # 默认值，可通过环境变量覆盖
     
+    # 云端图像识别模型配置
+    LLM_VISION_API_KEY: str = ""  # 图像识别API密钥，可选
+    LLM_VISION_BASE_URL: str = ""  # 图像识别API地址，可选
+    LLM_VISION_MODEL: str = ""  # 图像识别模型名称，可选
+    
+    # 云端/本地模型切换配置
+    USE_CLOUD_LLM: bool = True  # 是否使用云端大模型（True=云端，False=本地），可通过环境变量 USE_CLOUD_LLM 覆盖
+    
     # 云端/本地模型切换配置
     USE_CLOUD_LLM: bool = True  # 是否使用云端大模型（True=云端，False=本地），可通过环境变量 USE_CLOUD_LLM 覆盖
     
