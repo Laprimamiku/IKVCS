@@ -95,6 +95,12 @@ class SubtitleReviewService:
     ) -> Optional[Dict[str, Any]]:
         """使用云端模型审核字幕"""
         try:
+            # 限制输入文本长度，避免超过模型限制
+            max_input_length = 8000  # 约8000字符，为系统提示词和响应留出空间
+            if len(subtitle_text) > max_input_length:
+                logger.warning(f"字幕文本过长 ({len(subtitle_text)} 字符)，截取前 {max_input_length} 字符")
+                subtitle_text = subtitle_text[:max_input_length] + "...[文本已截断]"
+            
             api_key = settings.LLM_API_KEY
             base_url = settings.LLM_BASE_URL.rstrip("/")
             model = settings.LLM_MODEL
@@ -112,7 +118,7 @@ class SubtitleReviewService:
                     {"role": "user", "content": f"字幕内容：\n{subtitle_text}"}
                 ],
                 "temperature": 0.1,
-                "max_tokens": 256,
+                "max_tokens": 512,  # 增加token限制，确保完整的JSON响应
             }
             
             async with httpx.AsyncClient(timeout=timeout) as client:
@@ -192,14 +198,22 @@ class SubtitleReviewService:
                 clean_text = clean_text[:-3]
             clean_text = clean_text.strip()
             
-            result = json.loads(clean_text)
+            # 尝试直接解析JSON
+            try:
+                result = json.loads(clean_text)
+            except json.JSONDecodeError as e:
+                # 如果JSON被截断，尝试修复
+                logger.warning(f"JSON解析失败，尝试修复截断的JSON: {e}")
+                result = self._try_fix_truncated_json(clean_text)
+                if result is None:
+                    raise e
             
             # 验证必需字段
             required_fields = ["is_violation", "is_suspicious", "violation_type", "score", "description"]
             for field in required_fields:
                 if field not in result:
                     logger.warning(f"审核响应缺少字段: {field}")
-                    return None
+                    return self._create_default_response(80, "内容正常", "字段不完整，使用默认结果")
             
             # 确保数据类型正确
             result["is_violation"] = bool(result["is_violation"])
@@ -209,42 +223,105 @@ class SubtitleReviewService:
             return result
             
         except (json.JSONDecodeError, ValueError, KeyError) as e:
-            logger.error(f"解析字幕审核响应失败: {e}, 响应内容: {response_text}")
-            # 使用备用解析方法
-            return self._fallback_parse(response_text)
+            logger.error(f"解析字幕审核响应失败: {e}, 响应内容: {response_text[:200]}...")
+            # 使用智能备用解析方法
+            return self._intelligent_fallback_parse(response_text)
     
-    def _fallback_parse(self, text: str) -> Dict[str, Any]:
-        """备用解析方法（从文本中提取关键词）"""
+    def _try_fix_truncated_json(self, text: str) -> Optional[Dict[str, Any]]:
+        """尝试修复被截断的JSON"""
+        try:
+            # 如果JSON被截断，尝试找到最后一个完整的字段
+            # 查找最后一个逗号或引号的位置
+            last_comma = text.rfind(',')
+            last_quote = text.rfind('"')
+            
+            if last_comma > 0 and last_quote > last_comma:
+                # 尝试在最后一个逗号处截断并添加结束符
+                truncated = text[:last_comma] + '}'
+                return json.loads(truncated)
+            elif last_quote > 0:
+                # 尝试在最后一个引号后添加结束符
+                truncated = text[:last_quote + 1] + '}'
+                return json.loads(truncated)
+            
+            return None
+        except:
+            return None
+    
+    def _create_default_response(self, score: int, violation_type: str, description: str) -> Dict[str, Any]:
+        """创建默认响应"""
+        return {
+            "is_violation": score < 30,
+            "is_suspicious": 30 <= score < 60,
+            "violation_type": violation_type if score < 60 else "none",
+            "score": score,
+            "description": description
+        }
+    
+    def _intelligent_fallback_parse(self, text: str) -> Dict[str, Any]:
+        """智能备用解析方法（基于上下文分析）"""
         text_lower = text.lower()
         
-        # 检测明显违规关键词
-        violation_keywords = ["暴力", "血腥", "色情", "violence", "blood", "porn", "sex"]
+        # 首先检查是否是学术/教育内容
+        educational_indicators = [
+            "学术", "教育", "科普", "分析", "研究", "统计", "数据", "理论",
+            "academic", "educational", "analysis", "research", "study", "statistics"
+        ]
+        
+        is_educational = any(indicator in text_lower for indicator in educational_indicators)
+        
+        # 检测真正的违规关键词（需要上下文判断）
+        violation_keywords = ["色情", "裸体", "性行为", "porn", "nude", "sex act"]
+        violence_keywords = ["杀人", "伤害他人", "暴力行为", "murder", "harm others", "violent act"]
+        
+        # 如果是教育内容，即使包含敏感词汇也不应该被标记为违规
+        if is_educational:
+            # 对于教育内容，给予较高评分
+            return {
+                "is_violation": False,
+                "is_suspicious": False,
+                "violation_type": "none",
+                "score": 85,
+                "description": "教育/学术内容，虽然涉及敏感话题但属于正常讨论范围"
+            }
+        
+        # 检测明显违规内容（非教育语境下）
         if any(keyword in text_lower for keyword in violation_keywords):
             return {
                 "is_violation": True,
                 "is_suspicious": False,
-                "violation_type": "other",
-                "score": 30,
-                "description": "检测到疑似违规内容"
+                "violation_type": "porn",
+                "score": 20,
+                "description": "检测到色情相关内容"
             }
         
-        # 检测疑似违规
-        suspicious_keywords = ["敏感", "不当", "sensitive", "inappropriate"]
+        if any(keyword in text_lower for keyword in violence_keywords):
+            return {
+                "is_violation": True,
+                "is_suspicious": False,
+                "violation_type": "violence",
+                "score": 25,
+                "description": "检测到暴力相关内容"
+            }
+        
+        # 检测疑似违规（需要人工审核）
+        suspicious_keywords = ["政治敏感", "争议话题", "sensitive political", "controversial"]
         if any(keyword in text_lower for keyword in suspicious_keywords):
             return {
                 "is_violation": False,
                 "is_suspicious": True,
-                "violation_type": "other",
+                "violation_type": "political",
                 "score": 50,
-                "description": "内容可能存在问题，需要人工审核"
+                "description": "内容涉及敏感话题，建议人工审核"
             }
         
+        # 默认为正常内容
         return {
             "is_violation": False,
             "is_suspicious": False,
             "violation_type": "none",
-            "score": 80,
-            "description": "内容正常"
+            "score": 75,
+            "description": "解析失败，但未检测到明显违规内容"
         }
 
 

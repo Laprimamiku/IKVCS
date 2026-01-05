@@ -75,6 +75,8 @@ class ImageReviewService:
             model = settings.LLM_VISION_MODEL or settings.LLM_MODEL
             timeout = 30.0
             
+            logger.info(f"[CloudVision] 开始云端图像审核 - 模型: {model}, API: {base_url}")
+            
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
@@ -122,7 +124,7 @@ class ImageReviewService:
                     }
                 ],
                 "temperature": 0.1,
-                "max_tokens": 256,
+                "max_tokens": 512,  # 增加token限制，确保完整的JSON响应
             }
             
             async with httpx.AsyncClient(timeout=timeout) as client:
@@ -133,20 +135,27 @@ class ImageReviewService:
                 )
                 
                 if response.status_code != 200:
-                    logger.error(f"云端图像审核API错误: {response.status_code} - {response.text}")
+                    logger.error(f"[CloudVision] API错误: {response.status_code} - {response.text}")
                     return None
                 
                 response_data = response.json()
                 response_text = response_data.get("choices", [{}])[0].get("message", {}).get("content", "")
                 
                 if not response_text:
-                    logger.warning("云端模型返回空响应")
+                    logger.warning(f"[CloudVision] 模型返回空响应: {response_data}")
                     return None
                 
+                logger.info(f"[CloudVision] 模型响应: {response_text[:200]}...")
                 return self._parse_result(response_text)
                 
+        except httpx.TimeoutException:
+            logger.error(f"[CloudVision] 请求超时 ({timeout}s)")
+            return None
+        except httpx.RequestError as e:
+            logger.error(f"[CloudVision] 网络请求错误: {e}")
+            return None
         except Exception as e:
-            logger.error(f"云端图像审核失败: {e}")
+            logger.error(f"[CloudVision] 云端图像审核失败: {e}", exc_info=True)
             return None
     
     async def _review_with_local_model(
@@ -154,8 +163,16 @@ class ImageReviewService:
         image_data: str
     ) -> Optional[Dict[str, Any]]:
         """使用本地模型审核图像"""
-        if not settings.LOCAL_LLM_ENABLED:
-            logger.warning("本地模型未启用，跳过图像审核")
+        # 如果使用云端模型，则不启用本地模型作为备用
+        # 只有在明确设置为使用本地模型时才启用
+        if settings.USE_CLOUD_LLM:
+            logger.warning("[LocalModel] 云端模型模式下，本地模型未启用作为备用，跳过图像审核")
+            return None
+        
+        # 检查本地模型是否启用
+        local_enabled = getattr(settings, 'LOCAL_LLM_ENABLED', False)
+        if not local_enabled:
+            logger.warning("[LocalModel] 本地模型未启用，跳过图像审核")
             return None
         
         prompt = """请分析这张图片的内容，判断是否包含以下违规内容：
@@ -227,9 +244,8 @@ class ImageReviewService:
     
     def _read_image_as_base64(self, image_path: str) -> Optional[str]:
         """读取图像文件并转换为 base64"""
-        # 处理相对路径
-        if not os.path.isabs(image_path):
-            image_path = os.path.join(settings.STORAGE_ROOT, image_path)
+        # 规范化路径
+        image_path = os.path.normpath(image_path)
         
         if not os.path.exists(image_path):
             logger.error(f"图像文件不存在: {image_path}")

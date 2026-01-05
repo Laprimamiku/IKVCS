@@ -66,7 +66,7 @@ class PromptRollbackRequest(BaseModel):
     version_id: int
 
 
-@router.post("/ai/corrections", response_model=CorrectionResponse, summary="提交AI修正记录")
+@router.post("/corrections", response_model=CorrectionResponse, summary="提交AI修正记录")
 async def create_correction(
     correction_in: CorrectionCreateRequest,
     current_admin: User = Depends(get_current_admin),
@@ -97,7 +97,7 @@ async def create_correction(
         raise HTTPException(status_code=500, detail="创建修正记录失败")
 
 
-@router.post("/ai/correct", response_model=CorrectionResponse, summary="提交AI修正记录 (Frontend Alias)")
+@router.post("/correct", response_model=CorrectionResponse, summary="提交AI修正记录 (Frontend Alias)")
 async def submit_correction(
     correction_in: CorrectionCreateRequest,
     current_admin: User = Depends(get_current_admin),
@@ -107,7 +107,7 @@ async def submit_correction(
     return await create_correction(correction_in, current_admin, db)
 
 
-@router.get("/ai/corrections", summary="获取修正记录列表")
+@router.get("/corrections", summary="获取修正记录列表")
 async def get_corrections(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -145,7 +145,7 @@ async def get_corrections(
         raise HTTPException(status_code=500, detail="获取修正记录失败")
 
 
-@router.post("/ai/self-correction/analyze", summary="触发自我纠错分析")
+@router.post("/self-correction/analyze", summary="触发自我纠错分析")
 async def trigger_self_correction_analysis(
     request: ErrorAnalysisRequest,
     current_admin: User = Depends(get_current_admin)
@@ -166,7 +166,7 @@ async def trigger_self_correction_analysis(
         raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
 
 
-@router.post("/ai/self-correction/update-prompt", response_model=MessageResponse, summary="更新System Prompt")
+@router.post("/self-correction/update-prompt", response_model=MessageResponse, summary="更新System Prompt")
 async def update_system_prompt(
     request: PromptUpdateRequest,
     current_admin: User = Depends(get_current_admin)
@@ -196,7 +196,7 @@ async def update_system_prompt(
         raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
 
 
-@router.get("/ai/prompt-versions", summary="获取Prompt版本历史")
+@router.get("/prompt-versions", summary="获取Prompt版本历史")
 async def get_prompt_versions(
     prompt_type: Optional[str] = Query(None, description="Prompt类型过滤"),
     limit: int = Query(50, ge=1, le=100),
@@ -219,7 +219,7 @@ async def get_prompt_versions(
         raise HTTPException(status_code=500, detail="获取版本历史失败")
 
 
-@router.post("/ai/prompts/rollback", summary="回滚Prompt版本")
+@router.post("/prompts/rollback", summary="回滚Prompt版本")
 async def rollback_prompt(
     request: PromptRollbackRequest,
     current_admin: User = Depends(get_current_admin)
@@ -246,7 +246,7 @@ async def rollback_prompt(
         raise HTTPException(status_code=500, detail=f"回滚失败: {str(e)}")
 
 
-@router.get("/ai/config", summary="获取AI系统配置")
+@router.get("/config", summary="获取AI系统配置")
 async def get_ai_config(
     current_admin: User = Depends(get_current_admin)
 ):

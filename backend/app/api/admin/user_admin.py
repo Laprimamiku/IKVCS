@@ -28,7 +28,7 @@ class UserListResponse(BaseModel):
     total_pages: int
 
 
-@router.get("/users", response_model=UserListResponse, summary="获取用户列表")
+@router.get("", response_model=UserListResponse, summary="获取用户列表")
 async def get_users(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1),
@@ -58,7 +58,7 @@ async def get_users(
     }
 
 
-@router.post("/users/{user_id}/ban", response_model=MessageResponse, summary="封禁用户")
+@router.post("/{user_id}/ban", response_model=MessageResponse, summary="封禁用户")
 async def ban_user(
     user_id: int,
     db: Session = Depends(get_db),
@@ -77,7 +77,7 @@ async def ban_user(
     return {"message": f"用户 {user.username} 已被封禁"}
 
 
-@router.post("/users/{user_id}/unban", response_model=MessageResponse, summary="解封用户")
+@router.post("/{user_id}/unban", response_model=MessageResponse, summary="解封用户")
 async def unban_user(
     user_id: int,
     db: Session = Depends(get_db),

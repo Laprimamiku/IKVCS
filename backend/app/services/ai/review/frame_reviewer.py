@@ -2,6 +2,7 @@
 帧审核模块
 
 职责：审核视频帧，返回审核结果
+支持云端和本地模型双模式
 """
 import asyncio
 import logging
@@ -58,17 +59,24 @@ async def review_frames(
                 "has_suspicious": False
             }
         
-        # 限制并发审核数量，避免超出模型算力（GPU 资源管理）
-        # 针对 4GB 显存（如 RTX 3050），默认并发数为 3，避免 GPU OOM
-        max_concurrent = getattr(settings, 'FRAME_REVIEW_MAX_CONCURRENT', 3)
-        logger.info(f"[Moondream] 开始审核 {len(frames)} 帧，并发数: {max_concurrent}（GPU 加速已启用，显存限制: 3GB）")
+        # 云端模型并发控制（网络请求优化）
+        if settings.USE_CLOUD_LLM:
+            max_concurrent = getattr(settings, 'CLOUD_FRAME_REVIEW_MAX_CONCURRENT', 5)
+            logger.info(f"[CloudVision] 开始审核 {len(frames)} 帧，并发数: {max_concurrent}（云端模型: {settings.LLM_VISION_MODEL or settings.LLM_MODEL}）")
+        else:
+            # 本地模型GPU资源管理（已注释，保留配置）
+            # 限制并发审核数量，避免超出模型算力（GPU 资源管理）
+            # 针对 4GB 显存（如 RTX 3050），默认并发数为 3，避免 GPU OOM
+            max_concurrent = getattr(settings, 'FRAME_REVIEW_MAX_CONCURRENT', 3)
+            logger.info(f"[LocalModel] 开始审核 {len(frames)} 帧，并发数: {max_concurrent}（本地模型: moondream）")
         
-        # 使用信号量控制并发，实现流水线处理，避免 GPU 负载剧烈波动
-        # 这样可以保持 GPU 负载相对平稳，减少从 0% 到 100% 的剧烈变化
+        # 使用信号量控制并发
+        # 云端模型：优化网络请求并发，避免API限流
+        # 本地模型：实现流水线处理，避免 GPU 负载剧烈波动（已注释，保留逻辑）
         semaphore = asyncio.Semaphore(max_concurrent)
         
         async def review_frame_with_semaphore(frame_info, frame_num):
-            """带信号量控制的帧审核，确保 GPU 负载平稳"""
+            """带信号量控制的帧审核"""
             async with semaphore:
                 frame_path = frame_info["frame_path"]
                 # frame_path 已经是相对于 STORAGE_ROOT 的路径（如：frames/24/frame_0001.jpg）
@@ -86,13 +94,13 @@ async def review_frames(
                     full_path = os.path.normpath(os.path.join(storage_root, frame_path))
                 return await image_review_service.review_image(full_path)
         
-        # 创建所有任务（使用信号量控制，实现流水线处理）
-        # 这样可以保持 GPU 负载相对平稳，避免批处理导致的负载波动
+        # 创建所有任务（使用信号量控制，实现并发处理）
+        # 云端模型：优化网络请求效率
+        # 本地模型：保持 GPU 负载相对平稳，避免批处理导致的负载波动（已注释，保留逻辑）
         review_results = []
         frame_details = []  # 存储每帧的详细信息
         
         # 使用 asyncio.gather 并行处理所有帧，但通过信号量控制并发数
-        # 这样 GPU 负载会更平稳，不会出现批处理间隔导致的 0% 负载
         tasks = [
             review_frame_with_semaphore(frame_info, idx + 1)
             for idx, frame_info in enumerate(frames)
@@ -100,11 +108,12 @@ async def review_frames(
         batch_results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # 记录每帧的详细评价
+        model_name = f"CloudVision({settings.LLM_VISION_MODEL or settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "LocalModel(moondream)"
         for idx, (frame_info, result) in enumerate(zip(frames, batch_results)):
                 frame_num = idx + 1
                 frame_path = frame_info["frame_path"]
                 if isinstance(result, Exception):
-                    logger.warning(f"[Moondream] 帧 {frame_num}/{len(frames)} 审核异常: {frame_path} - {result}")
+                    logger.warning(f"[{model_name}] 帧 {frame_num}/{len(frames)} 审核异常: {frame_path} - {result}")
                     frame_details.append({
                         "frame_num": frame_num,
                         "frame_path": frame_path,
@@ -127,7 +136,7 @@ async def review_frames(
                         status_label = "✅ 正常"
                     
                     logger.info(
-                        f"[Moondream] 帧 {frame_num}/{len(frames)} - {status_label} | "
+                        f"[{model_name}] 帧 {frame_num}/{len(frames)} - {status_label} | "
                         f"评分: {score} | 类型: {violation_type} | "
                         f"描述: {description} | 路径: {frame_path}"
                     )
@@ -143,7 +152,7 @@ async def review_frames(
                         "description": description
                     })
                 else:
-                    logger.warning(f"[Moondream] 帧 {frame_num}/{len(frames)} 审核返回空结果: {frame_path}")
+                    logger.warning(f"[{model_name}] 帧 {frame_num}/{len(frames)} 审核返回空结果: {frame_path}")
                     frame_details.append({
                         "frame_num": frame_num,
                         "frame_path": frame_path,
@@ -152,7 +161,7 @@ async def review_frames(
                     })
         
         review_results = batch_results
-        logger.info(f"已审核 {len(frames)}/{len(frames)} 帧（流水线处理完成）")
+        logger.info(f"已审核 {len(frames)}/{len(frames)} 帧（{'云端模型' if settings.USE_CLOUD_LLM else '本地模型'}处理完成）")
         
         # 统计结果
         violation_count = 0
@@ -187,7 +196,7 @@ async def review_frames(
         
         # 输出审核总结
         logger.info("=" * 80)
-        logger.info(f"[Moondream] 视频帧审核总结 (video_id={video_id})")
+        logger.info(f"[{model_name}] 视频帧审核总结 (video_id={video_id})")
         logger.info("-" * 80)
         logger.info(f"总帧数: {total_frames} | 已审核: {reviewed_count} | 审核失败: {total_frames - reviewed_count}")
         logger.info(f"违规帧: {violation_count} ({round(violation_ratio * 100, 2)}%) | "

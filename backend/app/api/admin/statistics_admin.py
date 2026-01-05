@@ -34,7 +34,7 @@ class CategoryStatItem(BaseModel):
     count: int
 
 
-@router.get("/statistics/overview", response_model=StatsOverviewResponse, summary="统计概览")
+@router.get("/overview", response_model=StatsOverviewResponse, summary="统计概览")
 async def stats_overview(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
@@ -51,7 +51,7 @@ async def stats_overview(
     }
 
 
-@router.get("/statistics/trends", summary="趋势分析")
+@router.get("/trends", summary="趋势分析")
 async def stats_trends(
     days: int = Query(7, le=30),
     db: Session = Depends(get_db),
@@ -89,7 +89,7 @@ async def stats_trends(
     ]
 
 
-@router.get("/statistics/categories", response_model=List[CategoryStatItem], summary="分类分布")
+@router.get("/categories", response_model=List[CategoryStatItem], summary="分类分布")
 async def category_stats(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)

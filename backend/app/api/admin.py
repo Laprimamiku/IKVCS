@@ -387,7 +387,7 @@ async def re_review_video(
     }
 
 
-@router.post("/videos/{video_id}/review-frames", summary="仅审核视频帧（Moondream）")
+@router.post("/videos/{video_id}/review-frames", summary="仅审核视频帧（云端/本地模型）")
 async def review_frames_only(
     video_id: int,
     background_tasks: BackgroundTasks,
@@ -395,7 +395,7 @@ async def review_frames_only(
     admin: User = Depends(get_current_admin)
 ):
     """
-    管理员仅触发视频帧审核（使用 Moondream）
+    管理员仅触发视频帧审核（支持云端/本地模型）
     
     使用场景：
     - 仅需要重新审核视频帧时使用
@@ -431,13 +431,14 @@ async def review_frames_only(
     )
     
     logger.info(f"管理员 {admin.username} 触发视频帧审核: video_id={video_id}")
+    model_info = f"云端视觉模型({settings.LLM_VISION_MODEL or settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "本地模型(moondream)"
     return {
-        "message": "帧审核任务已启动（Moondream），请稍后查看审核结果",
+        "message": f"帧审核任务已启动（{model_info}），请稍后查看审核结果",
         "video_id": video_id
     }
 
 
-@router.post("/videos/{video_id}/review-subtitle", summary="仅审核字幕（qwen2.5:0.5b-instruct）")
+@router.post("/videos/{video_id}/review-subtitle", summary="仅审核字幕（云端/本地模型）")
 async def review_subtitle_only(
     video_id: int,
     background_tasks: BackgroundTasks,
@@ -445,7 +446,7 @@ async def review_subtitle_only(
     admin: User = Depends(get_current_admin)
 ):
     """
-    管理员仅触发字幕审核（使用 qwen2.5:0.5b-instruct）
+    管理员仅触发字幕审核（支持云端/本地模型）
     
     使用场景：
     - 仅需要重新审核字幕时使用
@@ -496,8 +497,9 @@ async def review_subtitle_only(
     )
     
     logger.info(f"管理员 {admin.username} 触发字幕审核: video_id={video_id}, subtitle_path={subtitle_path}")
+    model_info = f"云端模型({settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "本地模型(qwen2.5:0.5b-instruct)"
     return {
-        "message": "字幕审核任务已启动（qwen2.5:0.5b-instruct），请稍后查看审核结果",
+        "message": f"字幕审核任务已启动（{model_info}），请稍后查看审核结果",
         "video_id": video_id
     }
 

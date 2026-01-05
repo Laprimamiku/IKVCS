@@ -48,7 +48,7 @@ class ReportListResponse(BaseModel):
     total_pages: int
 
 
-@router.get("/reports", response_model=ReportListResponse, summary="获取举报列表")
+@router.get("", response_model=ReportListResponse, summary="获取举报列表")
 async def get_reports(
     status: int = Query(0, description="0=待处理,1=已处理,2=已忽略"),
     page: int = Query(1, ge=1),
@@ -68,7 +68,7 @@ async def get_reports(
     }
 
 
-@router.post("/reports/{report_id}/handle", response_model=MessageResponse, summary="处理举报")
+@router.post("/{report_id}/handle", response_model=MessageResponse, summary="处理举报")
 async def handle_report(
     data: ReportHandleRequest,
     report_id: int = Path(...),

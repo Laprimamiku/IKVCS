@@ -20,6 +20,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.core.config import settings
 from app.models.video import Video
 from app.services.video.frame_extractor import frame_extractor
 from app.services.ai.image_review_service import image_review_service
@@ -71,9 +72,11 @@ class VideoReviewService:
                 logger.error(f"视频不存在: video_id={video_id}")
                 return {"status": 3, "error": "视频不存在"}
             
-            # 并行执行帧审核（Moondream）和字幕审核（qwen2.5:0.5b-instruct）
-            # 充分利用 GPU 资源，但通过并发控制避免过度占用
-            logger.info(f"开始并行审核: 帧审核（Moondream）+ 字幕审核（qwen2.5:0.5b-instruct）")
+            # 并行执行帧审核和字幕审核（支持云端/本地模型）
+            # 云端模型：优化网络请求并发，本地模型：GPU 资源管理（已注释，保留逻辑）
+            model_info = f"云端模型({settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else f"本地模型(qwen2.5:0.5b-instruct)"
+            vision_info = f"云端视觉({settings.LLM_VISION_MODEL or settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "本地视觉(moondream)"
+            logger.info(f"开始并行审核: 帧审核（{vision_info}）+ 字幕审核（{model_info}）")
             frame_review_task = review_frames_module(video_id, video_path)
             subtitle_review_task = self._review_subtitle(subtitle_path) if subtitle_path else None
             
@@ -106,12 +109,21 @@ class VideoReviewService:
                 frame_review, subtitle_review, final_status, final_score
             )
             
+            # 获取当前使用的模型信息
+            vision_model_info = f"云端视觉模型({settings.LLM_VISION_MODEL or settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "本地视觉模型(moondream)"
+            text_model_info = f"云端文本模型({settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "本地文本模型(qwen2.5:0.5b-instruct)"
+            
             review_report = {
                 "timestamp": datetime.utcnow().isoformat(),
                 "video_id": video_id,
                 "final_score": final_score,
                 "final_status": final_status,
                 "conclusion": conclusion,  # 最终结论
+                "model_info": {
+                    "vision_model": vision_model_info,
+                    "text_model": text_model_info,
+                    "use_cloud_llm": settings.USE_CLOUD_LLM
+                },
                 "frame_review": {
                     "total_frames": frame_review.get("total_frames", 0),
                     "reviewed_frames": frame_review.get("reviewed_frames", 0),
@@ -212,6 +224,15 @@ class VideoReviewService:
             review_report["timestamp"] = datetime.utcnow().isoformat()
             review_report["video_id"] = video_id
             
+            # 更新模型信息
+            vision_model_info = f"云端视觉模型({settings.LLM_VISION_MODEL or settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "本地视觉模型(moondream)"
+            text_model_info = f"云端文本模型({settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "本地文本模型(qwen2.5:0.5b-instruct)"
+            review_report["model_info"] = {
+                "vision_model": vision_model_info,
+                "text_model": text_model_info,
+                "use_cloud_llm": settings.USE_CLOUD_LLM
+            }
+            
             # 如果有字幕审核结果，重新计算综合评分
             subtitle_review = review_report.get("subtitle_review")
             if subtitle_review:
@@ -286,6 +307,15 @@ class VideoReviewService:
             review_report["timestamp"] = datetime.utcnow().isoformat()
             review_report["video_id"] = video_id
             
+            # 更新模型信息
+            vision_model_info = f"云端视觉模型({settings.LLM_VISION_MODEL or settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "本地视觉模型(moondream)"
+            text_model_info = f"云端文本模型({settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "本地文本模型(qwen2.5:0.5b-instruct)"
+            review_report["model_info"] = {
+                "vision_model": vision_model_info,
+                "text_model": text_model_info,
+                "use_cloud_llm": settings.USE_CLOUD_LLM
+            }
+            
             # 如果有帧审核结果，重新计算综合评分
             frame_review = review_report.get("frame_review")
             if frame_review:
@@ -322,7 +352,7 @@ class VideoReviewService:
         subtitle_path: Optional[str]
     ) -> Optional[Dict[str, Any]]:
         """
-        审核字幕内容（使用 qwen2.5:0.5b-instruct）
+        审核字幕内容（支持云端/本地模型）
         
         参数:
             subtitle_path: 字幕文件路径（支持 SRT/VTT/JSON/ASS 格式）
@@ -337,7 +367,6 @@ class VideoReviewService:
         try:
             # 解析字幕文件，提取文本
             import os
-            from app.core.config import settings
             
             # 处理字幕路径
             # 字幕文件可能已经是绝对路径，或者相对路径
@@ -373,7 +402,7 @@ class VideoReviewService:
             file_ext = os.path.splitext(full_path)[1].lower()
             logger.info(f"[SubtitleReview] 开始审核字幕文件: {full_path} (格式: {file_ext})")
             
-            # 解析字幕（支持 JSON 格式，qwen2.5:0.5b-instruct 可以直接读取 JSON 内容）
+            # 解析字幕（支持 JSON 格式，云端/本地模型都可以直接读取 JSON 内容）
             subtitles = self.subtitle_parser.parse_subtitle_file(full_path)
             if not subtitles:
                 logger.warning(f"[SubtitleReview] 字幕文件解析失败或为空: {full_path}")
@@ -381,7 +410,7 @@ class VideoReviewService:
             
             logger.info(f"[SubtitleReview] 成功解析字幕文件，共 {len(subtitles)} 条字幕")
             
-            # 合并所有字幕文本（qwen2.5:0.5b-instruct 可以直接处理 JSON 格式的文本）
+            # 合并所有字幕文本（云端/本地模型都可以直接处理 JSON 格式的文本）
             subtitle_text = "\n".join([sub.get('text', '') if isinstance(sub, dict) else sub.text for sub in subtitles])
             
             if not subtitle_text.strip():
@@ -390,7 +419,8 @@ class VideoReviewService:
             
             # 记录字幕文本长度（用于调试）
             text_length = len(subtitle_text)
-            logger.info(f"[SubtitleReview] 字幕文本长度: {text_length} 字符，开始调用 qwen2.5:0.5b-instruct 审核")
+            model_name = f"云端模型({settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "本地模型(qwen2.5:0.5b-instruct)"
+            logger.info(f"[SubtitleReview] 字幕文本长度: {text_length} 字符，开始调用 {model_name} 审核")
             
             # 审核字幕
             result = await self.subtitle_reviewer.review_subtitle(subtitle_text)

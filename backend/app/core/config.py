@@ -40,9 +40,6 @@ class Settings(BaseSettings):
     # 云端/本地模型切换配置
     USE_CLOUD_LLM: bool = True  # 是否使用云端大模型（True=云端，False=本地），可通过环境变量 USE_CLOUD_LLM 覆盖
     
-    # 云端/本地模型切换配置
-    USE_CLOUD_LLM: bool = True  # 是否使用云端大模型（True=云端，False=本地），可通过环境变量 USE_CLOUD_LLM 覆盖
-    
     # 本地 LLM 配置 (大小模型协同) - 仅在 USE_CLOUD_LLM=False 时使用
     LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1"  # 默认 Ollama 地址，可通过环境变量 LOCAL_LLM_BASE_URL 覆盖
     LOCAL_LLM_MODEL: str = "qwen2.5:0.5b"  # 默认使用 0.5B 模型，可通过环境变量 LOCAL_LLM_MODEL 覆盖
@@ -66,6 +63,9 @@ class Settings(BaseSettings):
     LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1"  # 可通过环境变量 LOCAL_LLM_BASE_URL 覆盖
     LOCAL_LLM_MODEL: str = "qwen2.5:0.5b-instruct"  # 可通过环境变量 LOCAL_LLM_MODEL 覆盖
     LOCAL_LLM_TIMEOUT: float = 60.0  # 本地模型超时时间（秒），大纲生成需要较长时间
+
+    # 云端模型并发控制配置
+    CLOUD_FRAME_REVIEW_MAX_CONCURRENT: int = 5  # 云端帧审核最大并发数（网络请求优化）
 
     # AI 多智能体配置（Layer 3.1-3.4）
     MULTI_AGENT_ENABLED: bool = False  # 是否启用多智能体陪审团（True/False默认关闭）  

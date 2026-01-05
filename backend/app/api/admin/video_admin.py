@@ -7,7 +7,7 @@ import json
 import logging
 import os
 from typing import Optional
-from pathlib import Path
+from pathlib import Path as PathLib
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc
@@ -231,7 +231,7 @@ async def re_review_video(
     }
 
 
-@router.post("/{video_id}/review-frames", summary="仅审核视频帧（Moondream）")
+@router.post("/{video_id}/review-frames", summary="仅审核视频帧（云端/本地模型）")
 async def review_frames_only(
     video_id: int,
     background_tasks: BackgroundTasks,
@@ -270,7 +270,7 @@ async def review_frames_only(
     }
 
 
-@router.post("/{video_id}/review-subtitle", summary="仅审核字幕（qwen2.5:0.5b-instruct）")
+@router.post("/{video_id}/review-subtitle", summary="仅审核字幕（云端/本地模型）")
 async def review_subtitle_only(
     video_id: int,
     background_tasks: BackgroundTasks,
@@ -288,7 +288,7 @@ async def review_subtitle_only(
     
     if os.path.exists(subtitle_dir):
         # 查找以 {video_id}_ 开头的字幕文件
-        subtitle_files = list(Path(subtitle_dir).glob(f"{video_id}_*"))
+        subtitle_files = list(PathLib(subtitle_dir).glob(f"{video_id}_*"))
         if subtitle_files:
             subtitle_path = str(subtitle_files[0])
             logger.info(f"根据视频ID找到字幕文件: video_id={video_id}, subtitle_path={subtitle_path}")
@@ -315,8 +315,9 @@ async def review_subtitle_only(
     )
     
     logger.info(f"管理员 {admin.username} 触发字幕审核: video_id={video_id}, subtitle_path={subtitle_path}")
+    model_info = f"云端模型({settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "本地模型(qwen2.5:0.5b-instruct)"
     return {
-        "message": "字幕审核任务已启动（qwen2.5:0.5b-instruct），请稍后查看审核结果",
+        "message": f"字幕审核任务已启动（{model_info}），请稍后查看审核结果",
         "video_id": video_id
     }
 
@@ -378,7 +379,7 @@ async def get_subtitle_content(
     
     if os.path.exists(subtitle_dir):
         # 查找以 {video_id}_ 开头的字幕文件
-        subtitle_files = list(Path(subtitle_dir).glob(f"{video_id}_*"))
+        subtitle_files = list(PathLib(subtitle_dir).glob(f"{video_id}_*"))
         if subtitle_files:
             full_path = str(subtitle_files[0])
             logger.info(f"根据视频ID找到字幕文件: video_id={video_id}, subtitle_path={full_path}")

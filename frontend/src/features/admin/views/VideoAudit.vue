@@ -148,7 +148,7 @@
         <div v-if="currentReviewVideo.review_report" class="review-section">
           <h4>审核报告</h4>
           <el-collapse>
-            <el-collapse-item v-if="currentReviewVideo.review_report.frame_review" title="帧审核结果（Moondream分析）">
+            <el-collapse-item v-if="currentReviewVideo.review_report.frame_review" :title="getFrameReviewTitle()">
               <div class="review-item">
                 <p><strong>审核结论:</strong> {{ currentReviewVideo.review_report.conclusion || '暂无结论' }}</p>
                 <p><strong>审核帧数:</strong> {{ currentReviewVideo.review_report.frame_review.total_frames || 0 }} 帧</p>
@@ -174,7 +174,7 @@
                 </p>
               </div>
             </el-collapse-item>
-            <el-collapse-item v-if="currentReviewVideo.review_report.subtitle_review" title="字幕审核结果（qwen2.5:0.5b-instruct分析）">
+            <el-collapse-item v-if="currentReviewVideo.review_report.subtitle_review" :title="getSubtitleReviewTitle()">
               <div class="review-item">
                 <p><strong>审核结论:</strong> 
                   <el-tag 
@@ -189,7 +189,7 @@
                 <p><strong>详细描述:</strong> {{ currentReviewVideo.review_report.subtitle_review.description || '无描述' }}</p>
               </div>
             </el-collapse-item>
-            <el-collapse-item v-else-if="currentReviewVideo.subtitle_url" title="字幕审核结果（qwen2.5:0.5b-instruct分析）">
+            <el-collapse-item v-else-if="currentReviewVideo.subtitle_url" :title="getSubtitleReviewTitle(true)">
               <div class="review-item">
                 <el-alert
                   title="字幕审核未完成"
@@ -525,6 +525,46 @@ const getScoreTagType = (score: number): string => {
 const showReviewDetails = (video: AuditVideoItem) => {
   currentReviewVideo.value = video;
   reviewDetailsVisible.value = true;
+};
+
+const getFrameReviewTitle = (isNotCompleted = false): string => {
+  if (isNotCompleted) {
+    return "抽帧审核（未完成）";
+  }
+  
+  if (!currentReviewVideo.value?.review_report?.model_info) {
+    return "抽帧审核分析";
+  }
+  
+  const modelInfo = currentReviewVideo.value.review_report.model_info;
+  if (modelInfo.use_cloud_llm) {
+    // 云端模型，显示具体模型名称
+    const visionModel = modelInfo.vision_model || "云端视觉模型";
+    return `${visionModel}分析`;
+  } else {
+    // 本地模型，保持原有显示
+    return "Moondream分析";
+  }
+};
+
+const getSubtitleReviewTitle = (isNotCompleted = false): string => {
+  if (isNotCompleted) {
+    return "字幕审核（未完成）";
+  }
+  
+  if (!currentReviewVideo.value?.review_report?.model_info) {
+    return "字幕审核分析";
+  }
+  
+  const modelInfo = currentReviewVideo.value.review_report.model_info;
+  if (modelInfo.use_cloud_llm) {
+    // 云端模型，显示具体模型名称
+    const textModel = modelInfo.text_model || "云端文本模型";
+    return `${textModel}分析`;
+  } else {
+    // 本地模型，保持原有显示
+    return "qwen2.5:0.5b-instruct分析";
+  }
 };
 
 onMounted(loadData);
