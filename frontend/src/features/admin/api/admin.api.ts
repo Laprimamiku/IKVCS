@@ -157,5 +157,30 @@ export const adminAiApi = {
   // 提交人工修正
   submitCorrection: (data: { type: string; content: string; original_score: number; corrected_score: number; reason: string }) => {
     return request.post('/admin/ai/correct', data);
+  },
+
+  // 新增：Shadow测试
+  shadowTestPrompt: (data: { candidate_version_id: number; sample_limit: number }) => {
+    return request.post('/admin/ai/prompts/shadow-test', data);
+  },
+
+  // 新增：获取AI指标
+  getAiMetrics: (targetDate?: string) => {
+    return request.get('/admin/ai/metrics', { params: { target_date: targetDate } });
+  },
+
+  // 新增：获取AI配置概览
+  getAiConfig: () => {
+    return request.get('/admin/ai/config');
+  },
+
+  // 新增：发布Prompt版本
+  publishPrompt: (data: { version_id: number }) => {
+    return request.post('/admin/ai/prompts/publish', data);
+  },
+
+  // 新增：回滚Prompt版本
+  rollbackPrompt: (data: { version_id: number }) => {
+    return request.post('/admin/ai/prompts/rollback', data);
   }
 };

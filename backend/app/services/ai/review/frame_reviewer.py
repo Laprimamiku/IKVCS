@@ -7,7 +7,7 @@
 import asyncio
 import logging
 import os
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from app.core.config import settings
 from app.services.video.frame_extractor import frame_extractor
@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 
 async def review_frames(
     video_id: int,
-    video_path: str
+    video_path: str,
+    use_cloud_override: Optional[bool] = None,
+    max_frames: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     审核视频帧
@@ -39,14 +41,37 @@ async def review_frames(
             video_path=video_path,
             video_id=video_id,
             strategy="uniform",  # 使用均匀采样策略
-            interval=None  # 根据视频时长自动调整
+            interval=None,  # 根据视频时长自动调整
+            max_frames=max_frames,
         )
         
         if not frames:
             logger.warning(f"未提取到帧: video_id={video_id}, video_path={video_path}")
-            # 返回完整的默认结果，包含所有必要字段
+            # 无帧/抽帧失败属于不确定状态：为避免误放行，按“疑似/需人工复核”降级
             return {
                 "total_frames": 0,
+                "reviewed_frames": 0,
+                "violation_count": 0,
+                "suspicious_count": 1,
+                "normal_count": 0,
+                "violation_ratio": 0,
+                "suspicious_ratio": 100,
+                "avg_score": 60,
+                "min_score": 60,
+                "has_violation": False,
+                "has_suspicious": True,
+                "error": "未提取到帧，无法完成帧审核"
+            }
+        
+        # 视觉模型名称（展示用）
+        vision_model_name = settings.LLM_VISION_MODEL or settings.LLM_MODEL or "unknown"
+
+        # 按需覆写是否使用云端模型（预算控制）
+        vision_mode = getattr(settings, "VISION_MODE", "hybrid").lower()
+        if vision_mode == "off":
+            logger.info("[Vision] VISION_MODE=off，跳过帧审核")
+            return {
+                "total_frames": len(frames),
                 "reviewed_frames": 0,
                 "violation_count": 0,
                 "suspicious_count": 0,
@@ -56,19 +81,45 @@ async def review_frames(
                 "avg_score": 100,
                 "min_score": 100,
                 "has_violation": False,
-                "has_suspicious": False
+                "has_suspicious": False,
             }
-        
+        has_cloud_key = bool(getattr(settings, "LLM_VISION_API_KEY", "") or settings.LLM_API_KEY)
+        if vision_mode == "cloud_only" and not has_cloud_key:
+            logger.error("[CloudVision] VISION_MODE=cloud_only 但未配置云端密钥，帧审核将标记为需人工复核")
+            total_frames = len(frames)
+            return {
+                "total_frames": total_frames,
+                "reviewed_frames": 0,
+                "violation_count": 0,
+                "suspicious_count": total_frames,
+                "normal_count": 0,
+                "violation_ratio": 0,
+                "suspicious_ratio": 100 if total_frames > 0 else 0,
+                "avg_score": 60,
+                "min_score": 60,
+                "has_violation": False,
+                "has_suspicious": True,
+            }
+        base_use_cloud = vision_mode in ("cloud_only", "hybrid") and has_cloud_key
+        use_cloud = base_use_cloud if use_cloud_override is None else use_cloud_override
+        cloud_limit = getattr(settings, "CLOUD_MAX_CALLS_PER_VIDEO", 0) or 0
+        if use_cloud and cloud_limit > 0 and len(frames) > cloud_limit:
+            logger.warning(
+                f"[CloudVision] 超出每视频云端上限({cloud_limit})，本次帧审核降级为本地/跳过云端。video_id={video_id}, frames={len(frames)}"
+            )
+            use_cloud = False
+
         # 云端模型并发控制（网络请求优化）
-        if settings.USE_CLOUD_LLM:
+        if use_cloud:
             max_concurrent = getattr(settings, 'CLOUD_FRAME_REVIEW_MAX_CONCURRENT', 5)
-            logger.info(f"[CloudVision] 开始审核 {len(frames)} 帧，并发数: {max_concurrent}（云端模型: {settings.LLM_VISION_MODEL or settings.LLM_MODEL}）")
+            logger.info(f"[CloudVision] 开始审核 {len(frames)} 帧，并发数: {max_concurrent}（云端模型: {vision_model_name}）")
         else:
             # 本地模型GPU资源管理（已注释，保留配置）
             # 限制并发审核数量，避免超出模型算力（GPU 资源管理）
             # 针对 4GB 显存（如 RTX 3050），默认并发数为 3，避免 GPU OOM
             max_concurrent = getattr(settings, 'FRAME_REVIEW_MAX_CONCURRENT', 3)
-            logger.info(f"[LocalModel] 开始审核 {len(frames)} 帧，并发数: {max_concurrent}（本地模型: moondream）")
+            # logger.info(f"[LocalVision] 开始审核 {len(frames)} 帧，并发数: {max_concurrent}（本地视觉模型）")
+            logger.info(f"[LocalModel] 开始审核 {len(frames)} 帧，并发数: {max_concurrent}（本地模型: {vision_model_name}）")
         
         # 使用信号量控制并发
         # 云端模型：优化网络请求并发，避免API限流
@@ -108,7 +159,7 @@ async def review_frames(
         batch_results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # 记录每帧的详细评价
-        model_name = f"CloudVision({settings.LLM_VISION_MODEL or settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "LocalModel(moondream)"
+        model_name = f"CloudVision({vision_model_name})" if use_cloud else f"LocalModel({vision_model_name})"
         for idx, (frame_info, result) in enumerate(zip(frames, batch_results)):
                 frame_num = idx + 1
                 frame_path = frame_info["frame_path"]
@@ -129,11 +180,11 @@ async def review_frames(
                     
                     # 确定状态标签
                     if is_violation:
-                        status_label = "❌ 违规"
+                        status_label = "违规"
                     elif is_suspicious:
-                        status_label = "⚠️ 疑似"
+                        status_label = "疑似"
                     else:
-                        status_label = "✅ 正常"
+                        status_label = "正常"
                     
                     logger.info(
                         f"[{model_name}] 帧 {frame_num}/{len(frames)} - {status_label} | "
@@ -161,7 +212,7 @@ async def review_frames(
                     })
         
         review_results = batch_results
-        logger.info(f"已审核 {len(frames)}/{len(frames)} 帧（{'云端模型' if settings.USE_CLOUD_LLM else '本地模型'}处理完成）")
+        logger.info(f"已审核 {len(frames)}/{len(frames)} 帧（{'云端模型' if use_cloud else '本地模型'}处理完成）")
         
         # 统计结果
         violation_count = 0
@@ -169,11 +220,13 @@ async def review_frames(
         normal_count = 0
         scores = []
         reviewed_count = 0
+        failure_count = 0
         
         for result in review_results:
             if isinstance(result, Exception):
+                failure_count += 1
                 continue
-            
+             
             if result:
                 reviewed_count += 1
                 score = result.get("score", 100)
@@ -185,14 +238,19 @@ async def review_frames(
                     suspicious_count += 1
                 else:
                     normal_count += 1
+            else:
+                failure_count += 1
         
+        # 空结果/失败按“疑似”计入（避免因配置/网络问题误放行）
+        suspicious_count += failure_count
+
         # 计算统计信息
         total_frames = len(frames)
         violation_ratio = violation_count / total_frames if total_frames > 0 else 0
         suspicious_ratio = suspicious_count / total_frames if total_frames > 0 else 0
-        avg_score = sum(scores) / len(scores) if scores else 100
-        min_score = min(scores) if scores else 100
-        max_score = max(scores) if scores else 100
+        avg_score = sum(scores) / len(scores) if scores else 60
+        min_score = min(scores) if scores else 60
+        max_score = max(scores) if scores else 60
         
         # 输出审核总结
         logger.info("=" * 80)
@@ -203,7 +261,7 @@ async def review_frames(
                    f"疑似帧: {suspicious_count} ({round(suspicious_ratio * 100, 2)}%) | "
                    f"正常帧: {normal_count} ({round((normal_count / total_frames * 100) if total_frames > 0 else 0, 2)}%)")
         logger.info(f"评分统计: 平均 {round(avg_score, 1)} 分 | 最低 {round(min_score, 1)} 分 | 最高 {round(max_score, 1)} 分")
-        logger.info(f"审核结论: {'❌ 存在违规内容' if violation_count > 0 else '⚠️ 存在疑似内容' if suspicious_count > 0 else '✅ 内容正常'}")
+        logger.info(f"审核结论: {'存在违规内容' if violation_count > 0 else '存在疑似内容' if suspicious_count > 0 else '内容正常'}")
         logger.info("=" * 80)
         
         return {
@@ -222,14 +280,19 @@ async def review_frames(
         
     except Exception as e:
         logger.error(f"帧审核失败: {e}", exc_info=True)
+        # 审核异常属于不确定状态：为避免误放行，按“疑似/需人工复核”降级
         return {
             "total_frames": 0,
             "reviewed_frames": 0,
             "violation_count": 0,
-            "suspicious_count": 0,
-            "min_score": 100,
+            "suspicious_count": 1,
+            "normal_count": 0,
+            "violation_ratio": 0,
+            "suspicious_ratio": 100,
+            "avg_score": 60,
+            "min_score": 60,
             "has_violation": False,
-            "has_suspicious": False,
+            "has_suspicious": True,
             "error": str(e)
         }
 

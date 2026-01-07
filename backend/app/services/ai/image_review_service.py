@@ -24,8 +24,15 @@ class ImageReviewService:
     
     def __init__(self):
         self.local_base_url = settings.LOCAL_LLM_BASE_URL.rstrip("/")
-        self.local_model = "moondream"  # 本地图像模型
+        # 本地视觉（moondream）暂不用于抽帧审核：按需求全部走云端视觉模型
+        # 若后续要启用本地视觉，可打开 LOCAL_VISION_ENABLED 并设置 LOCAL_VISION_MODEL
+        self.local_model = getattr(settings, "LOCAL_VISION_MODEL", "moondream:latest")
         self.local_timeout = 10.0
+        self.mode = getattr(settings, "VISION_MODE", "hybrid").lower()
+        has_cloud_key = bool(settings.LLM_VISION_API_KEY or settings.LLM_API_KEY)
+        self.use_cloud = self.mode in ("cloud_only", "hybrid") and has_cloud_key
+        # 本地视觉强制由开关控制，避免误用本地模型跑抽帧审核
+        self.use_local = bool(getattr(settings, "LOCAL_VISION_ENABLED", False)) and self.mode in ("local_only", "hybrid")
     
     async def review_image(
         self,
@@ -54,14 +61,18 @@ class ImageReviewService:
             logger.error(f"读取图像文件失败: {e}")
             return None
         
-        # 优先使用云端模型，失败时回退到本地模型
-        if settings.USE_CLOUD_LLM:
+        # 优先使用云端模型，失败时回退到本地模型（如果启用）
+        if self.use_cloud:
             result = await self._review_with_cloud_model(image_data)
             if result is not None:
                 return result
-            logger.warning("云端模型图像审核失败，回退到本地模型")
+            logger.warning("云端模型图像审核失败，准备回退到本地模型（如已启用）")
         
-        # 使用本地模型
+        if not self.use_local:
+            # 本地视觉（moondream）暂不启用：抽帧审核由云端模型负责
+            return None
+
+        # 使用本地模型（VISION_MODE 允许时作为兜底）
         return await self._review_with_local_model(image_data)
     
     async def _review_with_cloud_model(
@@ -74,6 +85,10 @@ class ImageReviewService:
             base_url = (settings.LLM_VISION_BASE_URL or settings.LLM_BASE_URL).rstrip("/")
             model = settings.LLM_VISION_MODEL or settings.LLM_MODEL
             timeout = 30.0
+            
+            if not base_url or not model or not api_key:
+                logger.warning("[CloudVision] 配置缺失（base_url/model/api_key），跳过云端审核")
+                return None
             
             logger.info(f"[CloudVision] 开始云端图像审核 - 模型: {model}, API: {base_url}")
             
@@ -163,14 +178,8 @@ class ImageReviewService:
         image_data: str
     ) -> Optional[Dict[str, Any]]:
         """使用本地模型审核图像"""
-        # 如果使用云端模型，则不启用本地模型作为备用
-        # 只有在明确设置为使用本地模型时才启用
-        if settings.USE_CLOUD_LLM:
-            logger.warning("[LocalModel] 云端模型模式下，本地模型未启用作为备用，跳过图像审核")
-            return None
-        
         # 检查本地模型是否启用
-        local_enabled = getattr(settings, 'LOCAL_LLM_ENABLED', False)
+        local_enabled = self.use_local or self.mode == "local_only"
         if not local_enabled:
             logger.warning("[LocalModel] 本地模型未启用，跳过图像审核")
             return None
@@ -196,7 +205,9 @@ class ImageReviewService:
 - 61-100: 正常内容，可以发布"""
         
         try:
-            async with httpx.AsyncClient(timeout=self.local_timeout) as client:
+            logger.info(f"[LocalVision] 调用本地图像模型: {self.local_model} @ {self.local_base_url}")
+            # trust_env=False: avoid routing localhost through system proxy
+            async with httpx.AsyncClient(timeout=self.local_timeout, trust_env=False) as client:
                 response = await client.post(
                     f"{self.local_base_url}/chat/completions",
                     json={
@@ -351,4 +362,3 @@ class ImageReviewService:
 
 # 全局实例
 image_review_service = ImageReviewService()
-

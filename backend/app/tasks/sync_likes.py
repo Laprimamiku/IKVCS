@@ -76,7 +76,7 @@ async def sync_likes_from_redis_to_db():
                 db.query(Video).filter(Video.id == target_id).update(
                     {"like_count": current_total_count}
                 )
-                print(f"📊 [Video {target_id}] 数据库更新为: {current_total_count}")
+                print(f"[Video {target_id}] 数据库更新为: {current_total_count}")
                 
             elif target_type == "comment":
                 db.query(Comment).filter(Comment.id == target_id).update(
@@ -89,10 +89,10 @@ async def sync_likes_from_redis_to_db():
             await redis.delete("likes:dirty")
 
         db.commit()
-        print("✅ 同步完成")
+        print("同步完成")
         
     except Exception as e:
-        print(f"❌ 同步失败: {e}")
+        print(f"同步失败: {e}")
         import traceback
         traceback.print_exc()
         db.rollback()

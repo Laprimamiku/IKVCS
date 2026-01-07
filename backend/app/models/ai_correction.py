@@ -23,6 +23,12 @@ class AiCorrection(Base):
     original_result = Column(JSON, comment="AI 原始分析结果")
     corrected_result = Column(JSON, comment="管理员修正后的结果")
     correction_reason = Column(Text, comment="修正原因")
+    
+    # 新增：可复现性字段
+    prompt_version_id = Column(Integer, comment="使用的Prompt版本ID")
+    model_config_snapshot = Column(JSON, comment="模型配置快照")
+    decision_trace_snapshot = Column(JSON, comment="决策轨迹快照")
+    
     corrected_by = Column(
         Integer,
         ForeignKey('users.id', ondelete='CASCADE'),

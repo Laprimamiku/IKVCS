@@ -295,4 +295,3 @@ async def get_video_knowledge(
             "knowledge_points": knowledge_points
         }
     )
-

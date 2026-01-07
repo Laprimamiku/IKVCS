@@ -11,9 +11,10 @@
     
 需求：1.1-1.5, 2.1-2.4
 """
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, field_serializer
 from typing import Optional
 from datetime import datetime
+from app.utils.timezone_utils import isoformat_in_app_tz
 
 
 # ============================================
@@ -149,6 +150,16 @@ class UserResponse(BaseModel):
     status: int
     last_login_time: Optional[datetime] = None
     created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        return isoformat_in_app_tz(value)
+
+    @field_serializer("last_login_time")
+    def serialize_last_login_time(self, value: Optional[datetime]):
+        if value is None:
+            return None
+        return isoformat_in_app_tz(value)
     
     class Config:
         # 允许从 ORM 模型创建（User 模型 → UserResponse）
@@ -230,4 +241,3 @@ class MessageResponse(BaseModel):
                 "message": "操作成功"
             }
         }
-

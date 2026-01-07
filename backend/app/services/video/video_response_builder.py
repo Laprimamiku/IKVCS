@@ -7,12 +7,12 @@
 from sqlalchemy.orm import Session
 from typing import Optional, TYPE_CHECKING
 from math import ceil
-from datetime import timezone
 import logging
 
 from app.services.video.video_query_service import VideoQueryService
 from app.services.video.video_stats_service import VideoStatsService
 from app.services.cache.redis_service import redis_service
+from app.utils.timezone_utils import isoformat_in_app_tz
 
 # 类型检查时导入，避免循环导入
 if TYPE_CHECKING:
@@ -65,6 +65,26 @@ class VideoResponseBuilder:
             try:
                 data = json.loads(cached_data)
                 logger.debug(f"视频列表缓存命中：{cache_key}")
+                # 播放量是高频变动字段：即使命中缓存，也用 Redis 的最新值覆盖，避免“必须点击播放才变化”的观感
+                try:
+                    items = data.get("items") or []
+                    video_ids = [it.get("id") for it in items if isinstance(it, dict) and it.get("id") is not None]
+                    if video_ids:
+                        keys = [f"video:view_count:{vid}" for vid in video_ids]
+                        values = redis_service.redis.mget(keys)
+                        view_map = {}
+                        for vid, raw in zip(video_ids, values):
+                            if raw is not None and raw != "":
+                                try:
+                                    view_map[int(vid)] = int(raw)
+                                except Exception:
+                                    pass
+                        if view_map:
+                            for it in items:
+                                if isinstance(it, dict) and it.get("id") in view_map:
+                                    it["view_count"] = view_map[it["id"]]
+                except Exception:
+                    pass
                 return VideoListResponse(**data)
             except Exception as e:
                 logger.warning(f"解析视频列表缓存失败：{e}")
@@ -83,6 +103,80 @@ class VideoResponseBuilder:
         
         # 组装响应数据
         items = []
+
+        # 批量读取 Redis 中的播放量，避免列表页逐条访问 Redis（N+1）
+        view_count_map: dict[int, int] = {}
+        try:
+            video_ids = [v.id for v in videos]
+            if video_ids:
+                keys = [f"video:view_count:{vid}" for vid in video_ids]
+                values = redis_service.redis.mget(keys)
+                for vid, raw in zip(video_ids, values):
+                    if raw is not None and raw != "":
+                        try:
+                            view_count_map[int(vid)] = int(raw)
+                        except Exception:
+                            pass
+        except Exception:
+            view_count_map = {}
+
+        # 批量统计评论/弹幕数量（创作中心需要展示评论数等）
+        comment_count_map: dict[int, int] = {}
+        danmaku_count_map: dict[int, int] = {}
+        try:
+            from sqlalchemy import func
+            from app.models.comment import Comment
+            from app.models.danmaku import Danmaku
+
+            video_ids = [v.id for v in videos]
+            if video_ids:
+                rows = (
+                    db.query(Comment.video_id, func.count(Comment.id))
+                    .filter(Comment.video_id.in_(video_ids), Comment.is_deleted == False)
+                    .group_by(Comment.video_id)
+                    .all()
+                )
+                comment_count_map = {int(vid): int(cnt) for vid, cnt in rows}
+
+                rows = (
+                    db.query(Danmaku.video_id, func.count(Danmaku.id))
+                    .filter(Danmaku.video_id.in_(video_ids), Danmaku.is_deleted == False)
+                    .group_by(Danmaku.video_id)
+                    .all()
+                )
+                danmaku_count_map = {int(vid): int(cnt) for vid, cnt in rows}
+        except Exception:
+            comment_count_map = {}
+            danmaku_count_map = {}
+
+        # 批量统计评论/弹幕数量，避免列表页 N+1
+        comment_count_map: dict[int, int] = {}
+        danmaku_count_map: dict[int, int] = {}
+        try:
+            from sqlalchemy import func
+            from app.models.comment import Comment
+            from app.models.danmaku import Danmaku
+
+            video_ids = [v.id for v in videos]
+            if video_ids:
+                rows = (
+                    db.query(Comment.video_id, func.count(Comment.id))
+                    .filter(Comment.video_id.in_(video_ids), Comment.is_deleted == False)
+                    .group_by(Comment.video_id)
+                    .all()
+                )
+                comment_count_map = {int(vid): int(cnt) for vid, cnt in rows}
+
+                rows = (
+                    db.query(Danmaku.video_id, func.count(Danmaku.id))
+                    .filter(Danmaku.video_id.in_(video_ids), Danmaku.is_deleted == False)
+                    .group_by(Danmaku.video_id)
+                    .all()
+                )
+                danmaku_count_map = {int(vid): int(cnt) for vid, cnt in rows}
+        except Exception:
+            comment_count_map = {}
+            danmaku_count_map = {}
         for video in videos:
             # 由于使用了 joinedload，video.uploader 和 video.category 已经预加载
             items.append(
@@ -93,9 +187,11 @@ class VideoResponseBuilder:
                     cover_url=video.cover_url,
                     duration=video.duration,
                     # 直接传入 video 对象，省去一次数据库查询
-                    view_count=VideoStatsService.get_view_count_from_model(video),
+                    view_count=view_count_map.get(video.id, video.view_count or 0),
                     like_count=video.like_count,
                     collect_count=video.collect_count,
+                    comment_count=comment_count_map.get(video.id, 0),
+                    danmaku_count=danmaku_count_map.get(video.id, 0),
                     uploader=UploaderBriefResponse(
                         id=video.uploader.id,
                         username=video.uploader.username,
@@ -159,6 +255,13 @@ class VideoResponseBuilder:
             try:
                 data = json.loads(cached_data)
                 logger.debug(f"视频详情缓存命中：{cache_key}")
+                # 播放量是高频变动字段：即使命中缓存，也用 Redis 的最新值覆盖
+                try:
+                    redis_count = redis_service.get_view_count_from_cache(video_id)
+                    if redis_count is not None:
+                        data["view_count"] = int(redis_count)
+                except Exception:
+                    pass
                 return VideoDetailResponse(**data)
             except Exception as e:
                 logger.warning(f"解析视频详情缓存失败：{e}")
@@ -167,6 +270,29 @@ class VideoResponseBuilder:
         video = VideoQueryService.get_video_detail(db, video_id)
         if not video:
             return None
+
+        # 统计评论/弹幕数量（用于详情页展示/创作中心数据同步）
+        comment_count = 0
+        danmaku_count = 0
+        try:
+            from sqlalchemy import func
+            from app.models.comment import Comment
+            from app.models.danmaku import Danmaku
+
+            comment_count = (
+                db.query(func.count(Comment.id))
+                .filter(Comment.video_id == video_id, Comment.is_deleted == False)
+                .scalar()
+                or 0
+            )
+            danmaku_count = (
+                db.query(func.count(Danmaku.id))
+                .filter(Danmaku.video_id == video_id, Danmaku.is_deleted == False)
+                .scalar()
+                or 0
+            )
+        except Exception:
+            pass
         
         # 由于使用了 joinedload，video.uploader 和 video.category 已经预加载
         response = VideoDetailResponse(
@@ -178,9 +304,12 @@ class VideoResponseBuilder:
             subtitle_url=video.subtitle_url,
             duration=video.duration,
             status=video.status,
-            view_count=VideoStatsService.get_merged_view_count(db, video.id),
+            # 避免 get_merged_view_count() 再次访问 DB；直接使用已加载的 video 对象 + Redis 缓存
+            view_count=VideoStatsService.get_view_count_from_model(video),
             like_count=video.like_count,
             collect_count=video.collect_count,
+            comment_count=comment_count,
+            danmaku_count=danmaku_count,
             uploader=UploaderBriefResponse(
                 id=video.uploader.id,
                 username=video.uploader.username,
@@ -246,23 +375,77 @@ class VideoResponseBuilder:
         
         # 组装响应数据
         items = []
-        for video in videos:
-            # 处理字幕 URL：如果 subtitle_url 为空或不是绝对路径，尝试通过 video_id 查找
-            subtitle_url = video.subtitle_url
-            if not subtitle_url or not subtitle_url.startswith('/'):
-                # 尝试在 UPLOAD_SUBTITLE_DIR 中查找以 video_id 开头的字幕文件
+
+        # 批量读取 Redis 中的播放量，避免列表页逐条访问 Redis（N+1）
+        view_count_map: dict[int, int] = {}
+        try:
+            video_ids = [v.id for v in videos]
+            if video_ids:
+                keys = [f"video:view_count:{vid}" for vid in video_ids]
+                values = redis_service.redis.mget(keys)
+                for vid, raw in zip(video_ids, values):
+                    if raw is not None and raw != "":
+                        try:
+                            view_count_map[int(vid)] = int(raw)
+                        except Exception:
+                            pass
+        except Exception:
+            view_count_map = {}
+
+        # 批量统计评论/弹幕数量（创作中心/互动管理需要展示）
+        comment_count_map: dict[int, int] = {}
+        danmaku_count_map: dict[int, int] = {}
+        try:
+            from sqlalchemy import func
+            from app.models.comment import Comment
+            from app.models.danmaku import Danmaku
+
+            video_ids = [v.id for v in videos]
+            if video_ids:
+                rows = (
+                    db.query(Comment.video_id, func.count(Comment.id))
+                    .filter(Comment.video_id.in_(video_ids), Comment.is_deleted == False)
+                    .group_by(Comment.video_id)
+                    .all()
+                )
+                comment_count_map = {int(vid): int(cnt) for vid, cnt in rows}
+
+                rows = (
+                    db.query(Danmaku.video_id, func.count(Danmaku.id))
+                    .filter(Danmaku.video_id.in_(video_ids), Danmaku.is_deleted == False)
+                    .group_by(Danmaku.video_id)
+                    .all()
+                )
+                danmaku_count_map = {int(vid): int(cnt) for vid, cnt in rows}
+        except Exception:
+            comment_count_map = {}
+            danmaku_count_map = {}
+
+        # 字幕文件查找：如需回溯 subtitle_url，先扫描一次目录，避免每个视频 glob 一次
+        subtitle_map: dict[int, str] = {}
+        try:
+            needs_subtitle_lookup = any((not v.subtitle_url) or (not str(v.subtitle_url).startswith("/")) for v in videos)
+            if needs_subtitle_lookup:
                 from app.core.config import settings
                 from pathlib import Path
-                import os
-                
+
                 subtitle_dir = Path(settings.UPLOAD_SUBTITLE_DIR)
                 if subtitle_dir.exists():
-                    # 查找以 video_id 开头的字幕文件
-                    subtitle_files = list(subtitle_dir.glob(f"{video.id}_subtitle_*"))
-                    if subtitle_files:
-                        # 使用找到的第一个字幕文件
-                        subtitle_file = subtitle_files[0]
-                        subtitle_url = f"/uploads/subtitles/{subtitle_file.name}"
+                    for subtitle_file in subtitle_dir.glob("*_subtitle_*"):
+                        name = subtitle_file.name
+                        prefix = name.split("_", 1)[0]
+                        if prefix.isdigit():
+                            subtitle_map.setdefault(int(prefix), f"/uploads/subtitles/{name}")
+        except Exception:
+            subtitle_map = {}
+
+        for video in videos:
+            # 处理字幕 URL：如果 subtitle_url 为空或不是绝对路径，尝试通过 video_id 查找
+            subtitle_url = (
+                video.subtitle_url
+                if (video.subtitle_url and str(video.subtitle_url).startswith("/"))
+                else subtitle_map.get(video.id, video.subtitle_url)
+            )
             
             items.append(
                 VideoListItemResponse(
@@ -272,9 +455,12 @@ class VideoResponseBuilder:
                     cover_url=video.cover_url,
                     subtitle_url=subtitle_url,  # 添加字幕 URL
                     duration=video.duration,
-                    view_count=VideoStatsService.get_merged_view_count(db, video.id),
+                    # 避免 get_merged_view_count() 对每个 video 单独查一次 DB（N+1）
+                    view_count=view_count_map.get(video.id, video.view_count or 0),
                     like_count=video.like_count,
                     collect_count=video.collect_count,
+                    comment_count=comment_count_map.get(video.id, 0),
+                    danmaku_count=danmaku_count_map.get(video.id, 0),
                     uploader=UploaderBriefResponse(
                         id=video.uploader.id,
                         username=video.uploader.username,
@@ -339,5 +525,68 @@ class VideoResponseBuilder:
                 "id": video.category.id,
                 "name": video.category.name
             },
-            "created_at": video.created_at.replace(tzinfo=timezone.utc).isoformat() if video.created_at.tzinfo is None else video.created_at.isoformat(),
+            "created_at": isoformat_in_app_tz(video.created_at),
         }
+
+    @staticmethod
+    def build_list_items(videos: list, current_user_id: Optional[int] = None) -> list[dict]:
+        """
+        批量构建视频列表项响应（用于观看历史/收藏等场景），减少 Redis 往返次数。
+        """
+        if not videos:
+            return []
+
+        video_ids = [v.id for v in videos]
+
+        view_count_map: dict[int, int] = {}
+        try:
+            keys = [f"video:view_count:{vid}" for vid in video_ids]
+            values = redis_service.redis.mget(keys)
+            for vid, raw in zip(video_ids, values):
+                if raw is not None and raw != "":
+                    try:
+                        view_count_map[vid] = int(raw)
+                    except Exception:
+                        pass
+        except Exception:
+            view_count_map = {}
+
+        is_liked_list: list[bool] = [False] * len(video_ids)
+        if current_user_id:
+            try:
+                pipe = redis_service.redis.pipeline()
+                for vid in video_ids:
+                    pipe.sismember(f"likes:video:{vid}", current_user_id)
+                results = pipe.execute()
+                is_liked_list = [bool(x) for x in results]
+            except Exception:
+                is_liked_list = [False] * len(video_ids)
+
+        items: list[dict] = []
+        for video, is_liked in zip(videos, is_liked_list):
+            items.append(
+                {
+                    "id": video.id,
+                    "title": video.title,
+                    "description": video.description,
+                    "cover_url": video.cover_url,
+                    "duration": video.duration,
+                    "view_count": view_count_map.get(video.id, video.view_count or 0),
+                    "like_count": video.like_count,
+                    "collect_count": video.collect_count,
+                    "is_liked": is_liked,
+                    "uploader": {
+                        "id": video.uploader.id,
+                        "username": video.uploader.username,
+                        "nickname": video.uploader.nickname,
+                        "avatar": video.uploader.avatar,
+                    },
+                    "category": {
+                        "id": video.category.id,
+                        "name": video.category.name,
+                    },
+                    "created_at": isoformat_in_app_tz(video.created_at),
+                }
+            )
+
+        return items

@@ -10,7 +10,8 @@
 """
 from pydantic import BaseModel, Field, field_serializer
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime
+from app.utils.timezone_utils import isoformat_in_app_tz
 
 
 # ==================== 请求模型 ====================
@@ -89,10 +90,15 @@ class VideoListItemResponse(BaseModel):
     view_count: int
     like_count: int
     collect_count: int
+    comment_count: int = 0
     danmaku_count: int = 0
     uploader: UploaderBriefResponse
     category: CategoryBriefResponse
     created_at: datetime
+
+    @field_serializer('created_at')
+    def serialize_created_at(self, value: datetime) -> str:
+        return isoformat_in_app_tz(value)
     
     class Config:
         from_attributes = True
@@ -160,10 +166,8 @@ class VideoBrief(BaseModel):
     
     @field_serializer('created_at')
     def serialize_created_at(self, value: datetime) -> str:
-        """序列化时间为ISO格式，确保包含UTC时区信息"""
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value.isoformat()
+        """序列化时间为 ISO 格式（默认输出北京时间 +08:00）"""
+        return isoformat_in_app_tz(value)
     
     class Config:
         from_attributes = True
@@ -186,6 +190,7 @@ class VideoDetailResponse(BaseModel):
     view_count: int
     like_count: int
     collect_count: int
+    comment_count: int = 0
     danmaku_count: int = 0
     uploader: UploaderBriefResponse
     category: CategoryBriefResponse
@@ -193,10 +198,8 @@ class VideoDetailResponse(BaseModel):
     
     @field_serializer('created_at')
     def serialize_created_at(self, value: datetime) -> str:
-        """序列化时间为ISO格式，确保包含UTC时区信息"""
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value.isoformat()
+        """序列化时间为 ISO 格式（默认输出北京时间 +08:00）"""
+        return isoformat_in_app_tz(value)
     
     class Config:
         from_attributes = True

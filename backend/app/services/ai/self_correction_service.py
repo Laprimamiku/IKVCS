@@ -21,6 +21,7 @@ from app.core.types import ErrorPattern, CorrectionRecord
 from app.core.database import SessionLocal
 from app.models.ai_correction import AiCorrection
 from app.models.ai_prompt_version import AiPromptVersion
+from app.utils.timezone_utils import isoformat_in_app_tz, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -32,17 +33,19 @@ class SelfCorrectionService:
         self.min_samples = settings.SELF_CORRECTION_MIN_SAMPLES
         self.analysis_days = settings.SELF_CORRECTION_ANALYSIS_DAYS
     
-    async def analyze_errors(self, days: Optional[int] = None) -> dict:
+    async def analyze_errors(self, days: Optional[int] = None, content_type: Optional[str] = None) -> dict:
         """
         分析最近 N 天的错误案例
         
         参数：
         - days: 分析天数（默认使用配置值）
+        - content_type: 内容类型过滤（"comment", "danmaku" 或 None）
         
         返回：
         {
             "error_patterns": [...],
             "suggestions": "...",
+            "draft_prompt": {...},  # 新增：草案Prompt
             "sample_count": 10,
             "analysis_date": "2025-12-25"
         }
@@ -54,15 +57,20 @@ class SelfCorrectionService:
         try:
             # 1. 查询修正记录
             cutoff_date = datetime.utcnow() - timedelta(days=days)
-            corrections = db.query(AiCorrection).filter(
+            query = db.query(AiCorrection).filter(
                 AiCorrection.created_at >= cutoff_date
-            ).all()
+            )
+            
+            if content_type:
+                query = query.filter(AiCorrection.content_type == content_type)
+            
+            corrections = query.all()
             
             if len(corrections) < self.min_samples:
                 return {
                     "error": f"样本数量不足（需要至少 {self.min_samples} 个，当前 {len(corrections)} 个）",
                     "sample_count": len(corrections),
-                    "analysis_date": datetime.utcnow().isoformat()
+                    "analysis_date": isoformat_in_app_tz(utc_now()),
                 }
             
             logger.info(f"[SelfCorrection] 开始分析 {len(corrections)} 个修正记录")
@@ -73,11 +81,15 @@ class SelfCorrectionService:
             # 3. 生成优化建议
             suggestions = await self._generate_suggestions(error_patterns, corrections)
             
+            # 4. 新增：生成草案Prompt
+            draft_prompt = await self._generate_draft_prompt(error_patterns, corrections, content_type)
+            
             return {
                 "error_patterns": error_patterns,
                 "suggestions": suggestions,
+                "draft_prompt": draft_prompt,
                 "sample_count": len(corrections),
-                "analysis_date": datetime.utcnow().isoformat()
+                "analysis_date": isoformat_in_app_tz(utc_now()),
             }
         finally:
             db.close()
@@ -240,6 +252,140 @@ class SelfCorrectionService:
             logger.error(f"[SelfCorrection] 生成优化建议异常: {e}")
             return self._generate_fallback_suggestions(error_patterns)
     
+    async def _generate_draft_prompt(
+        self, 
+        error_patterns: Dict[str, Any], 
+        corrections: List[AiCorrection],
+        content_type: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        生成草案Prompt
+        
+        基于错误模式分析，生成结构化的草案Prompt
+        """
+        try:
+            # 确定Prompt类型
+            if content_type == "danmaku":
+                prompt_type = "DANMAKU"
+                current_prompt = self.get_active_prompt("DANMAKU")
+            elif content_type == "comment":
+                prompt_type = "COMMENT"
+                current_prompt = self.get_active_prompt("COMMENT")
+            else:
+                # 根据修正记录中的主要类型决定
+                type_counts = {}
+                for corr in corrections:
+                    type_counts[corr.content_type] = type_counts.get(corr.content_type, 0) + 1
+                
+                if type_counts:
+                    main_type = max(type_counts.items(), key=lambda x: x[1])[0]
+                    prompt_type = "DANMAKU" if main_type == "danmaku" else "COMMENT"
+                    current_prompt = self.get_active_prompt(prompt_type)
+                else:
+                    prompt_type = "COMMENT"
+                    current_prompt = self.get_active_prompt("COMMENT")
+            
+            # 生成草案内容
+            if not current_prompt:
+                # 如果没有当前Prompt，使用默认模板
+                from app.services.ai.prompts import COMMENT_SYSTEM_PROMPT, DANMAKU_SYSTEM_PROMPT
+                current_prompt = DANMAKU_SYSTEM_PROMPT if prompt_type == "DANMAKU" else COMMENT_SYSTEM_PROMPT
+            
+            # 基于错误模式生成改进的Prompt
+            improvements = []
+            
+            if error_patterns.get("suggested_rules"):
+                improvements.extend(error_patterns["suggested_rules"][:3])  # 最多3条新规则
+            
+            if error_patterns.get("common_patterns"):
+                improvements.append(f"注意识别以下常见误判模式：{', '.join(error_patterns['common_patterns'][:2])}")
+            
+            # 构建草案Prompt（在原Prompt基础上添加改进）
+            draft_content = current_prompt
+            if improvements:
+                improvement_text = "\n\n## 基于反馈的改进规则：\n" + "\n".join([f"- {imp}" for imp in improvements])
+                draft_content += improvement_text
+            
+            # 添加示例（从修正记录中提取）
+            examples = self._extract_examples_from_corrections(corrections[:3])  # 最多3个示例
+            if examples:
+                example_text = "\n\n## 修正示例：\n" + examples
+                draft_content += example_text
+            
+            return {
+                "prompt_type": prompt_type,
+                "draft_prompt_content": draft_content,
+                "sample_ids": [corr.id for corr in corrections[:10]],  # 关联的样本ID
+                "risk_notes": error_patterns.get("weak_points", [])[:2],  # 风险提示
+                "expected_impact": f"预期改善 {len(error_patterns.get('common_patterns', []))} 类常见误判"
+            }
+            
+        except Exception as e:
+            logger.error(f"生成草案Prompt失败: {e}")
+            return {
+                "prompt_type": "COMMENT",
+                "draft_prompt_content": "",
+                "sample_ids": [],
+                "risk_notes": ["草案生成失败"],
+                "expected_impact": "无法评估"
+            }
+    
+    def _extract_examples_from_corrections(self, corrections: List[AiCorrection]) -> str:
+        """从修正记录中提取示例"""
+        examples = []
+        for i, corr in enumerate(corrections, 1):
+            original_score = corr.original_result.get("score", 0) if isinstance(corr.original_result, dict) else 0
+            corrected_score = corr.corrected_result.get("score", 0) if isinstance(corr.corrected_result, dict) else 0
+            
+            examples.append(f"""
+示例 {i}：
+内容：{corr.content[:50]}...
+错误判断：{original_score}分
+正确判断：{corrected_score}分
+修正原因：{corr.correction_reason}
+""")
+        
+        return "\n".join(examples)
+    
+    async def create_draft_version(
+        self,
+        prompt_type: str,
+        draft_content: str,
+        sample_ids: List[int],
+        risk_notes: List[str],
+        expected_impact: str,
+        created_by: Optional[int] = None
+    ) -> Optional[int]:
+        """
+        将草案Prompt保存为候选版本
+        
+        返回：
+        - int: 候选版本ID，失败返回None
+        """
+        try:
+            db = SessionLocal()
+            try:
+                # 创建候选版本（is_active=False）
+                candidate_version = AiPromptVersion(
+                    prompt_type=prompt_type,
+                    prompt_content=draft_content,
+                    update_reason=f"自动生成草案 - {expected_impact}。风险提示：{'; '.join(risk_notes)}",
+                    updated_by=created_by,
+                    is_active=False  # 候选版本，未激活
+                )
+                db.add(candidate_version)
+                db.commit()
+                db.refresh(candidate_version)
+                
+                logger.info(f"草案Prompt已保存为候选版本 {candidate_version.id}")
+                return candidate_version.id
+                
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"保存草案版本失败: {e}")
+            return None
+    
     def _generate_fallback_suggestions(self, error_patterns: Dict[str, Any]) -> str:
         """降级建议生成：当LLM失败时，使用规则基础建议"""
         suggestions = []
@@ -380,7 +526,7 @@ class SelfCorrectionService:
                     "update_reason": v.update_reason,
                     "updated_by": v.updated_by,
                     "is_active": v.is_active,
-                    "created_at": v.created_at.isoformat()
+                    "created_at": isoformat_in_app_tz(v.created_at),
                 }
                 for v in versions
             ]

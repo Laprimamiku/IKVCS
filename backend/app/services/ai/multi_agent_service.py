@@ -190,43 +190,27 @@ class MultiAgentService:
             original_text = response_text.strip()
             logger.debug(f"Agent 原始响应: {original_text[:200]}...")
             
-            # 第一步：清理 markdown 代码块标记
+            # 第一步：清理 markdown 代码块/围栏
             clean_text = original_text
-            
-            # 移除开头的代码块标记（```json 或 ```）
-            if clean_text.startswith("```"):
-                # 找到第一个换行符
-                first_newline = clean_text.find("\n")
-                if first_newline != -1:
-                    clean_text = clean_text[first_newline + 1:]
+            if "```" in clean_text:
+                parts = clean_text.split("```")
+                for part in parts:
+                    if "{" in part and "}" in part:
+                        clean_text = part
+                        break
                 else:
-                    # 如果没有换行符，直接移除开头的 ```
-                    clean_text = clean_text.lstrip("`")
-            
-            # 移除结尾的代码块标记
-            if clean_text.rstrip().endswith("```"):
-                # 找到最后一个换行符
-                last_newline = clean_text.rfind("\n")
-                if last_newline != -1:
-                    clean_text = clean_text[:last_newline]
-                else:
-                    # 如果没有换行符，直接移除结尾的 ```
-                    clean_text = clean_text.rstrip("`")
-            
-            # 移除所有残留的代码块标记
+                    clean_text = parts[0]
             clean_text = clean_text.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
             
-            # 第二步：提取 JSON 部分（如果文本中包含其他内容）
-            if not clean_text.startswith("{"):
-                # 尝试找到第一个 { 和最后一个 }
+            # 第二步：提取 JSON 部分（兼容前后解释性文字）
+            if "{" in clean_text and "}" in clean_text:
                 start_idx = clean_text.find("{")
                 end_idx = clean_text.rfind("}")
-                if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                if end_idx > start_idx:
                     clean_text = clean_text[start_idx:end_idx + 1]
-                else:
-                    # 如果找不到 JSON，记录错误
-                    logger.warning(f"无法找到 JSON 对象，清理后文本: {clean_text[:100]}")
-                    raise ValueError(f"无法找到有效的 JSON 对象")
+            else:
+                logger.warning(f"无法找到 JSON 对象，清理后文本: {clean_text[:100]}")
+                raise ValueError("无法找到有效的 JSON 对象")
             
             # 第三步：解析 JSON
             if not clean_text:
@@ -249,7 +233,7 @@ class MultiAgentService:
             
             return data
             
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"Agent 返回解析失败: {response_text[:100]}... 错误: {e}")
             # 返回默认值
             return {

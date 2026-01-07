@@ -122,3 +122,95 @@ async def like_danmaku(
         await redis_service.add_like(current_user.id, "danmaku", danmaku_id)
         count = await redis_service.get_like_count("danmaku", danmaku_id)
         return {"is_liked": True, "like_count": count}
+
+
+@router.get("/videos/{video_id}/danmakus/manage", response_model=List[DanmakuResponse])
+def get_danmakus_manage(
+    video_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """创作中心：获取弹幕列表（包含已删除弹幕）"""
+    from app.models.video import Video
+    from app.services.cache.redis_service import redis_service as global_redis_service
+
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="视频不存在")
+    if current_user.role != "admin" and current_user.id != video.uploader_id:
+        raise HTTPException(status_code=403, detail="无权管理该视频弹幕")
+
+    danmakus = (
+        db.query(Danmaku)
+        .filter(Danmaku.video_id == video_id)
+        .order_by(Danmaku.created_at.desc())
+        .all()
+    )
+
+    # 补充 like_count（来源 Redis）
+    for d in danmakus:
+        try:
+            setattr(d, "like_count", int(global_redis_service.redis.scard(f"likes:danmaku:{d.id}")))
+        except Exception:
+            setattr(d, "like_count", 0)
+
+    return danmakus
+
+
+@router.delete("/videos/{video_id}/danmakus/{danmaku_id}", response_model=dict)
+def delete_danmaku_manage(
+    video_id: int,
+    danmaku_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """删除弹幕（软删除）"""
+    from app.models.video import Video
+
+    danmaku = db.query(Danmaku).filter(Danmaku.id == danmaku_id, Danmaku.video_id == video_id).first()
+    if not danmaku:
+        raise HTTPException(status_code=404, detail="弹幕不存在")
+
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="视频不存在")
+
+    # 权限：弹幕作者 / 视频上传者 / 管理员
+    if (
+        current_user.role != "admin"
+        and current_user.id not in (danmaku.user_id, video.uploader_id)
+    ):
+        raise HTTPException(status_code=403, detail="无权删除该弹幕")
+
+    danmaku.is_deleted = True
+    db.commit()
+    return {"success": True, "message": "弹幕已删除"}
+
+
+@router.post("/videos/{video_id}/danmakus/{danmaku_id}/restore", response_model=dict)
+def restore_danmaku_manage(
+    video_id: int,
+    danmaku_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """恢复弹幕（软删除恢复）"""
+    from app.models.video import Video
+
+    danmaku = db.query(Danmaku).filter(Danmaku.id == danmaku_id, Danmaku.video_id == video_id).first()
+    if not danmaku:
+        raise HTTPException(status_code=404, detail="弹幕不存在")
+
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="视频不存在")
+
+    if (
+        current_user.role != "admin"
+        and current_user.id not in (danmaku.user_id, video.uploader_id)
+    ):
+        raise HTTPException(status_code=403, detail="无权恢复该弹幕")
+
+    danmaku.is_deleted = False
+    db.commit()
+    return {"success": True, "message": "弹幕已恢复"}

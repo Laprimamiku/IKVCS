@@ -117,7 +117,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 # 允许前端（Vue）访问后端 API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS.split(","),  # 从配置读取允许的域名
+    allow_origins=[o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()],  # 从配置读取允许的域名
     allow_credentials=True,  # 允许携带 Cookie
     allow_methods=["*"],  # 允许所有 HTTP 方法
     allow_headers=["*"],  # 允许所有 HTTP 头
@@ -156,6 +156,13 @@ async def startup_event():
     from app.api.websocket import start_redis_listener
     app.state.redis_task = asyncio.create_task(start_redis_listener())
     logger.info("后台 Redis 监听任务已启动并绑定")
+
+    # 高频短文本 AI 分析队列（批量处理/限峰）
+    try:
+        from app.services.ai.llm_service import llm_service
+        await llm_service.start_analysis_queue()
+    except Exception as e:
+        logger.error(f"AI 分析队列启动失败: {e}", exc_info=True)
     
     # GPU 管理：当前为手动模式
     # 注意：GPU 配置需要手动执行命令，详见 backend/docs/GPU_MANAGEMENT.md
@@ -170,9 +177,18 @@ async def startup_event():
 async def shutdown_event():
     """应用关闭时执行"""
     logger.info("应用关闭中...")
+
+    # 停止 AI 分析队列
+    try:
+        from app.services.ai.llm_service import llm_service
+        await llm_service.stop_analysis_queue()
+    except Exception as e:
+        logger.debug(f"AI 分析队列关闭失败（可忽略）: {e}")
     
-    # GPU 管理：仅在启用本地模型且启用 GPU 管理时执行
-    if not settings.USE_CLOUD_LLM and settings.GPU_MANAGEMENT_ENABLED:
+    # GPU 管理：仅在可能使用本地模型且启用 GPU 管理时执行
+    llm_mode = getattr(settings, "LLM_MODE", "hybrid").lower()
+    uses_local_llm = llm_mode in ("local_only", "hybrid")
+    if uses_local_llm and settings.GPU_MANAGEMENT_ENABLED:
         try:
             from app.utils.gpu_manager import get_gpu_manager
             gpu_manager = get_gpu_manager()
@@ -187,7 +203,7 @@ async def shutdown_event():
             logger.error(f"GPU 重置失败：{e}", exc_info=True)
             # GPU 重置失败不应阻止服务关闭
     else:
-        logger.debug("GPU 管理已禁用（使用云端模型或 GPU 管理未启用）")
+        logger.debug("GPU 管理已禁用（未使用本地模型或 GPU 管理未启用）")
     
     logger.info("应用关闭完成")
 
@@ -207,12 +223,18 @@ except Exception as e:
 import os
 upload_dir = os.path.abspath(settings.UPLOAD_DIR)
 video_dir = os.path.abspath(settings.VIDEO_DIR)
+avatar_dir = os.path.abspath(settings.UPLOAD_AVATAR_DIR)
+cover_dir = os.path.abspath(settings.UPLOAD_COVER_DIR)
 
 logger.info(f"挂载静态文件目录：/uploads -> {upload_dir}")
 logger.info(f"挂载静态文件目录：/videos -> {video_dir}")
+logger.info(f"挂载静态文件目录：/avatars -> {avatar_dir}")
+logger.info(f"挂载静态文件目录：/covers -> {cover_dir}")
 
 app.mount("/uploads", StaticFiles(directory=upload_dir), name="uploads")
 app.mount("/videos", StaticFiles(directory=video_dir), name="videos")
+app.mount("/avatars", StaticFiles(directory=avatar_dir), name="avatars")
+app.mount("/covers", StaticFiles(directory=cover_dir), name="covers")
 
 # 注册路由
 # 类比 Spring Boot：相当于在 Application.java 中配置 Controller 扫描路径
@@ -225,6 +247,17 @@ app.include_router(users.router, prefix="/api/v1/users", tags=["用户"])
 app.include_router(categories.router, prefix="/api/v1/categories", tags=["分类"])
 app.include_router(upload.router, prefix="/api/v1/upload", tags=["上传"])
 app.include_router(videos_router, prefix="/api/v1/videos", tags=["视频"])
+
+# 兼容无尾随斜杠访问：避免 /api/v1/videos -> /api/v1/videos/ 的 307 Redirect
+from app.api.videos.query import get_video_list
+app.add_api_route(
+    "/api/v1/videos",
+    get_video_list,
+    methods=["GET"],
+    name="get_video_list_noslash",
+    include_in_schema=False,
+)
+
 app.include_router(websocket.router, prefix="/api/v1/ws", tags=["WebSocket"])
 app.include_router(danmaku.router, prefix="/api/v1", tags=["弹幕"])
 app.include_router(comments.router, prefix="/api/v1", tags=["评论"]) 

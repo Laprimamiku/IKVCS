@@ -1,7 +1,7 @@
 import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { getVideoDetail, incrementViewCount, getVideoList } from "@/features/video/shared/api/video.api";
+import { getVideoDetail, getVideoList } from "@/features/video/shared/api/video.api";
 import type { Video, RecommendVideo } from "@/shared/types/entity";
 
 export function useVideoPlayer() {

@@ -51,6 +51,10 @@ class SubtitleReviewService:
         self.local_base_url = settings.LOCAL_LLM_BASE_URL.rstrip("/")
         self.local_model = settings.LOCAL_LLM_MODEL
         self.local_timeout = settings.LOCAL_LLM_TIMEOUT
+        self.mode = getattr(settings, "LLM_MODE", "hybrid").lower()
+        self.use_cloud = self.mode in ("cloud_only", "hybrid") and bool(settings.LLM_API_KEY)
+        # 字幕审核由云端模型负责；本地模型不用于字幕审核（可后续扩展）
+        self.use_local = False
     
     async def review_subtitle(
         self,
@@ -78,16 +82,32 @@ class SubtitleReviewService:
                 "score": 100,
                 "description": "字幕为空，无需审核"
             }
+
+        if self.mode == "off":
+            return {
+                "is_violation": False,
+                "is_suspicious": False,
+                "violation_type": "none",
+                "score": 100,
+                "description": "LLM_MODE=off，跳过字幕审核"
+            }
         
-        # 优先使用云端模型，失败时回退到本地模型
-        if settings.USE_CLOUD_LLM:
-            result = await self._review_with_cloud_model(subtitle_text)
-            if result is not None:
-                return result
-            logger.warning("云端模型审核失败，回退到本地模型")
-        
-        # 使用本地模型
-        return await self._review_with_local_model(subtitle_text)
+        # 字幕审核：统一走云端（当前不使用本地模型进行字幕审核）
+        if self.use_cloud:
+            logger.info(f"[SubtitleReview] 调用云端模型: {settings.LLM_MODEL} @ {settings.LLM_BASE_URL}")
+            cloud = await self._review_with_cloud_model(subtitle_text)
+            if cloud is not None:
+                return cloud
+            logger.warning("[SubtitleReview] 云端模型审核失败")
+
+        logger.warning("[SubtitleReview] 云端模型不可用，返回默认通过（可改为疑似以触发人工复核）")
+        return {
+            "is_violation": False,
+            "is_suspicious": False,
+            "violation_type": "none",
+            "score": 100,
+            "description": "云端模型不可用，跳过审核"
+        }
     
     async def _review_with_cloud_model(
         self,
@@ -96,7 +116,7 @@ class SubtitleReviewService:
         """使用云端模型审核字幕"""
         try:
             # 限制输入文本长度，避免超过模型限制
-            max_input_length = 8000  # 约8000字符，为系统提示词和响应留出空间
+            max_input_length = getattr(settings, "CLOUD_MAX_INPUT_CHARS_PER_VIDEO", 8000) or 8000
             if len(subtitle_text) > max_input_length:
                 logger.warning(f"字幕文本过长 ({len(subtitle_text)} 字符)，截取前 {max_input_length} 字符")
                 subtitle_text = subtitle_text[:max_input_length] + "...[文本已截断]"
@@ -150,12 +170,13 @@ class SubtitleReviewService:
         subtitle_text: str
     ) -> Optional[Dict[str, Any]]:
         """使用本地模型审核字幕"""
-        if not settings.LOCAL_LLM_ENABLED:
-            logger.warning("本地模型未启用，跳过字幕审核")
+        if not self.local_base_url or not self.local_model:
+            logger.warning("本地字幕审核配置缺失（base_url/model），跳过字幕审核")
             return None
         
         try:
-            async with httpx.AsyncClient(timeout=self.local_timeout) as client:
+            # trust_env=False: avoid routing localhost through system proxy
+            async with httpx.AsyncClient(timeout=self.local_timeout, trust_env=False) as client:
                 response = await client.post(
                     f"{self.local_base_url}/chat/completions",
                     json={

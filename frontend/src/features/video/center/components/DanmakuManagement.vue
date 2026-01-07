@@ -110,10 +110,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Search, Refresh, User, CircleCheckFilled } from "@element-plus/icons-vue";
-import { getDanmakus } from "@/features/video/player/api/danmaku.api";
+import { getManageDanmakus, deleteDanmaku, restoreDanmaku } from "@/features/video/center/api/interaction.api";
 import { formatDate } from "@/shared/utils/formatters";
 
 const props = defineProps<{
@@ -170,7 +170,7 @@ const formatTime = (seconds: number) => {
 const loadDanmakus = async () => {
   loading.value = true;
   try {
-    const response = await getDanmakus(props.videoId);
+    const response = await getManageDanmakus(props.videoId);
     if (response.success && response.data) {
       danmakus.value = Array.isArray(response.data) ? response.data : [];
       total.value = danmakus.value.length;
@@ -195,7 +195,7 @@ const handleDelete = async (danmakuId: number) => {
       cancelButtonText: "取消",
       type: "warning",
     });
-    // TODO: 实现删除弹幕 API
+    await deleteDanmaku(props.videoId, danmakuId);
     ElMessage.success("删除成功");
     loadDanmakus();
   } catch (error: any) {
@@ -207,8 +207,14 @@ const handleDelete = async (danmakuId: number) => {
 };
 
 const handleRestore = async (danmakuId: number) => {
-  // TODO: 实现恢复弹幕功能
-  ElMessage.info("恢复功能开发中");
+  try {
+    await restoreDanmaku(props.videoId, danmakuId);
+    ElMessage.success("恢复成功");
+    loadDanmakus();
+  } catch (error: any) {
+    console.error("恢复弹幕失败:", error);
+    ElMessage.error("恢复弹幕失败");
+  }
 };
 
 const getCategoryType = (category: string): string => {
@@ -222,9 +228,10 @@ const getCategoryType = (category: string): string => {
   return categoryMap[category] || "info";
 };
 
-onMounted(() => {
+watch(() => props.videoId, () => {
+  currentPage.value = 1;
   loadDanmakus();
-});
+}, { immediate: true });
 </script>
 
 <style lang="scss" scoped>
@@ -337,4 +344,3 @@ onMounted(() => {
   justify-content: center;
 }
 </style>
-

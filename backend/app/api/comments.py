@@ -62,6 +62,9 @@ def list_comments(
         sort_by=sort_by,
         parent_id=None  # 只查根评论
     )
+
+    # 调试：快速确认评论列表是否触发 N+1（正常情况下不应再出现逐条 parent_id 查询）
+    # logger.debug(f"[Comments] list video_id={video_id} items={len(items)} total={total}")
     
     # 计算总页数
     total_pages = (total + page_size - 1) // page_size
@@ -118,17 +121,116 @@ def delete_comment(
     """
     删除评论 (软删除)
     """
-    comment = CommentService.get_comment_by_id(db, comment_id)
+    from app.models.video import Video
+
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
     if not comment:
         raise HTTPException(status_code=404, detail="评论不存在")
-    
-    # 权限检查：只有作者或管理员可以删除 (此处简化为只检查作者)
-    if comment.user_id != current_user.id:
+
+    video = db.query(Video).filter(Video.id == comment.video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="视频不存在")
+
+    # 权限：评论作者 / 视频上传者 / 管理员
+    if (
+        current_user.role != "admin"
+        and current_user.id not in (comment.user_id, video.uploader_id)
+    ):
         raise HTTPException(status_code=403, detail="无权删除该评论")
-        
-    CommentService.delete_comment(db, comment_id)
-    
+
+    comment.is_deleted = True
+    db.commit()
     return {"success": True, "message": "评论已删除"}
+
+
+@router.post("/comments/{comment_id}/restore", response_model=dict)
+def restore_comment(
+    comment_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """恢复评论（软删除恢复）"""
+    from app.models.video import Video
+
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="评论不存在")
+
+    video = db.query(Video).filter(Video.id == comment.video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="视频不存在")
+
+    if (
+        current_user.role != "admin"
+        and current_user.id not in (comment.user_id, video.uploader_id)
+    ):
+        raise HTTPException(status_code=403, detail="无权恢复该评论")
+
+    comment.is_deleted = False
+    db.commit()
+    return {"success": True, "message": "评论已恢复"}
+
+
+@router.get("/videos/{video_id}/comments/manage", response_model=PageResult[CommentResponse])
+def list_comments_manage(
+    video_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    sort_by: str = Query("new", regex="^(new|hot)$"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """创作中心：获取评论列表（包含已删除评论）"""
+    from sqlalchemy.orm import joinedload, noload
+    from sqlalchemy import func
+    from app.models.video import Video
+
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="视频不存在")
+    if current_user.role != "admin" and current_user.id != video.uploader_id:
+        raise HTTPException(status_code=403, detail="无权管理该视频评论")
+
+    skip = (page - 1) * page_size
+    query = (
+        db.query(Comment)
+        .filter(Comment.video_id == video_id, Comment.parent_id == None)
+        .options(
+            joinedload(Comment.user),
+            joinedload(Comment.reply_to_user),
+            noload(Comment.replies),
+        )
+    )
+
+    if sort_by == "hot":
+        query = query.order_by(Comment.like_count.desc(), Comment.created_at.desc())
+    else:
+        query = query.order_by(Comment.created_at.desc())
+
+    total = query.order_by(None).count()
+    items = query.offset(skip).limit(page_size).all()
+
+    # reply_count：仅统计未删除回复
+    if items:
+        ids = [c.id for c in items]
+        rows = (
+            db.query(Comment.parent_id, func.count(Comment.id))
+            .filter(Comment.parent_id.in_(ids), Comment.is_deleted == False)
+            .group_by(Comment.parent_id)
+            .all()
+        )
+        reply_counts = {parent_id: int(cnt) for parent_id, cnt in rows if parent_id is not None}
+        for c in items:
+            setattr(c, "reply_count", reply_counts.get(c.id, 0))
+
+    total_pages = (total + page_size - 1) // page_size
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+    }
 
 
 @router.post("/comments/{comment_id}/like", response_model=dict)

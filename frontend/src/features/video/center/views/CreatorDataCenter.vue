@@ -49,7 +49,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
+import { ElMessage } from "element-plus";
 import { use } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { LineChart, BarChart, PieChart } from "echarts/charts";
@@ -64,6 +65,7 @@ import { DataAnalysis, VideoCamera, View, CircleCheckFilled, ChatDotRound, Star 
 import StatCard from "@/shared/components/atoms/StatCard.vue";
 import { formatNumber } from "@/shared/utils/formatters";
 import type { Video } from "@/shared/types/entity";
+import { getCreatorStats, type CreatorStatsResponse } from "@/features/video/center/api/creator.api";
 
 use([
   CanvasRenderer,
@@ -81,27 +83,47 @@ const props = defineProps<{
 }>();
 
 const viewChartPeriod = ref("30d");
+const stats = ref<CreatorStatsResponse | null>(null);
+const statsLoading = ref(false);
+
+const periodToDays = (period: string): number => {
+  if (period === "7d") return 7;
+  if (period === "90d") return 90;
+  return 30;
+};
+
+const loadCreatorStats = async () => {
+  statsLoading.value = true;
+  try {
+    const res = await getCreatorStats(periodToDays(viewChartPeriod.value));
+    if (res.success && res.data) {
+      stats.value = res.data;
+    } else {
+      stats.value = null;
+    }
+  } catch (e) {
+    stats.value = null;
+    ElMessage.warning("数据中心统计加载失败，将使用本地汇总数据");
+  } finally {
+    statsLoading.value = false;
+  }
+};
+
+watch(viewChartPeriod, () => {
+  loadCreatorStats();
+}, { immediate: true });
 
 // 统计数据
-const totalVideos = computed(() => props.videos.length);
-const totalViews = computed(() => props.videos.reduce((sum, v) => sum + (v.view_count || 0), 0));
-const totalLikes = computed(() => props.videos.reduce((sum, v) => sum + (v.like_count || 0), 0));
-const totalComments = computed(() => props.videos.reduce((sum, v) => sum + (v.comment_count || 0), 0));
-const totalCollects = computed(() => props.videos.reduce((sum, v) => sum + (v.collect_count || 0), 0));
+const totalVideos = computed(() => stats.value?.totals.total_videos ?? props.videos.length);
+const totalViews = computed(() => stats.value?.totals.total_views ?? props.videos.reduce((sum, v) => sum + (v.view_count || 0), 0));
+const totalLikes = computed(() => stats.value?.totals.total_likes ?? props.videos.reduce((sum, v) => sum + (v.like_count || 0), 0));
+const totalComments = computed(() => stats.value?.totals.total_comments ?? props.videos.reduce((sum, v) => sum + (v.comment_count || 0), 0));
+const totalCollects = computed(() => stats.value?.totals.total_collections ?? props.videos.reduce((sum, v) => sum + (v.collect_count || 0), 0));
 
 // 播放量趋势图
 const viewChartOption = computed(() => {
-  // 模拟最近30天的数据
-  const days = 30;
-  const dates = [];
-  const views = [];
-  
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    dates.push(`${date.getMonth() + 1}/${date.getDate()}`);
-    views.push(Math.floor(Math.random() * 100) + 50);
-  }
+  const dates = stats.value?.daily.dates ?? [];
+  const views = stats.value?.daily.views ?? [];
 
   return {
     tooltip: {
@@ -145,9 +167,9 @@ const viewChartOption = computed(() => {
 
 // 互动数据对比图
 const interactionChartOption = computed(() => {
-  const topVideos = [...props.videos]
+  const topVideos = (stats.value?.top_videos?.length ? stats.value.top_videos : [...props.videos]
     .sort((a, b) => (b.view_count || 0) - (a.view_count || 0))
-    .slice(0, 5);
+    .slice(0, 5)) as any[];
 
   return {
     tooltip: {
@@ -161,7 +183,7 @@ const interactionChartOption = computed(() => {
     },
     xAxis: {
       type: "category",
-      data: topVideos.map((v) => v.title.substring(0, 10) + "..."),
+      data: topVideos.map((v) => (v.title || "").substring(0, 10) + "..."),
     },
     yAxis: {
       type: "value",
@@ -301,7 +323,6 @@ const categoryChartOption = computed(() => {
   }
 }
 </style>
-
 
 
 

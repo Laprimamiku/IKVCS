@@ -3,9 +3,10 @@
 
 用于弹幕 API 的请求验证和响应序列化
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 from typing import Optional
 from datetime import datetime
+from app.utils.timezone_utils import isoformat_in_app_tz
 
 
 # ==================== 请求模型 ====================
@@ -53,9 +54,18 @@ class DanmakuResponse(BaseModel):
     color: str
     ai_score: Optional[int] = None
     ai_category: Optional[str] = None
+    ai_reason: Optional[str] = None
+    ai_confidence: Optional[float] = None
+    ai_source: Optional[str] = None
     is_highlight: bool = False
+    is_deleted: bool = False
+    like_count: int = 0
     created_at: datetime
     user: Optional[UserBriefInDanmaku] = None  # 用户信息
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        return isoformat_in_app_tz(value)
     
     class Config:
         from_attributes = True

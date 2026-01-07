@@ -1,8 +1,20 @@
 <template>
   <div class="smart-analysis">
     <div class="page-header">
-      <h2>视频智能分析报告</h2>
-      <p>AI 全方位分析视频内容、互动氛围及潜在风险。</p>
+      <div>
+        <h2>视频智能分析报告</h2>
+        <p>AI 全方位分析视频内容、互动氛围及潜在风险。</p>
+      </div>
+      <div class="header-actions">
+        <el-tag v-if="progress && progress.status && progress.status !== 'idle'" type="info" effect="plain">
+          重算进度：{{ progress.status }} {{ progress.progress ?? 0 }}%
+        </el-tag>
+        <el-button :loading="recomputeLoading" @click="triggerRecompute">手动触发重算</el-button>
+        <el-button type="primary" :loading="juryLoading" @click="triggerJury">
+          手动触发多智能体复核
+        </el-button>
+        <el-button type="primary" link @click="fetchData">刷新</el-button>
+      </div>
     </div>
 
     <div v-if="loading" class="loading-container">
@@ -141,7 +153,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, onBeforeUnmount, computed } from "vue";
 import { useRoute } from "vue-router";
 import { videoApi } from "@/features/video/shared/api/video.api";
 import { ElMessage } from "element-plus";
@@ -151,6 +163,10 @@ const route = useRoute();
 const loading = ref(true);
 const error = ref("");
 const data = ref<any>(null);
+const juryLoading = ref(false);
+const recomputeLoading = ref(false);
+const progress = ref<any>(null);
+let progressTimer: number | null = null;
 
 // 总互动数
 const totalCount = computed(() => {
@@ -209,15 +225,87 @@ const fetchData = async () => {
       error.value = "您无权查看此报告";
       ElMessage.warning("权限不足");
     } else {
-      error.value = "系统繁忙��请稍后再试";
+      error.value = "系统繁忙，请稍后再试";
     }
   } finally {
     loading.value = false;
   }
 };
 
+const fetchProgress = async () => {
+  const videoId = Number(route.params.videoId);
+  if (!videoId) return;
+  try {
+    const res = await videoApi.getAnalysisProgress(videoId);
+    if (res.success) progress.value = res.data;
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+const triggerRecompute = async () => {
+  const videoId = Number(route.params.videoId);
+  if (!videoId) {
+    ElMessage.error("无效的视频ID");
+    return;
+  }
+  recomputeLoading.value = true;
+  try {
+    const res = await videoApi.triggerAnalysisRecompute(videoId, { scope: "recent", limit: 200 });
+    if (res.success) {
+      ElMessage.success(res.message || "已触发重算");
+      await fetchProgress();
+
+      if (progressTimer) window.clearInterval(progressTimer);
+      progressTimer = window.setInterval(async () => {
+        await fetchProgress();
+        if (progress.value?.status === "idle") {
+          if (progressTimer) window.clearInterval(progressTimer);
+          progressTimer = null;
+        }
+      }, 1500);
+    } else {
+      ElMessage.error(res.message || "触发失败");
+    }
+  } catch (err) {
+    console.error(err);
+    ElMessage.error("触发失败，请稍后再试");
+  } finally {
+    recomputeLoading.value = false;
+  }
+};
+
+const triggerJury = async () => {
+  const videoId = Number(route.params.videoId);
+  if (!videoId) {
+    ElMessage.error("无效的视频ID");
+    return;
+  }
+  juryLoading.value = true;
+  try {
+    const res = await videoApi.triggerJuryReview(videoId, { scope: "recent", limit: 100 });
+    if (res.success) {
+      ElMessage.success(res.message || "已触发多智能体复核");
+      fetchData();
+    } else {
+      ElMessage.error(res.message || "触发失败");
+    }
+  } catch (err) {
+    console.error(err);
+    ElMessage.error("触发失败，请稍后再试");
+  } finally {
+    juryLoading.value = false;
+  }
+};
+
 onMounted(() => {
   fetchData();
+  fetchProgress();
+});
+
+onBeforeUnmount(() => {
+  if (progressTimer) window.clearInterval(progressTimer);
+  progressTimer = null;
 });
 </script>
 
@@ -230,6 +318,9 @@ onMounted(() => {
 
 .page-header {
   margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   h2 {
     font-size: 24px;
     margin: 0 0 8px 0;
@@ -239,6 +330,11 @@ onMounted(() => {
     color: #61666d;
     font-size: 14px;
     margin: 0;
+  }
+  .header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
   }
 }
 

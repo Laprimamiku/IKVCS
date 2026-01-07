@@ -16,6 +16,7 @@ from app.models.video import Video
 from app.models.user import User
 from app.models.interaction import UserCollection
 from app.schemas.interaction import CollectionCreate, ReportCreate
+from app.utils.timezone_utils import isoformat_in_app_tz, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +157,6 @@ class InteractionService(BaseService[Video, VideoRepository]):
             import os
             import json
             from app.core.config import settings
-            from datetime import datetime
             import asyncio
             
             video = db.query(Video).filter(Video.id == report_data.target_id).first()
@@ -178,10 +178,10 @@ class InteractionService(BaseService[Video, VideoRepository]):
                     "reported_by": user_id,
                     "report_reason": report_data.reason,
                     "report_description": report_data.description,
-                    "report_timestamp": datetime.utcnow().isoformat()
+                    "report_timestamp": isoformat_in_app_tz(utc_now()),
                 })
                 existing_report["has_report"] = True
-                existing_report["last_report_time"] = datetime.utcnow().isoformat()
+                existing_report["last_report_time"] = isoformat_in_app_tz(utc_now())
                 
                 video.review_report = json.dumps(existing_report, ensure_ascii=False)
                 db.commit()

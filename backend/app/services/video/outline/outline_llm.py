@@ -331,13 +331,20 @@ async def _call_cloud_llm_for_outline(
     subtitles: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
     """调用云端 LLM 提取大纲"""
+    timeout = 60.0
+    api_key = settings.LLM_API_KEY
+    base_url = (settings.LLM_BASE_URL or "").rstrip("/")
+    model = settings.LLM_MODEL
+
+    # 配置缺失时直接跳过，避免运行期 SyntaxError / 缺参数导致的崩溃
+    if not base_url or not model:
+        logger.error("[OutlineLLM] 云端模型配置缺失，跳过云端调用")
+        return []
+    if not api_key:
+        logger.warning("[OutlineLLM] 云端 API key 未配置，跳过云端调用")
+        return []
+
     try:
-        # 云端模型配置
-        api_key = settings.LLM_API_KEY
-        base_url = settings.LLM_BASE_URL.rstrip("/")
-        model = settings.LLM_MODEL
-        timeout = 60.0  # 云端模型超时时间
-        
         messages = [
             {
                 "role": "system", 
@@ -357,9 +364,9 @@ async def _call_cloud_llm_for_outline(
             "temperature": 0.3,
             "max_tokens": 3000,
         }
-        
-        logger.info(f"[OutlineLLM] 正在调用云端模型: {model} (超时: {timeout}s)")
-        
+
+        logger.info(f"[OutlineLLM] 正在调用云端模型: {model} @ {base_url} (超时: {timeout}s)")
+
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
                 f"{base_url}/chat/completions",
@@ -398,9 +405,21 @@ async def call_llm_for_outline(
     subtitles: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
     """调用 LLM 提取大纲（通用方法）"""
-    # 如果使用云端模型，调用云端API
-    if settings.USE_CLOUD_LLM:
-        return await _call_cloud_llm_for_outline(prompt, subtitles)
+    llm_mode = getattr(settings, "LLM_MODE", "hybrid").lower()
+    use_cloud = llm_mode in ("cloud_only", "hybrid") and bool(settings.LLM_API_KEY)
+    use_local = llm_mode in ("local_only", "hybrid")
+
+    # 云端优先（如启用）
+    if use_cloud:
+        cloud_result = await _call_cloud_llm_for_outline(prompt, subtitles)
+        if cloud_result:
+            return cloud_result
+        logger.warning("[OutlineLLM] 云端模型不可用，尝试回退到本地模型（如已启用）")
+        if not use_local:
+            return []
+    elif not use_local:
+        logger.info("[OutlineLLM] LLM_MODE=off，跳过大纲生成")
+        return []
     
     try:
         # 使用信号量控制并发，避免 GPU 负载波动（仅在本地模型模式下）
@@ -430,9 +449,9 @@ async def call_llm_for_outline(
                 {"role": "user", "content": prompt}
             ]
             
-            logger.info(f"[OutlineLLM] 正在调用本地模型: {model} (超时: {timeout}s)")
+            logger.info(f"[OutlineLLM] 正在调用本地模型: {model} @ {base_url} (超时: {timeout}s)")
             
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
                 response = await client.post(
                     f"{base_url}/chat/completions",
                     json={
@@ -468,4 +487,3 @@ async def call_llm_for_outline(
     except Exception as e:
         logger.error(f"LLM 提取大纲失败: {e}", exc_info=True)
         return []
-

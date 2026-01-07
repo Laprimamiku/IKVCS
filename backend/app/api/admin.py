@@ -34,6 +34,7 @@ from app.schemas.video import (
     UploaderBriefResponse,
     CategoryBriefResponse
 )
+from app.services.cache.redis_service import redis_service
 from app.services.video.video_stats_service import VideoStatsService
 from app.repositories.category_repository import CategoryRepository
 from app.schemas.category import CategoryCreate, CategoryResponse, CategoryUpdate
@@ -259,6 +260,22 @@ async def manage_videos(
     # 构建包含审核信息的响应
     import json
     items = []
+
+    # 批量读取 Redis 中的播放量，避免列表页逐条访问 Redis（N+1）
+    view_count_map: dict[int, int] = {}
+    try:
+        video_ids = [v.id for v in videos]
+        if video_ids:
+            keys = [f"video:view_count:{vid}" for vid in video_ids]
+            values = redis_service.redis.mget(keys)
+            for vid, raw in zip(video_ids, values):
+                if raw is not None and raw != "":
+                    try:
+                        view_count_map[int(vid)] = int(raw)
+                    except Exception:
+                        pass
+    except Exception:
+        view_count_map = {}
     for video in videos:
         # 解析 review_report JSON 字符串
         review_report_dict = None
@@ -279,7 +296,8 @@ async def manage_videos(
             video_url=video.video_url or "",
             subtitle_url=video.subtitle_url,  # 添加字幕 URL
             duration=video.duration,
-            view_count=VideoStatsService.get_merged_view_count(db, video.id),
+            # 避免 get_merged_view_count() 对每个 video 单独查一次 DB（N+1）
+            view_count=view_count_map.get(video.id, video.view_count or 0),
             like_count=video.like_count,
             collect_count=video.collect_count,
             danmaku_count=0,  # 可以后续添加
@@ -431,7 +449,11 @@ async def review_frames_only(
     )
     
     logger.info(f"管理员 {admin.username} 触发视频帧审核: video_id={video_id}")
-    model_info = f"云端视觉模型({settings.LLM_VISION_MODEL or settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "本地模型(moondream)"
+    vision_mode = getattr(settings, "VISION_MODE", "hybrid").lower()
+    has_vision_key = bool(getattr(settings, "LLM_VISION_API_KEY", "") or settings.LLM_API_KEY)
+    use_cloud_vision = vision_mode in ("cloud_only", "hybrid") and has_vision_key
+    vision_model_name = settings.LLM_VISION_MODEL or settings.LLM_MODEL or "unknown"
+    model_info = f"云端视觉模型({vision_model_name})" if use_cloud_vision else f"本地视觉模型({vision_model_name})"
     return {
         "message": f"帧审核任务已启动（{model_info}），请稍后查看审核结果",
         "video_id": video_id
@@ -497,7 +519,10 @@ async def review_subtitle_only(
     )
     
     logger.info(f"管理员 {admin.username} 触发字幕审核: video_id={video_id}, subtitle_path={subtitle_path}")
-    model_info = f"云端模型({settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "本地模型(qwen2.5:0.5b-instruct)"
+    llm_mode = getattr(settings, "LLM_MODE", "hybrid").lower()
+    use_cloud_text = llm_mode in ("cloud_only", "hybrid") and bool(settings.LLM_API_KEY)
+    model_name = settings.LLM_MODEL if use_cloud_text else settings.LOCAL_LLM_MODEL
+    model_info = f"云端模型({model_name})" if use_cloud_text else f"本地模型({model_name})"
     return {
         "message": f"字幕审核任务已启动（{model_info}），请稍后查看审核结果",
         "video_id": video_id
@@ -1041,10 +1066,11 @@ async def get_ai_config(
 ):
     """获取AI系统当前配置"""
     from app.core.config import settings
+    mode = getattr(settings, "LLM_MODE", "hybrid").lower()
     
     return {
         "local_llm": {
-            "enabled": settings.LOCAL_LLM_ENABLED,
+            "enabled": mode in ("local_only", "hybrid"),
             "model": settings.LOCAL_LLM_MODEL,
             "threshold_high": settings.LOCAL_LLM_THRESHOLD_HIGH,
             "threshold_low": settings.LOCAL_LLM_THRESHOLD_LOW

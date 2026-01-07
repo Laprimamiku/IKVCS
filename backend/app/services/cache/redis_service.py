@@ -5,6 +5,7 @@ Redis 操作服务 (修复版)
 from typing import List, Optional
 import json
 import logging
+from datetime import datetime
 
 import redis.asyncio as aioredis  # 异步库
 from redis import Redis           # 同步库
@@ -39,6 +40,19 @@ class RedisService:
         self.async_redis = aioredis.Redis(**redis_kwargs)
 
         logger.info(f"Redis 服务已初始化 (Host: {settings.REDIS_HOST})")
+
+    async def incr_metric(self, metric: str, expire_seconds: int = 86400) -> None:
+        """
+        增加一个 AI 量化计数，按日分片保存，默认保留 1 天。
+        用于成本/命中/降级等埋点。
+        """
+        try:
+            date_key = datetime.utcnow().strftime("%Y%m%d")
+            key = f"ai:metrics:{date_key}:{metric}"
+            await self.async_redis.incr(key)
+            await self.async_redis.expire(key, expire_seconds)
+        except Exception as e:
+            logger.debug(f"Redis 计量增量失败: {metric} - {e}")
 
     # ==================== 播放量缓存 ====================
 

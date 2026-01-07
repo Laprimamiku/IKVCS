@@ -27,8 +27,12 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 1440  # 24 小时
     
-    # LLM API 配置
-    LLM_API_KEY: str  # 必需，从 .env 读取
+    # LLM 模式配置 - 单一事实来源
+    # off | cloud_only | local_only | hybrid（默认混合）
+    LLM_MODE: str = "hybrid"
+    
+    # LLM API 配置（LLM_MODE=off/local_only 时允许为空）
+    LLM_API_KEY: str = ""  # 可选，off/local_only 模式时允许为空
     LLM_BASE_URL: str = "https://api.openai.com/v1"  # 默认值，可通过环境变量覆盖
     LLM_MODEL: str = "glm-4-flash"  # 默认值，可通过环境变量覆盖
     
@@ -37,39 +41,88 @@ class Settings(BaseSettings):
     LLM_VISION_BASE_URL: str = ""  # 图像识别API地址，可选
     LLM_VISION_MODEL: str = ""  # 图像识别模型名称，可选
     
-    # 云端/本地模型切换配置
-    USE_CLOUD_LLM: bool = True  # 是否使用云端大模型（True=云端，False=本地），可通过环境变量 USE_CLOUD_LLM 覆盖
+    # 视觉模式配置（可选但建议）
+    VISION_MODE: str = "hybrid"  # off | cloud_only | local_only | hybrid
     
-    # 本地 LLM 配置 (大小模型协同) - 仅在 USE_CLOUD_LLM=False 时使用
-    LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1"  # 默认 Ollama 地址，可通过环境变量 LOCAL_LLM_BASE_URL 覆盖
-    LOCAL_LLM_MODEL: str = "qwen2.5:0.5b"  # 默认使用 0.5B 模型，可通过环境变量 LOCAL_LLM_MODEL 覆盖
+    # 云端/本地模型切换配置（已废弃，请使用 LLM_MODE）
+    USE_CLOUD_LLM: bool = True  # 兼容性保留：用于旧逻辑与 .env，推荐使用 LLM_MODE
+    
+    # 本地 LLM 配置
+    LOCAL_LLM_ENABLED: bool = False  # 已废弃，请使用 LLM_MODE，仅作兼容性保留
+    LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1"  # 默认 Ollama 地址，可通过环境变量覆盖
+    LOCAL_LLM_MODEL: str = "qwen2.5:0.5b-instruct"  # 默认使用 0.5B 指令模型，可通过环境变量覆盖
     LOCAL_LLM_THRESHOLD_LOW: int = 30  # 本地模型低分置信区间下限
     LOCAL_LLM_THRESHOLD_HIGH: int = 80 # 本地模型高分置信区间上限
+    LOCAL_LLM_TIMEOUT: float = 60.0  # 本地模型超时时间（秒）
+    LOCAL_LLM_MAX_CONCURRENT: int = 1  # 本地模型最大并发，默认单并发保护显存
+    
+    # 本地模型协作配置
+    LOCAL_LLM_ESCALATE_TO_CLOUD: bool = True  # 本地模型低置信度时是否升级到云端
+    LOCAL_LLM_ESCALATE_MIN_CHARS: int = 50  # 短文本不升级到云端，优先省 token/RTT
+    LOCAL_LLM_ESCALATE_CONFIDENCE: float = 0.55  # 仅当本地置信度低于该值才升级到云端（降本增效）
+
+    # 本地视觉模型（暂不启用：抽帧审核/字幕审核由云端模型负责）
+    LOCAL_VISION_ENABLED: bool = False
+    LOCAL_VISION_MODEL: str = "moondream:latest"
+    
+    # 硬件优化配置（针对 i5-11260H/16GB/RTX 3050 4GB）
+    HARDWARE_PROFILE: str = "rtx3050_laptop"  # 硬件配置档案
+    GPU_MEMORY_LIMIT_MB: int = 3500  # GPU显存限制（MB），为RTX 3050 4GB预留500MB
+    CPU_THREADS_LIMIT: int = 4  # CPU线程限制，i5-11260H 6核限制为4线程避免过载
+    MEMORY_USAGE_LIMIT_MB: int = 12000  # 内存使用限制（MB），16GB预留4GB给系统
     
     # Embedding API 配置
     EMBEDDING_MODEL: str = "embedding-3-pro"  # Embedding 模型名称，默认值可通过环境变量覆盖
+    EMBEDDING_BASE_URL: str = "http://localhost:11434"  # 默认指向本地 Ollama，可通过环境变量覆盖
     
     # AI 分析配置
     AI_LOW_VALUE_KEYWORDS: str = "666,111,233,哈哈,打卡,第一,前排,来了"  # 低价值关键词列表（逗号分隔）
+    DANMAKU_ANALYSIS_MIN_LEN: int = 20  # 弹幕长度>=该值时强制进入分析（避免被采样跳过）
     
     # AI 语义缓存配置（Layer 2）
     AI_SEMANTIC_CACHE_TTL: int = 604800  # 语义缓存过期时间（秒），默认7天
     AI_SEMANTIC_CACHE_THRESHOLD: float = 0.95  # 语义相似度阈值（0-1），当前为预留参数
+    AI_SEMANTIC_CACHE_THRESHOLD_SHORT: float = 0.92  # 短文本语义缓存阈值（更保守，降低误命中）
+    AI_SEMANTIC_CACHE_MIN_LEN: int = 12  # 低于该长度不做 embedding/语义缓存，减少本地开销
     AI_VECTOR_DIMENSION: int = 64  # 用于构造缓存Key的向量维度数（取前N维）
     AI_VECTOR_QUANTIZATION_PRECISION: int = 3  # 向量量化精度（小数位数）
-    
-    # 本地 LLM 配置（仅使用本地模型）- 仅在 USE_CLOUD_LLM=False 时使用
-    LOCAL_LLM_ENABLED: bool = False  # 默认禁用本地模型（使用云端），可通过环境变量 LOCAL_LLM_ENABLED 覆盖（注意：此配置会被 USE_CLOUD_LLM 覆盖）
-    LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1"  # 可通过环境变量 LOCAL_LLM_BASE_URL 覆盖
-    LOCAL_LLM_MODEL: str = "qwen2.5:0.5b-instruct"  # 可通过环境变量 LOCAL_LLM_MODEL 覆盖
-    LOCAL_LLM_TIMEOUT: float = 60.0  # 本地模型超时时间（秒），大纲生成需要较长时间
 
-    # 云端模型并发控制配置
-    CLOUD_FRAME_REVIEW_MAX_CONCURRENT: int = 5  # 云端帧审核最大并发数（网络请求优化）
+    # Token节省和成本控制配置（高杠杆策略）
+    TOKEN_SAVE_ENABLED: bool = True  # 是否启用Token节省策略
+    TOKEN_SAVE_CONTENT_MAX_LENGTH: int = 500  # 内容最大长度，超出部分截断
+    TOKEN_SAVE_REASON_MAX_LENGTH: int = 50  # AI推理reason字段最大长度
+    TOKEN_SAVE_BATCH_SIZE: int = 10  # 批量处理大小，减少API调用次数
+    TOKEN_SAVE_SAMPLING_RATE: float = 0.3  # 采样率，只处理30%的低风险内容
+
+    # 高频短文本（弹幕/评论）降本增效：队列批处理 + 控制 trace 写入
+    AI_ANALYSIS_QUEUE_ENABLED: bool = True  # 弹幕/评论分析是否走队列批处理（推荐开启）
+    AI_ANALYSIS_QUEUE_WORKERS: int = 1  # 队列消费者数量（RTX 3050 建议 1）
+    AI_ANALYSIS_QUEUE_MAXSIZE: int = 2000  # 队列最大积压（避免异常流量导致内存膨胀）
+    AI_ANALYSIS_BATCH_SIZE: int = 30  # 单批处理最大条数
+    AI_ANALYSIS_BATCH_WINDOW_MS: int = 500  # 批量聚合窗口（毫秒）
+    AI_ANALYSIS_TRACE_MODE: str = "risky"  # none | all | risky | sample
+    AI_ANALYSIS_TRACE_SAMPLE_RATE: float = 0.05  # sample 模式下抽样比例
+    AI_ANALYSIS_TRACE_RISK_SCORE: int = 55  # 低于该分数默认写入 trace 便于审计
+    AI_ANALYSIS_TRACE_LOW_CONFIDENCE: float = 0.6  # 低置信度默认写入 trace
+    
+    # 云端模型并发控制配置（精细化）
+    CLOUD_FRAME_REVIEW_MAX_CONCURRENT: int = 2  # 云端帧审核最大并发数（RTX 3050优化）
+    CLOUD_MAX_CALLS_PER_VIDEO: int = 50  # 每个视频云端模型最大调用次数（成本控制）
+    CLOUD_MAX_INPUT_CHARS_PER_VIDEO: int = 5000  # 每个视频云端模型最大输入字符数（Token控制）
+    CLOUD_DAILY_BUDGET_CALLS: int = 1000  # 每日云端调用预算限制
+    CLOUD_HOURLY_BUDGET_CALLS: int = 100  # 每小时云端调用预算限制
+
+    # 多模态两阶段审核配置（Stage 1 低成本初筛 + Stage 2 精审）
+    TWO_STAGE_REVIEW_ENABLED: bool = True
+    TWO_STAGE_STAGE1_MAX_FRAMES: int = 8  # Stage 1 抽帧审核数量上限（用于控成本）
+    TWO_STAGE_STAGE2_TRIGGER_MIN_SCORE: int = 85  # Stage 1 最低分低于该值则进入 Stage 2
 
     # AI 多智能体配置（Layer 3.1-3.4）
-    MULTI_AGENT_ENABLED: bool = False  # 是否启用多智能体陪审团（True/False默认关闭）  
+    MULTI_AGENT_ENABLED: bool = False  # 是否启用多智能体陪审团（True/False默认关闭） 
     MULTI_AGENT_CONFLICT_THRESHOLD: float = 0.2  # 冲突阈值（分数差异超过20%视为冲突）
+
+    # 云端调用预算控制（移除重复定义）
+    # CLOUD_MAX_CALLS_PER_VIDEO 已在上方定义
 
     # AI 反馈式自我纠错配置（Layer 4）
     SELF_CORRECTION_ENABLED: bool = False  # 是否启用反馈式自我纠错
@@ -77,11 +130,13 @@ class Settings(BaseSettings):
     SELF_CORRECTION_AUTO_UPDATE: bool = False  # 是否自动更新Prompt（建议手动审核）
     SELF_CORRECTION_ANALYSIS_DAYS: int = 7  # 默认分析最近N天的错误
 
-    # GPU 管理配置（解决 LLM 推理时的电感啸叫问题）- 仅在 USE_CLOUD_LLM=False 时使用
-    GPU_MANAGEMENT_ENABLED: bool = False  # 是否启用 GPU 管理（默认禁用，因为使用云端模型），可通过环境变量 GPU_MANAGEMENT_ENABLED 覆盖
+    # GPU 管理配置（解决 LLM 推理时的电感啸叫问题）- 仅在本地模式时使用
+    GPU_MANAGEMENT_ENABLED: bool = False  # 是否启用 GPU 管理（默认禁用），可通过环境变量 GPU_MANAGEMENT_ENABLED 覆盖
     GPU_ID: int = 0  # GPU 设备 ID（默认 0）
     GPU_LOCKED_CLOCK: int = 1500  # 锁定的核心频率（MHz），默认 1500MHz（建议范围：1200-1500）
     GPU_POWER_LIMIT_RATIO: float = 0.75  # 功耗限制比例（0-1），默认 0.75（75%），建议范围：0.7-0.8
+    
+    # 视觉模式配置已移至上方
 
     # 文件存储配置
     STORAGE_ROOT: str = "./storage"  # 统一存储根目录
@@ -129,10 +184,15 @@ class Settings(BaseSettings):
     
     # CORS 配置（多个源用逗号分隔）
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"  # 默认值，可通过环境变量 CORS_ORIGINS 覆盖
+
+    # 应用时区（用于 API 输出时间序列化等）
+    # 建议使用 IANA 时区名，例如：Asia/Shanghai
+    APP_TIMEZONE: str = "Asia/Shanghai"
     
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"
 
 # 全局配置实例
 settings = Settings()

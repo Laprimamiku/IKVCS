@@ -176,6 +176,7 @@ export interface Danmaku {
   ai_score?: number;     // AI 评分 (0-100)
   ai_category?: string;  // AI 分类
   is_highlight?: boolean;// 是否为优质/高亮弹幕
+  is_deleted?: boolean;
   // [New] 新增点赞相关字段
   like_count?: number;   // 点赞数
   is_liked?: boolean;    // 当前用户是否已点赞
@@ -217,6 +218,7 @@ export interface Comment {
   reply_to_user_id?: number | null;
   content: string;
   like_count: number;
+  is_deleted?: boolean;
   created_at: string;
 
   // [New] 新增互动状态

@@ -6,6 +6,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
+from app.utils.timezone_utils import ensure_utc, utc_now
 
 def format_datetime(dt: datetime, format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
     """
@@ -48,8 +49,8 @@ def get_time_ago(dt: datetime) -> str:
     Returns:
         str: 相对时间描述
     """
-    now = datetime.utcnow()
-    delta = now - dt
+    now = utc_now()
+    delta = now - ensure_utc(dt)
     
     if delta.days > 365:
         years = delta.days // 365

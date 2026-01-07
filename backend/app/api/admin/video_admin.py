@@ -27,6 +27,7 @@ from app.schemas.video import (
 )
 from app.services.admin.video_admin_service import VideoAdminService
 from app.services.video.video_stats_service import VideoStatsService
+from app.services.cache.redis_service import redis_service
 from app.services.ai.video_review_service import video_review_service
 from app.repositories.upload_repository import UploadSessionRepository
 from app.services.video.subtitle_parser import SubtitleParser
@@ -115,6 +116,22 @@ async def manage_videos(
 
     # 构建包含审核信息的响应
     items = []
+
+    # 批量读取 Redis 中的播放量，避免列表页逐条访问 Redis（N+1）
+    view_count_map: dict[int, int] = {}
+    try:
+        video_ids = [v.id for v in videos]
+        if video_ids:
+            keys = [f"video:view_count:{vid}" for vid in video_ids]
+            values = redis_service.redis.mget(keys)
+            for vid, raw in zip(video_ids, values):
+                if raw is not None and raw != "":
+                    try:
+                        view_count_map[int(vid)] = int(raw)
+                    except Exception:
+                        pass
+    except Exception:
+        view_count_map = {}
     for video in videos:
         # 解析 review_report JSON 字符串
         review_report_dict = None
@@ -135,7 +152,8 @@ async def manage_videos(
             video_url=video.video_url or "",
             subtitle_url=video.subtitle_url,
             duration=video.duration,
-            view_count=VideoStatsService.get_merged_view_count(db, video.id),
+            # 避免 get_merged_view_count() 对每个 video 单独查一次 DB（N+1）
+            view_count=view_count_map.get(video.id, video.view_count or 0),
             like_count=video.like_count,
             collect_count=video.collect_count,
             danmaku_count=0,
@@ -238,7 +256,7 @@ async def review_frames_only(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
-    """管理员仅触发视频帧审核（使用 Moondream）"""
+    """管理员仅触发视频帧审核（云端/本地视觉模型，取决于 .env 的 VISION_MODE）"""
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(404, "视频不存在")
@@ -264,10 +282,7 @@ async def review_frames_only(
     )
     
     logger.info(f"管理员 {admin.username} 触发视频帧审核: video_id={video_id}")
-    return {
-        "message": "帧审核任务已启动（Moondream），请稍后查看审核结果",
-        "video_id": video_id
-    }
+    return {"message": "帧审核任务已启动，请稍后查看审核结果", "video_id": video_id}
 
 
 @router.post("/{video_id}/review-subtitle", summary="仅审核字幕（云端/本地模型）")
@@ -277,7 +292,7 @@ async def review_subtitle_only(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
-    """管理员仅触发字幕审核（使用 qwen2.5:0.5b-instruct）"""
+    """管理员仅触发字幕审核（云端/本地文本模型，取决于 .env 的 LLM_MODE）"""
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(404, "视频不存在")
@@ -315,7 +330,10 @@ async def review_subtitle_only(
     )
     
     logger.info(f"管理员 {admin.username} 触发字幕审核: video_id={video_id}, subtitle_path={subtitle_path}")
-    model_info = f"云端模型({settings.LLM_MODEL})" if settings.USE_CLOUD_LLM else "本地模型(qwen2.5:0.5b-instruct)"
+    llm_mode = getattr(settings, "LLM_MODE", "hybrid").lower()
+    use_cloud_text = llm_mode in ("cloud_only", "hybrid") and bool(settings.LLM_API_KEY)
+    model_name = settings.LLM_MODEL if use_cloud_text else settings.LOCAL_LLM_MODEL
+    model_info = f"云端模型({model_name})" if use_cloud_text else f"本地模型({model_name})"
     return {
         "message": f"字幕审核任务已启动（{model_info}），请稍后查看审核结果",
         "video_id": video_id
@@ -419,4 +437,3 @@ async def get_subtitle_content(
     except Exception as e:
         logger.error(f"读取字幕文件失败: {e}", exc_info=True)
         raise HTTPException(500, f"读取字幕文件失败: {str(e)}")
-

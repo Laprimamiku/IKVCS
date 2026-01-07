@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, noload
 from sqlalchemy import desc, func
 from typing import List, Optional, Tuple
 
@@ -117,17 +117,32 @@ class CommentRepository(BaseRepository):
             # 默认按时间倒序
             query = query.order_by(Comment.created_at.desc())
 
-        # 优化：先获取总数（使用轻量查询，不加载关联数据）
-        total = query.count()
+        # 优化：先获取总数（清除 ORDER BY，避免无意义的排序开销）
+        total = query.order_by(None).count()
 
         # 预加载用户信息，避免 N+1 查询
         query = query.options(
             joinedload(Comment.user),
-            joinedload(Comment.reply_to_user)
+            joinedload(Comment.reply_to_user),
+            # 列表接口不需要递归加载 replies，避免 Pydantic 序列化触发 N+1
+            noload(Comment.replies),
         )
         
         # 分页
         items = query.offset(skip).limit(limit).all()
+
+        # 批量统计 reply_count，避免每条评论单独查一次 replies（N+1）
+        if items:
+            ids = [c.id for c in items]
+            rows = (
+                db.query(Comment.parent_id, func.count(Comment.id))
+                .filter(Comment.parent_id.in_(ids), Comment.is_deleted == False)
+                .group_by(Comment.parent_id)
+                .all()
+            )
+            reply_counts = {parent_id: int(cnt) for parent_id, cnt in rows if parent_id is not None}
+            for c in items:
+                setattr(c, "reply_count", reply_counts.get(c.id, 0))
         
         return items, total
 

@@ -31,9 +31,10 @@
 
 # backend/app/schemas/interaction.py
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, field_serializer
 from typing import Optional, List
 from datetime import datetime
+from app.utils.timezone_utils import isoformat_in_app_tz
 
 # ==================== 点赞 Schema ====================
 class LikeCreate(BaseModel):
@@ -68,6 +69,10 @@ class CollectionResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        return isoformat_in_app_tz(value)
 
 # ==================== 举报 Schema (新增) ====================
 class ReportCreate(BaseModel):

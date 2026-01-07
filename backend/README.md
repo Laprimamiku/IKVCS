@@ -185,6 +185,28 @@ LLM_BASE_URL=https://api.deepseek.com/v1
 LLM_MODEL=deepseek-chat
 ```
 
+### 降本 & 稳定（弹幕/评论高频场景）
+
+推荐开启“队列批处理 + 短文本不升级云端 + 降低 trace 写入”，避免高并发时云端 RTT / 本地 GPU / DB IO 相互放大导致卡顿：
+
+```env
+# 高频短文本：入队批处理（减少瞬时并发与 DB 写放大）
+AI_ANALYSIS_QUEUE_ENABLED=true
+AI_ANALYSIS_QUEUE_WORKERS=1
+AI_ANALYSIS_QUEUE_MAXSIZE=2000
+AI_ANALYSIS_BATCH_SIZE=30
+AI_ANALYSIS_BATCH_WINDOW_MS=500
+
+# trace 默认只在风险/低置信时写入（减少 DB IO）
+AI_ANALYSIS_TRACE_MODE=risky
+AI_ANALYSIS_TRACE_RISK_SCORE=55
+AI_ANALYSIS_TRACE_LOW_CONFIDENCE=0.6
+
+# 短文本不做语义缓存/不升级云端（更省 token、更稳）
+AI_SEMANTIC_CACHE_MIN_LEN=12
+LOCAL_LLM_ESCALATE_MIN_CHARS=50
+```
+
 ### 开发规范
 
 - 所有 API 使用 `/api/v1` 前缀

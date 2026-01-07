@@ -1,8 +1,9 @@
 # backend/app/schemas/category.py
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 from typing import Optional, List
 from datetime import datetime
+from app.utils.timezone_utils import isoformat_in_app_tz
 
 # ==================== 基础模型 ====================
 class CategoryBase(BaseModel):
@@ -24,6 +25,10 @@ class CategoryResponse(CategoryBase):
     """分类响应信息"""
     id: int
     created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        return isoformat_in_app_tz(value)
     
     class Config:
         from_attributes = True

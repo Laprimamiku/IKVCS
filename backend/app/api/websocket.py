@@ -64,7 +64,10 @@ async def start_redis_listener():
     """
     后台任务：监听 Redis 频道并广播到 WebSocket
     """
-    redis_url = f"redis://:{settings.REDIS_PASSWORD}@{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}"
+    if settings.REDIS_PASSWORD:
+        redis_url = f"redis://:{settings.REDIS_PASSWORD}@{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}"
+    else:
+        redis_url = f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}"
     client = await aioredis.from_url(redis_url, encoding="utf-8", decode_responses=True)
     pubsub = client.pubsub()
     

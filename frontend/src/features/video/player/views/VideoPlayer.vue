@@ -231,7 +231,7 @@ import {
   useDanmaku,
   DANMAKU_DURATION,
 } from "@/features/video/player/composables/useDanmaku";
-import { incrementViewCount, getVideoOutline } from "@/features/video/shared/api/video.api";
+import { getVideoOutline } from "@/features/video/shared/api/video.api";
 import type { VideoOutlineEntry } from "@/shared/types/entity";
 
 const router = useRouter();
@@ -242,7 +242,7 @@ const showMoreActions = ref(false);
 const descExpanded = ref(false);
 const isFollowed = ref(false);
 const filterLowScore = ref(false);
-const hasPlayStarted = ref(false); // 记录是否已经开始播放过
+// 播放量统计在后端拉取详情时处理，这里不在播放事件中重复计数
 
 // Video data
 const { videoData, recommendVideos, videoIdRef } = useVideoPlayer();
@@ -327,23 +327,8 @@ const {
   handleTimeUpdate,
 } = usePlayerState();
 
-// 增强播放处理，首次播放时增加播放量
 const handlePlay = async () => {
   originalHandlePlay();
-  
-  // 只在首次播放时增加播放量
-  if (!hasPlayStarted.value && videoIdRef.value) {
-    hasPlayStarted.value = true;
-    try {
-      await incrementViewCount(videoIdRef.value);
-      // 更新本地播放量显示
-      if (videoData.value) {
-        videoData.value.view_count = (videoData.value.view_count || 0) + 1;
-      }
-    } catch (error) {
-      console.warn('播放量统计失败:', error);
-    }
-  }
 };
 
 // Video interactions

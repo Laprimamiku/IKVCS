@@ -19,6 +19,12 @@ class Danmaku(Base):
     color = Column(String(20), default='#FFFFFF')
     ai_score = Column(Integer, nullable=True)  # AI 评分 0-100
     ai_category = Column(String(50), nullable=True)  # AI 分类
+    ai_reason = Column(String(255), nullable=True)  # AI 理由（简短）
+    ai_confidence = Column(Float, nullable=True)  # 置信度 0-1
+    ai_source = Column(String(50), nullable=True)  # 来源：cloud/local/cache等
+    ai_prompt_version_id = Column(Integer, nullable=True)  # Prompt版本
+    ai_model = Column(String(100), nullable=True)  # 使用的模型
+    ai_trace = Column(String, nullable=True)  # 决策链路JSON字符串
     is_highlight = Column(Boolean, default=False)  # 是否高亮显示
     is_deleted = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)

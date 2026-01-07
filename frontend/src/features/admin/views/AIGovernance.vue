@@ -50,6 +50,7 @@
     </div>
 
     <div class="main-content">
+      <!-- 左侧：Prompt版本管理 -->
       <div class="panel evolution-panel">
         <div class="panel-header">
           <h3>
@@ -72,17 +73,28 @@
           >
             <div class="time">{{ formatDate(version.created_at) }}</div>
             <div class="reason">{{ version.update_reason }}</div>
-            <div class="meta">Operator ID: {{ version.updated_by }}</div>
+            <div class="meta">
+              <el-tag v-if="version.is_active" type="success" size="small">激活中</el-tag>
+              <span class="operator">Operator ID: {{ version.updated_by }}</span>
+            </div>
           </div>
         </div>
       </div>
 
+      <!-- 右侧：详情面板 -->
       <div class="panel detail-panel">
-        <div v-if="selectedVersion && !analysisResult" class="version-detail">
+        <!-- 版本详情视图 -->
+        <div v-if="selectedVersion && !analysisResult && !showShadowTest && !showCostDashboard" class="version-detail">
           <div class="detail-header">
             <h3>版本 V{{ selectedVersion.id }} 详情</h3>
             <div class="actions">
-               <el-switch
+              <el-button type="primary" size="small" @click="showShadowTest = true">
+                <el-icon><DataAnalysis /></el-icon> Shadow 测试
+              </el-button>
+              <el-button type="info" size="small" @click="showCostDashboard = true">
+                <el-icon><TrendCharts /></el-icon> 成本仪表盘
+              </el-button>
+              <el-switch
                 v-model="showDiff"
                 active-text="Diff 对比"
                 inactive-text="源码模式"
@@ -107,6 +119,164 @@
           </div>
         </div>
 
+        <!-- Shadow测试视图 -->
+        <div v-if="showShadowTest" class="shadow-test-view">
+          <div class="result-header">
+            <h3>
+              <el-icon><DataAnalysis /></el-icon>
+              Shadow 测试
+            </h3>
+            <el-button type="info" size="small" @click="showShadowTest = false">
+              返回
+            </el-button>
+          </div>
+
+          <div class="shadow-test-content">
+            <div class="test-config">
+              <h4>测试配置</h4>
+              <el-form :model="shadowTestForm" label-width="120px" size="small">
+                <el-form-item label="候选版本">
+                  <el-select v-model="shadowTestForm.candidateVersionId" placeholder="选择候选版本">
+                    <el-option 
+                      v-for="version in versions.filter(v => !v.is_active)" 
+                      :key="version.id"
+                      :label="`V${version.id} - ${version.update_reason}`"
+                      :value="version.id"
+                    />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="测试样本数">
+                  <el-input-number v-model="shadowTestForm.sampleLimit" :min="10" :max="200" />
+                </el-form-item>
+                <el-form-item>
+                  <el-button type="primary" @click="runShadowTest" :loading="shadowTestLoading">
+                    <el-icon><VideoPlay /></el-icon> 运行测试
+                  </el-button>
+                </el-form-item>
+              </el-form>
+            </div>
+
+            <div v-if="shadowTestResults" class="test-results">
+              <h4>测试结果</h4>
+              <div class="metrics-grid">
+                <div class="metric-card">
+                  <div class="metric-label">一致率</div>
+                  <div class="metric-value">{{ (shadowTestResults.consistency_rate * 100).toFixed(1) }}%</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">平均分数差异</div>
+                  <div class="metric-value">{{ shadowTestResults.avg_score_diff.toFixed(1) }}</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">预计成本</div>
+                  <div class="metric-value">¥{{ shadowTestResults.estimated_cost.toFixed(3) }}</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">样本数量</div>
+                  <div class="metric-value">{{ shadowTestResults.sample_count }}</div>
+                </div>
+              </div>
+              
+              <div class="test-recommendation">
+                <el-alert
+                  :title="getTestRecommendation(shadowTestResults)"
+                  :type="getTestRecommendationType(shadowTestResults)"
+                  show-icon
+                  :closable="false"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 成本仪表盘视图 -->
+        <div v-if="showCostDashboard" class="cost-dashboard-view">
+          <div class="result-header">
+            <h3>
+              <el-icon><TrendCharts /></el-icon>
+              成本与性能仪表盘
+            </h3>
+            <el-button type="info" size="small" @click="showCostDashboard = false">
+              返回
+            </el-button>
+          </div>
+
+          <div class="dashboard-content">
+            <!-- Token预算状态 -->
+            <div class="budget-section">
+              <h4>Token 预算状态</h4>
+              <div class="budget-cards">
+                <div class="budget-card">
+                  <div class="budget-header">
+                    <span>每日预算</span>
+                    <el-tag :type="getBudgetTagType(budgetStatus?.daily?.usage_rate || 0)">
+                      {{ ((budgetStatus?.daily?.usage_rate || 0) * 100).toFixed(1) }}%
+                    </el-tag>
+                  </div>
+                  <el-progress 
+                    :percentage="(budgetStatus?.daily?.usage_rate || 0) * 100"
+                    :color="getBudgetColor(budgetStatus?.daily?.usage_rate || 0)"
+                  />
+                  <div class="budget-details">
+                    已用: {{ budgetStatus?.daily?.used || 0 }} / {{ budgetStatus?.daily?.limit || 0 }}
+                  </div>
+                </div>
+                
+                <div class="budget-card">
+                  <div class="budget-header">
+                    <span>每小时预算</span>
+                    <el-tag :type="getBudgetTagType(budgetStatus?.hourly?.usage_rate || 0)">
+                      {{ ((budgetStatus?.hourly?.usage_rate || 0) * 100).toFixed(1) }}%
+                    </el-tag>
+                  </div>
+                  <el-progress 
+                    :percentage="(budgetStatus?.hourly?.usage_rate || 0) * 100"
+                    :color="getBudgetColor(budgetStatus?.hourly?.usage_rate || 0)"
+                  />
+                  <div class="budget-details">
+                    已用: {{ budgetStatus?.hourly?.used || 0 }} / {{ budgetStatus?.hourly?.limit || 0 }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 命中率统计 -->
+            <div class="metrics-section">
+              <h4>AI 处理命中率统计</h4>
+              <div class="metrics-chart">
+                <div class="chart-item" v-for="(value, key) in aiMetrics" :key="key">
+                  <div class="chart-label">{{ getMetricLabel(key) }}</div>
+                  <div class="chart-bar">
+                    <div 
+                      class="chart-fill" 
+                      :style="{ width: getMetricPercentage(key, value) + '%' }"
+                    ></div>
+                  </div>
+                  <div class="chart-value">{{ value }}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 优化建议 -->
+            <div class="optimization-section">
+              <h4>优化建议</h4>
+              <div class="optimization-cards">
+                <el-card v-for="suggestion in optimizationSuggestions" :key="suggestion.type" class="suggestion-card">
+                  <div class="suggestion-header">
+                    <el-icon :class="suggestion.icon" />
+                    <span>{{ suggestion.title }}</span>
+                  </div>
+                  <p>{{ suggestion.description }}</p>
+                  <div class="suggestion-impact">
+                    预计节省: <strong>{{ suggestion.impact }}</strong>
+                  </div>
+                </el-card>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 错误分析结果视图 -->
         <div v-if="analysisResult" class="analysis-result">
           <div class="result-header">
             <h3>
@@ -182,7 +352,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { Edit, Search, Setting, MagicStick, Document } from "@element-plus/icons-vue";
+import { Edit, Search, Setting, MagicStick, Document, DataAnalysis, TrendCharts, VideoPlay } from "@element-plus/icons-vue";
 import {
   adminAiApi,
   type PromptVersion,
@@ -204,6 +374,43 @@ const totalCorrections = ref(0); // 实际应从 API 获取
 const analyzing = ref(false);
 const analysisResult = ref<ErrorPatternAnalysis | null>(null);
 const newPromptDraft = ref("");
+
+// 新增：Shadow测试相关状态
+const showShadowTest = ref(false);
+const shadowTestLoading = ref(false);
+const shadowTestForm = ref({
+  candidateVersionId: null,
+  sampleLimit: 50
+});
+const shadowTestResults = ref(null);
+
+// 新增：成本仪表盘相关状态
+const showCostDashboard = ref(false);
+const budgetStatus = ref(null);
+const aiMetrics = ref({});
+const optimizationSuggestions = ref([
+  {
+    type: 'cache',
+    title: '提高缓存命中率',
+    description: '当前缓存命中率较低，建议优化缓存策略以减少重复计算',
+    impact: '30% Token消耗',
+    icon: 'el-icon-lightning'
+  },
+  {
+    type: 'sampling',
+    title: '优化采样策略',
+    description: '对低风险内容采用更激进的采样策略，减少不必要的分析',
+    impact: '20% 处理时间',
+    icon: 'el-icon-data-analysis'
+  },
+  {
+    type: 'batch',
+    title: '启用批量处理',
+    description: '将相似内容批量处理，提高API调用效率',
+    impact: '15% API调用',
+    icon: 'el-icon-collection'
+  }
+]);
 
 // Correction Dialog
 const correctionDialogVisible = ref(false);
@@ -286,6 +493,105 @@ const applyOptimization = async () => {
   }
 };
 
+// 新增：Shadow测试方法
+const runShadowTest = async () => {
+  if (!shadowTestForm.value.candidateVersionId) {
+    ElMessage.warning("请选择候选版本");
+    return;
+  }
+
+  shadowTestLoading.value = true;
+  try {
+    const res = await adminAiApi.shadowTestPrompt({
+      candidate_version_id: shadowTestForm.value.candidateVersionId,
+      sample_limit: shadowTestForm.value.sampleLimit
+    });
+
+    if (res.success) {
+      shadowTestResults.value = res.data;
+      ElMessage.success("Shadow测试完成");
+    }
+  } catch (e) {
+    ElMessage.error("Shadow测试失败");
+  } finally {
+    shadowTestLoading.value = false;
+  }
+};
+
+const getTestRecommendation = (results) => {
+  const consistencyRate = results.consistency_rate;
+  const avgDiff = results.avg_score_diff;
+  
+  if (consistencyRate > 0.9 && avgDiff < 5) {
+    return "建议发布：候选版本表现优秀，与当前版本高度一致";
+  } else if (consistencyRate > 0.8 && avgDiff < 10) {
+    return "谨慎发布：候选版本表现良好，但存在一定差异，建议进一步测试";
+  } else {
+    return "不建议发布：候选版本与当前版本差异较大，需要进一步优化";
+  }
+};
+
+const getTestRecommendationType = (results) => {
+  const consistencyRate = results.consistency_rate;
+  if (consistencyRate > 0.9) return "success";
+  if (consistencyRate > 0.8) return "warning";
+  return "error";
+};
+
+// 新增：成本仪表盘方法
+const fetchBudgetStatus = async () => {
+  try {
+    // 这里应该调用实际的API获取预算状态
+    // 暂时使用模拟数据
+    budgetStatus.value = {
+      daily: { used: 650, limit: 1000, usage_rate: 0.65 },
+      hourly: { used: 45, limit: 100, usage_rate: 0.45 }
+    };
+  } catch (e) {
+    console.error("获取预算状态失败", e);
+  }
+};
+
+const fetchAiMetrics = async () => {
+  try {
+    const res = await adminAiApi.getAiMetrics();
+    if (res.success) {
+      aiMetrics.value = res.data.metrics;
+    }
+  } catch (e) {
+    console.error("获取AI指标失败", e);
+  }
+};
+
+const getBudgetTagType = (rate) => {
+  if (rate > 0.8) return "danger";
+  if (rate > 0.6) return "warning";
+  return "success";
+};
+
+const getBudgetColor = (rate) => {
+  if (rate > 0.8) return "#f56c6c";
+  if (rate > 0.6) return "#e6a23c";
+  return "#67c23a";
+};
+
+const getMetricLabel = (key) => {
+  const labels = {
+    rule_hit: "规则命中",
+    exact_hit: "精确缓存",
+    semantic_hit: "语义缓存",
+    cloud_call: "云端调用",
+    local_call: "本地调用",
+    jury_call: "陪审团调用"
+  };
+  return labels[key] || key;
+};
+
+const getMetricPercentage = (key, value) => {
+  const total = Object.values(aiMetrics.value).reduce((sum, val) => sum + val, 0);
+  return total > 0 ? (value / total * 100) : 0;
+};
+
 // Manual Correction
 const openCorrectionDialog = () => {
   correctionDialogVisible.value = true;
@@ -330,6 +636,8 @@ const extractCodeBlock = (text: string) => {
 
 onMounted(() => {
   fetchVersions();
+  fetchBudgetStatus();
+  fetchAiMetrics();
 });
 </script>
 
@@ -631,6 +939,205 @@ onMounted(() => {
       &.primary {
         background: #764ba2;
         color: white;
+      }
+    }
+  }
+}
+
+/* 新增：Shadow测试样式 */
+.shadow-test-view {
+  padding: 24px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  
+  .test-config {
+    margin-bottom: 24px;
+    padding: 16px;
+    background: var(--bg-gray-1);
+    border-radius: 8px;
+    
+    h4 {
+      margin: 0 0 16px 0;
+      color: var(--text-primary);
+    }
+  }
+  
+  .test-results {
+    flex: 1;
+    
+    h4 {
+      margin: 0 0 16px 0;
+      color: var(--text-primary);
+    }
+    
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+      
+      .metric-card {
+        background: white;
+        padding: 16px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        
+        .metric-label {
+          font-size: 12px;
+          color: var(--text-tertiary);
+          margin-bottom: 8px;
+        }
+        
+        .metric-value {
+          font-size: 24px;
+          font-weight: bold;
+          color: var(--text-primary);
+        }
+      }
+    }
+    
+    .test-recommendation {
+      margin-top: 16px;
+    }
+  }
+}
+
+/* 新增：成本仪表盘样式 */
+.cost-dashboard-view {
+  padding: 24px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  
+  .dashboard-content {
+    flex: 1;
+    
+    h4 {
+      margin: 0 0 16px 0;
+      color: var(--text-primary);
+      font-size: 16px;
+    }
+  }
+  
+  .budget-section {
+    margin-bottom: 32px;
+    
+    .budget-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      
+      .budget-card {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        
+        .budget-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 12px;
+          
+          span {
+            font-weight: 600;
+            color: var(--text-primary);
+          }
+        }
+        
+        .budget-details {
+          margin-top: 8px;
+          font-size: 12px;
+          color: var(--text-tertiary);
+        }
+      }
+    }
+  }
+  
+  .metrics-section {
+    margin-bottom: 32px;
+    
+    .metrics-chart {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      
+      .chart-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 16px;
+        
+        &:last-child {
+          margin-bottom: 0;
+        }
+        
+        .chart-label {
+          width: 100px;
+          font-size: 14px;
+          color: var(--text-secondary);
+        }
+        
+        .chart-bar {
+          flex: 1;
+          height: 20px;
+          background: var(--bg-gray-1);
+          border-radius: 10px;
+          margin: 0 16px;
+          position: relative;
+          overflow: hidden;
+          
+          .chart-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #409EFF, #67C23A);
+            border-radius: 10px;
+            transition: width 0.3s ease;
+          }
+        }
+        
+        .chart-value {
+          width: 60px;
+          text-align: right;
+          font-weight: 600;
+          color: var(--text-primary);
+        }
+      }
+    }
+  }
+  
+  .optimization-section {
+    .optimization-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      
+      .suggestion-card {
+        .suggestion-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 12px;
+          font-weight: 600;
+          color: var(--text-primary);
+        }
+        
+        p {
+          margin: 0 0 12px 0;
+          color: var(--text-secondary);
+          line-height: 1.5;
+        }
+        
+        .suggestion-impact {
+          font-size: 12px;
+          color: var(--success-color);
+          
+          strong {
+            color: var(--success-color);
+          }
+        }
       }
     }
   }

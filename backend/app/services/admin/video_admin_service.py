@@ -14,6 +14,7 @@ from app.models.user import User
 from app.core.base_service import BaseService
 from app.core.error_codes import ErrorCode
 from app.services.cache.redis_service import redis_service
+from app.utils.timezone_utils import isoformat_in_app_tz, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ class VideoAdminService(BaseService[Video, VideoRepository]):
         # 更新审核报告，记录管理员操作
         review_report = {
             "message": "管理员审核通过",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": isoformat_in_app_tz(utc_now()),
             "admin_id": admin.id,
             "admin_username": admin.username,
             "original_status": original_status,
@@ -127,7 +128,7 @@ class VideoAdminService(BaseService[Video, VideoRepository]):
         # 更新审核报告，记录管理员操作
         review_report = {
             "message": "管理员审核拒绝",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": isoformat_in_app_tz(utc_now()),
             "admin_id": admin.id,
             "admin_username": admin.username
         }
@@ -213,4 +214,3 @@ class VideoAdminService(BaseService[Video, VideoRepository]):
         redis_service.invalidate_video_cache(video_id)
         
         return {"message": "视频已恢复发布"}
-

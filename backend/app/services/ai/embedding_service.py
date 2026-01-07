@@ -1,14 +1,6 @@
-"""Embedding 向量服务
+"""Embedding vector service – wraps local Ollama qwen3-embedding:0.6b."""
 
-基于 Zhipu AI Embedding 模型的封装（已注释，暂时不使用），
-用于为弹幕/评论文本生成语义向量，
-后续可结合 Redis / 向量数据库做语义缓存或相似度搜索。
-
-模型配置通过 settings.EMBEDDING_MODEL 读取，默认使用 embedding-3-pro。
-
-注意：智谱清言 API 调用已注释，暂时不使用。
-"""
-
+import asyncio
 import logging
 from typing import List, Optional
 
@@ -20,108 +12,84 @@ logger = logging.getLogger(__name__)
 
 
 class EmbeddingService:
-    """Zhipu Embedding 服务封装（已注释，暂时不使用）
-
-    说明：
-    - 模型名称从配置读取（settings.EMBEDDING_MODEL）
-    - 使用异步 HTTP 客户端，兼容 FastAPI 的 async 调用链
-    - 对网络错误、超时、返回结构异常做统一兜底
-    
-    注意：智谱清言 API 调用已注释，暂时不使用。
-    """
+    """Ollama Embedding 封装"""
 
     def __init__(self) -> None:
-        # 从配置中读取 API 相关信息，避免硬编码
-        # 目前与 LLM 共用同一套 API KEY / BASE_URL
-        # self.api_key: str = settings.LLM_API_KEY  # 已注释，暂时不使用
-        # self.base_url: str = settings.LLM_BASE_URL.rstrip("/")  # 已注释，暂时不使用
-
-        # 从配置读取 Embedding 模型名称
-        # self.model: str = settings.EMBEDDING_MODEL  # 已注释，暂时不使用
-
-        # 请求超时时间（秒），可根据线上稳定性再做调整
+        self.base_url: str = settings.EMBEDDING_BASE_URL.rstrip("/")
+        self.model: str = settings.EMBEDDING_MODEL
         self.timeout: float = 15.0
+        self.max_retries: int = 3
+        self.retry_backoff: float = 1.5
 
     async def get_text_embedding(self, text: str) -> Optional[List[float]]:
-        """为单段文本生成向量表示（已注释，暂时不使用）
+        """Generate embedding via local Ollama /api/embeddings."""
+        clean_text = text.strip()
+        if not clean_text:
+            logger.warning("EmbeddingService: 空文本，不生成向量")
+            return None
+        if not self.base_url or not self.model:
+            logger.error("EmbeddingService: 基础配置缺失，跳过向量生成")
+            return None
 
-        参数说明：
-        - text: 需要做语义缓存 / 相似度搜索的原始文本
+        payload = {"model": self.model, "prompt": clean_text}
+        logger.info(f"[Embedding] 调用模型: {self.model} @ {self.base_url}")
 
-        返回：
-        - 成功时返回一维向量 (List[float])
-        - 失败时返回 None，并在日志中记录详细原因
-        
-        注意：智谱清言 API 调用已注释，暂时不使用。
-        """
-        # 智谱清言 API 调用已注释，暂时不使用
-        logger.warning("EmbeddingService: 智谱清言 API 调用已禁用，返回 None")
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                # trust_env=False: avoid routing localhost through system proxy (can cause 502 with empty body)
+                async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
+                    resp = await client.post(
+                        f"{self.base_url}/api/embeddings",
+                        json=payload,
+                    )
+            except httpx.ReadTimeout:
+                logger.warning(
+                    "EmbeddingService: 调用超时 (attempt %s/%s)",
+                    attempt,
+                    self.max_retries,
+                )
+                if attempt < self.max_retries:
+                    await asyncio.sleep(self.retry_backoff * attempt)
+                    continue
+                return None
+            except httpx.RequestError as e:
+                logger.error(
+                    "EmbeddingService: 网络请求异常 (attempt %s/%s): %s",
+                    attempt,
+                    self.max_retries,
+                    e,
+                )
+                if attempt < self.max_retries:
+                    await asyncio.sleep(self.retry_backoff * attempt)
+                    continue
+                return None
+
+            if resp.status_code != 200:
+                logger.error(
+                    "EmbeddingService: 请求失败 status=%s, body=%s",
+                    resp.status_code,
+                    resp.text,
+                )
+                # 对 5xx 进行快速重试，其它错误直接返回
+                if attempt < self.max_retries and resp.status_code >= 500:
+                    await asyncio.sleep(self.retry_backoff * attempt)
+                    continue
+                return None
+
+            try:
+                data = resp.json()
+            except ValueError as e:
+                logger.error("EmbeddingService: 解析返回 JSON 失败: %s", e)
+                return None
+
+            embedding = data.get("embedding")
+            if not isinstance(embedding, list) or not embedding:
+                logger.error("EmbeddingService: 返回向量为空或类型异常")
+                return None
+
+            return embedding
+
         return None
-        
-        # ========== 以下代码已注释，暂时不使用 ==========
-        # # 简单防御：空字符串或全是空白时直接返回 None
-        # clean_text = text.strip()
-        # if not clean_text:
-        #     logger.warning("EmbeddingService: 空文本，不生成向量")
-        #     return None
-        #
-        # headers = {
-        #     # Zhipu 兼容 OpenAI 风格的认证方式
-        #     "Authorization": f"Bearer {self.api_key}",
-        #     "Content-Type": "application/json",
-        # }
-        #
-        # payload = {
-        #     # 指定使用的向量模型
-        #     "model": self.model,
-        #     # 这里使用单条输入，后续如需要批量可以扩展新的接口
-        #     "input": clean_text,
-        # }
-        #
-        # try:
-        #     async with httpx.AsyncClient(timeout=self.timeout) as client:
-        #         resp = await client.post(
-        #             f"{self.base_url}/embeddings",
-        #             json=payload,
-        #             headers=headers,
-        #         )
-        #
-        #     if resp.status_code != 200:
-        #         # 将状态码和返回内容打印出来，便于线上排查
-        #         logger.error(
-        #             "EmbeddingService: 请求失败 status=%s, body=%s",
-        #             resp.status_code,
-        #             resp.text,
-        #         )
-        #         return None
-        #
-        #     data = resp.json()
-        #
-        #     # Zhipu 兼容 OpenAI Embeddings 返回格式：data[0].embedding
-        #     try:
-        #         embedding: List[float] = data["data"][0]["embedding"]
-        #     except (KeyError, IndexError, TypeError) as e:
-        #         logger.error("EmbeddingService: 解析返回结构失败: %s, body=%s", e, data)
-        #         return None
-        #
-        #     # 额外做一次长度检查（可选），有助于在模型升级时观察向量维度变化
-        #     if not isinstance(embedding, list) or not embedding:
-        #         logger.error("EmbeddingService: 返回向量为空或类型异常: %s", type(embedding))
-        #         return None
-        #
-        #     return embedding
-        #
-        # except httpx.ReadTimeout:
-        #     # 读超时：属于常见网络问题，写成 warning 即可
-        #     logger.warning("EmbeddingService: 调用超时 (ReadTimeout)")
-        #     return None
-        # except httpx.RequestError as e:
-        #     # RequestError 覆盖 DNS 解析失败、连接失败等情况
-        #     logger.error("EmbeddingService: 网络请求异常: %s", e)
-        #     return None
-        # except Exception as e:  # 防御性兜底，避免影响主流程
-        #     logger.error("EmbeddingService: 未知异常: %s", e)
-        #     return None
 
 
 # 全局单例，供其他模块直接导入使用

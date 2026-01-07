@@ -110,10 +110,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Search, Refresh, User, CircleCheckFilled, ChatDotRound } from "@element-plus/icons-vue";
-import { getComments, deleteComment } from "@/features/video/player/api/comment.api";
+import { deleteComment } from "@/features/video/player/api/comment.api";
+import { getManageComments, restoreComment } from "@/features/video/center/api/interaction.api";
 import { formatDate } from "@/shared/utils/formatters";
 
 const props = defineProps<{
@@ -168,7 +169,7 @@ const formatTime = (dateStr: string) => {
 const loadComments = async () => {
   loading.value = true;
   try {
-    const response = await getComments(props.videoId, {
+    const response = await getManageComments(props.videoId, {
       page: currentPage.value,
       page_size: pageSize.value,
       sort_by: 'new'
@@ -209,8 +210,14 @@ const handleDelete = async (commentId: number) => {
 };
 
 const handleRestore = async (commentId: number) => {
-  // TODO: 实现恢复评论功能
-  ElMessage.info("恢复功能开发中");
+  try {
+    await restoreComment(commentId);
+    ElMessage.success("恢复成功");
+    loadComments();
+  } catch (error: any) {
+    console.error("恢复评论失败:", error);
+    ElMessage.error("恢复评论失败");
+  }
 };
 
 const getLabelType = (label: string): string => {
@@ -224,9 +231,10 @@ const getLabelType = (label: string): string => {
   return labelMap[label] || "info";
 };
 
-onMounted(() => {
+watch(() => props.videoId, () => {
+  currentPage.value = 1;
   loadComments();
-});
+}, { immediate: true });
 </script>
 
 <style lang="scss" scoped>
@@ -332,4 +340,3 @@ onMounted(() => {
   justify-content: center;
 }
 </style>
-

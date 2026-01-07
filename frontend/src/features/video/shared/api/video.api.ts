@@ -118,6 +118,48 @@ export function getAnalysis(videoId: number) {
 }
 
 /**
+ * 获取AI分析明细（弹幕/评论）
+ */
+export function getAnalysisItems(videoId: number, params: Record<string, any>) {
+  return request.get<any>(`/videos/${videoId}/ai-analysis/items`, { params });
+}
+
+/**
+ * 触发AI分析重算（占位，后台任务需配合）
+ */
+export function triggerAnalysisRecompute(videoId: number, data?: { scope?: string; limit?: number }) {
+  return request.post<any>(`/videos/${videoId}/ai-analysis/recompute`, data);
+}
+
+/**
+ * 手动触发多智能体复核（仅上传者/管理员）
+ */
+export function triggerJuryReview(videoId: number, data?: { scope?: string; limit?: number }) {
+  return request.post<any>(`/videos/${videoId}/ai-analysis/jury`, data);
+}
+
+/**
+ * 查询AI分析重算进度
+ */
+export function getAnalysisProgress(videoId: number) {
+  return request.get<any>(`/videos/${videoId}/ai-analysis/progress`);
+}
+
+/**
+ * 管理端：获取 AI 配置概览
+ */
+export function getAiConfigOverview() {
+  return request.get<any>(`/admin/ai/config`);
+}
+
+/**
+ * 管理端：获取 AI 埋点计数
+ */
+export function getAiMetrics(params?: { target_date?: string; metrics?: string[] }) {
+  return request.get<any>(`/admin/ai/metrics`, { params });
+}
+
+/**
  * 获取视频大纲
  */
 export async function getVideoOutline(videoId: number) {
@@ -174,5 +216,11 @@ export const videoApi = {
   toggleVideoLike,
   toggleVideoCollect,
   getMyCollections,
-  getAnalysis // 包含新增的分析接口
+  getAnalysis,
+  getAnalysisItems,
+  triggerAnalysisRecompute,
+  triggerJuryReview,
+  getAnalysisProgress, // 包含新增的分析接口
+  getAiConfigOverview,
+  getAiMetrics
 };

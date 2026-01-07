@@ -3,9 +3,10 @@
 """
 from typing import List, Optional
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 # [修正点 1] 导入正确的类名 UserBriefResponse
 from app.schemas.user import UserBriefResponse
+from app.utils.timezone_utils import isoformat_in_app_tz
 
 # --- 基础模型 ---
 class CommentBase(BaseModel):
@@ -28,7 +29,12 @@ class CommentResponse(CommentBase):
     parent_id: Optional[int] = None
     reply_to_user_id: Optional[int] = None
     like_count: int
+    is_deleted: bool = False
     created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        return isoformat_in_app_tz(value)
     
     # [修正点 2] 使用正确的类型注解 UserBriefResponse
     user: Optional[UserBriefResponse] = None
@@ -37,6 +43,9 @@ class CommentResponse(CommentBase):
     # AI 分析字段
     ai_score: Optional[int] = None
     ai_label: Optional[str] = None
+    ai_reason: Optional[str] = None
+    ai_confidence: Optional[int] = None
+    ai_source: Optional[str] = None
     
     # 子评论预览 (用于列表展示)
     reply_count: int = 0
