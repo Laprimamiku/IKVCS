@@ -2,6 +2,7 @@
 应用配置管理
 从环境变量读取配置
 """
+from pathlib import Path
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -93,6 +94,8 @@ class Settings(BaseSettings):
     TOKEN_SAVE_REASON_MAX_LENGTH: int = 50  # AI推理reason字段最大长度
     TOKEN_SAVE_BATCH_SIZE: int = 10  # 批量处理大小，减少API调用次数
     TOKEN_SAVE_SAMPLING_RATE: float = 0.3  # 采样率，只处理30%的低风险内容
+    TOKEN_SAVE_PROMPT_COMPRESSION: str = "moderate"  # Prompt压缩策略: conservative/moderate/aggressive
+    TOKEN_SAVE_USE_COMPRESSED_PROMPTS: bool = False  # 是否使用压缩版Prompt模板（更激进，节省更多Token）
 
     # 高频短文本（弹幕/评论）降本增效：队列批处理 + 控制 trace 写入
     AI_ANALYSIS_QUEUE_ENABLED: bool = True  # 弹幕/评论分析是否走队列批处理（推荐开启）
@@ -190,7 +193,8 @@ class Settings(BaseSettings):
     APP_TIMEZONE: str = "Asia/Shanghai"
     
     class Config:
-        env_file = ".env"
+        # 固定从 backend/.env 加载，避免从不同启动目录执行时读不到 .env（导致 LLM_MODE 等切换失效）
+        env_file = str(Path(__file__).resolve().parents[2] / ".env")
         case_sensitive = True
         extra = "ignore"
 

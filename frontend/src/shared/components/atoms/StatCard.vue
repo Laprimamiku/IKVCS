@@ -1,5 +1,5 @@
 <template>
-  <div class="stat-card" :class="{ [variant]: variant }">
+  <div class="stat-card" :class="variant ? { [variant]: true } : {}">
     <div class="stat-icon-wrapper" v-if="$slots.icon">
       <slot name="icon"></slot>
     </div>
@@ -90,6 +90,7 @@ defineProps<{
   }
 }
 </style>
+
 
 
 

@@ -1,5 +1,5 @@
 <template>
-  <div class="loading-state" :class="{ [size]: size, fullscreen: fullscreen }">
+  <div class="loading-state" :class="{ ...(size ? { [size]: true } : {}), fullscreen: fullscreen }">
     <div class="loading-spinner" v-if="type === 'spinner'">
       <el-icon class="spinner-icon" :size="iconSize">
         <Loading />
@@ -75,6 +75,7 @@ defineProps<{
   }
 }
 </style>
+
 
 
 

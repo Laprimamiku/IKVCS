@@ -14,7 +14,7 @@
       <StatCard :value="formatNumber(totalViews)" label="总播放量" icon="View" variant="success" />
       <StatCard :value="formatNumber(totalLikes)" label="总点赞数" icon="CircleCheckFilled" variant="warning" />
       <StatCard :value="formatNumber(totalComments)" label="总评论数" icon="ChatDotRound" variant="default" />
-      <StatCard :value="formatNumber(totalCollects)" label="总收藏数" icon="Star" variant="info" />
+      <StatCard :value="formatNumber(totalCollects)" label="总收藏数" icon="Star" variant="default" />
     </div>
 
     <!-- 图表区域 -->
@@ -323,6 +323,7 @@ const categoryChartOption = computed(() => {
   }
 }
 </style>
+
 
 
 

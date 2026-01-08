@@ -1,5 +1,5 @@
 <template>
-  <div class="empty-state" :class="{ [size]: size }">
+  <div class="empty-state" :class="size ? { [size]: true } : {}">
     <div class="empty-icon" v-if="$slots.icon || icon">
       <slot name="icon">
         <el-icon v-if="icon" :size="iconSize"><component :is="icon" /></el-icon>
@@ -96,6 +96,7 @@ defineProps<{
   }
 }
 </style>
+
 
 
 

@@ -100,16 +100,60 @@ class LLMService:
         }
 
         # 高频短文本：队列批处理（降低云端 token + 避免 GPU/IO 峰值）
-        self.queue_enabled: bool = getattr(settings, "AI_ANALYSIS_QUEUE_ENABLED", False)
-        self._analysis_queue_maxsize: int = int(getattr(settings, "AI_ANALYSIS_QUEUE_MAXSIZE", 0) or 0)
+        def _as_bool(value: object, default: bool = False) -> bool:
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                return bool(value)
+            if isinstance(value, str):
+                v = value.strip().lower()
+                if v in {"1", "true", "t", "yes", "y", "on"}:
+                    return True
+                if v in {"0", "false", "f", "no", "n", "off"}:
+                    return False
+            return default
+
+        def _as_int(value: object, default: int) -> int:
+            if isinstance(value, bool):
+                return default
+            if isinstance(value, int):
+                return value
+            if isinstance(value, float):
+                return int(value)
+            if isinstance(value, str):
+                v = value.strip()
+                if not v:
+                    return default
+                try:
+                    return int(float(v))
+                except (TypeError, ValueError):
+                    return default
+            return default
+
+        def _as_float(value: object, default: float) -> float:
+            if isinstance(value, bool):
+                return default
+            if isinstance(value, (int, float)):
+                return float(value)
+            if isinstance(value, str):
+                v = value.strip()
+                if not v:
+                    return default
+                try:
+                    return float(v)
+                except (TypeError, ValueError):
+                    return default
+            return default
+
+        self.queue_enabled: bool = _as_bool(getattr(settings, "AI_ANALYSIS_QUEUE_ENABLED", False), False)
+        self._analysis_queue_maxsize: int = _as_int(getattr(settings, "AI_ANALYSIS_QUEUE_MAXSIZE", 0), 0)
         self._analysis_queue: asyncio.Queue[_AnalysisQueueItem] = asyncio.Queue(maxsize=max(0, self._analysis_queue_maxsize))
         self._analysis_pending: Set[Tuple[str, int]] = set()
         self._analysis_workers: List[asyncio.Task] = []
-        self._analysis_batch_size: int = max(1, getattr(settings, "AI_ANALYSIS_BATCH_SIZE", 30))
-        self._analysis_batch_window_s: float = max(
-            0.05, getattr(settings, "AI_ANALYSIS_BATCH_WINDOW_MS", 500) / 1000.0
-        )
-        self._analysis_worker_count: int = max(1, getattr(settings, "AI_ANALYSIS_QUEUE_WORKERS", 1))
+        self._analysis_batch_size: int = max(1, _as_int(getattr(settings, "AI_ANALYSIS_BATCH_SIZE", 30), 30))
+        batch_window_ms = _as_float(getattr(settings, "AI_ANALYSIS_BATCH_WINDOW_MS", 500), 500.0)
+        self._analysis_batch_window_s: float = max(0.05, batch_window_ms / 1000.0)
+        self._analysis_worker_count: int = max(1, _as_int(getattr(settings, "AI_ANALYSIS_QUEUE_WORKERS", 1), 1))
         
         # 记录当前配置
         logger.info(f"LLM Service 初始化完成:")
@@ -447,6 +491,22 @@ class LLMService:
         # 获取激活的 Prompt 版本
         system_prompt, prompt_version_id = self._get_active_prompt(content_type)
         
+        # 检查是否使用压缩版Prompt模板
+        use_compressed = getattr(settings, "TOKEN_SAVE_USE_COMPRESSED_PROMPTS", False)
+        if use_compressed and prompt_version_id is None:  # 仅在没有数据库版本时使用压缩版
+            try:
+                from app.services.ai.prompts_compressed import (
+                    DANMAKU_SYSTEM_PROMPT_COMPRESSED,
+                    COMMENT_SYSTEM_PROMPT_COMPRESSED
+                )
+                if content_type == "danmaku":
+                    system_prompt = DANMAKU_SYSTEM_PROMPT_COMPRESSED
+                elif content_type == "comment":
+                    system_prompt = COMMENT_SYSTEM_PROMPT_COMPRESSED
+                logger.debug(f"使用压缩版Prompt模板: {content_type}")
+            except ImportError:
+                logger.warning("压缩版Prompt模板不可用，使用标准版本")
+        
         # 优化Prompt以减少Token消耗
         optimized_prompt = token_optimizer.optimize_prompt_for_llm(system_prompt)
         
@@ -487,7 +547,7 @@ class LLMService:
         except Exception as e:
             logger.warning(f"Exact cache read failed: {e}")
 
-        # ==================== Layer 1.6: 语义缓存（需要 embedding，可为空） ====================
+        # ==================== Layer 1.6: 语义缓存（分层缓存策略） ====================
         sem_result = None
         embedding = None
         try:
@@ -498,18 +558,28 @@ class LLMService:
                 embedding = await embedding_service.get_text_embedding(optimized_content)
             if embedding:
                 sem_key_prefix = f"ai:semcache:{content_type}"
-                sem_cached = await redis_service.search_similar_vector(
-                    cache_key_prefix=sem_key_prefix,
-                    embedding=embedding,
-                    threshold=self._semantic_threshold_for(optimized_content),
-                )
-                if sem_cached:
-                    sem_result = json.loads(sem_cached)
-                    sem_result.setdefault("source", "cache_semantic")
-                    sem_result["prompt_version_id"] = prompt_version_id
-                    sem_result["decision_trace"] = trace + [{"step": "cache_semantic"}]
-                    await self._mark_metric("semantic_hit")
-                    return await self._maybe_use_jury(optimized_content, content_type, sem_result, force_jury)
+                
+                # 分层缓存策略：先尝试高阈值，再尝试低阈值
+                thresholds = [
+                    self._semantic_threshold_for(optimized_content),  # 基础阈值
+                    self._semantic_threshold_for(optimized_content) - 0.03,  # 降低3%作为第二层
+                    self._semantic_threshold_for(optimized_content) - 0.05,  # 降低5%作为第三层
+                ]
+                
+                for threshold in thresholds:
+                    sem_cached = await redis_service.search_similar_vector(
+                        cache_key_prefix=sem_key_prefix,
+                        embedding=embedding,
+                        threshold=threshold,
+                    )
+                    if sem_cached:
+                        sem_result = json.loads(sem_cached)
+                        sem_result.setdefault("source", "cache_semantic")
+                        sem_result["prompt_version_id"] = prompt_version_id
+                        sem_result["decision_trace"] = trace + [{"step": "cache_semantic", "threshold": threshold}]
+                        await self._mark_metric("semantic_hit")
+                        logger.info(f"语义缓存命中 (阈值={threshold:.2f}): {optimized_content[:20]}...")
+                        return await self._maybe_use_jury(optimized_content, content_type, sem_result, force_jury)
         except Exception as e:
             logger.warning(f"Semantic cache failed: {e}")
 
@@ -545,15 +615,19 @@ class LLMService:
                 # 调用模型
                 if model_type == "cloud_text":
                     # 云端调用：可选采样/预算控制（本地推理仍可跑，云端只处理“不确定/高风险”）
-                    if not await token_optimizer.should_process_content(content, content_type, priority):
-                        await self._mark_metric("cloud_skip_optimizer")
-                        continue
+                    # 注意：采样策略仅用于 hybrid（本地优先 + 云端兜底）以降本增效；
+                    # cloud_only 模式下若采样跳过，会导致没有任何模型推理，影响“强制云端”的预期。
+                    if self.mode == "hybrid":
+                        if not await token_optimizer.should_process_content(content, content_type, priority):
+                            await self._mark_metric("cloud_skip_optimizer")
+                            continue
                     logger.info(
                         "[AIText] cloud_try type=%s model=%s chars=%s",
                         content_type,
                         getattr(model_config, "name", "unknown"),
                         len(optimized_content),
                     )
+                    await self._mark_metric("cloud_attempt")
                     result = await self._call_cloud_model(optimized_content, optimized_prompt, model_config)
                     if result:
                         self._update_budget(video_id, input_chars)
@@ -676,16 +750,33 @@ class LLMService:
                 )
                 if resp.status_code != 200:
                     logger.error(f"Cloud Model API Error {resp.status_code}: {resp.text}")
+                    await self._mark_metric("cloud_http_error")
+                    if 400 <= resp.status_code < 500:
+                        await self._mark_metric("cloud_http_4xx")
+                    if 500 <= resp.status_code < 600:
+                        await self._mark_metric("cloud_http_5xx")
+                    if resp.status_code == 429:
+                        await self._mark_metric("cloud_http_429")
                     return None
                 
                 response_text = resp.json()["choices"][0]["message"]["content"]
-                result = self._parse_response(response_text, "cloud")
+                data = self._parse_json_from_text(response_text)
+                if not data:
+                    logger.warning(f"Cloud JSON parse failed: {response_text[:300]}...")
+                    await self._mark_metric("cloud_parse_error")
+                    return None
+
+                result = self.default_response.copy()
+                result.update(data)
+                if "confidence" not in result and isinstance(result.get("score"), (int, float)):
+                    result["confidence"] = max(0.0, min(1.0, result["score"] / 100))
                 result["source"] = "cloud_llm"
                 result["model_name"] = model_config.name
                 return result
                 
         except Exception as e:
             logger.error(f"Cloud model call failed: {e}")
+            await self._mark_metric("cloud_exception")
             return None
 
     async def _call_local_model(self, content: str, content_type: str, model_config) -> Optional[AIContentAnalysisResult]:
@@ -956,12 +1047,59 @@ class LLMService:
 
     # ==================== 解析 ====================
 
+    def _parse_json_from_text(self, text: str) -> Optional[dict]:
+        """
+        从模型输出中尽量提取 JSON 对象。
+        兼容：```json ... ``` + 额外说明/Markdown。
+        """
+        if not text:
+            return None
+
+        def _cleanup(candidate: str) -> str:
+            c = (candidate or "").strip()
+            # 兼容模型输出的“尾逗号”
+            c = re.sub(r",\s*([}\]])", r"\1", c)
+            return c
+
+        # 1) 优先解析 fenced code block（通常最干净）
+        try:
+            for m in re.finditer(r"```(?:json)?\s*([\s\S]*?)\s*```", text, flags=re.IGNORECASE):
+                candidate = _cleanup(m.group(1) or "")
+                if not candidate:
+                    continue
+                obj = json.loads(candidate)
+                if isinstance(obj, dict):
+                    return obj
+        except Exception:
+            pass
+
+        # 2) 去除 code fence 后直接 json.loads
+        clean_text = _cleanup(re.sub(r"```json\s*|\s*```", "", text, flags=re.IGNORECASE))
+        try:
+            obj = json.loads(clean_text)
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+
+        # 3) 再退化：截取第一个 {...} 区间（与 local_model_service 同策略）
+        try:
+            start_obj = clean_text.find("{")
+            end_obj = clean_text.rfind("}")
+            if start_obj != -1 and end_obj != -1 and end_obj > start_obj:
+                obj = json.loads(clean_text[start_obj : end_obj + 1])
+                if isinstance(obj, dict):
+                    return obj
+        except Exception:
+            pass
+
+        return None
+
     def _parse_response(
         self, response_text: str, content_type: str
     ) -> AIContentAnalysisResult:
         try:
-            clean = response_text.replace("```json", "").replace("```", "").strip()
-            data = json.loads(clean)
+            data = self._parse_json_from_text(response_text) or {}
             result = self.default_response.copy()
             result.update(data)
             # 补充缺省字段
