@@ -22,8 +22,39 @@ router = APIRouter()
 
 
 class ReportHandleRequest(BaseModel):
-    action: str  # delete_target | ignore
+    action: str  # delete_target | ignore | disable | request_review
     admin_note: Optional[str] = None
+
+
+class TargetSnapshotVideo(BaseModel):
+    """视频目标快照"""
+    id: int
+    title: str
+    cover_url: Optional[str]
+    video_url: Optional[str]
+    uploader: Optional[dict]
+    status: int
+    review_status: int
+    created_at: Optional[str]
+
+
+class TargetSnapshotComment(BaseModel):
+    """评论目标快照"""
+    id: int
+    content: str
+    video_id: int
+    user: Optional[dict]
+    created_at: Optional[str]
+
+
+class TargetSnapshotDanmaku(BaseModel):
+    """弹幕目标快照"""
+    id: int
+    content: str
+    video_id: int
+    video_time: float
+    user: Optional[dict]
+    created_at: Optional[str]
 
 
 class ReportItemResponse(BaseModel):
@@ -35,6 +66,9 @@ class ReportItemResponse(BaseModel):
     status: int
     created_at: datetime
     reporter: UserResponse
+    target_snapshot: Optional[dict] = None  # 目标内容快照（视频/评论/弹幕）
+    admin_target_url: Optional[str] = None  # 管理端跳转链接
+    public_watch_url: Optional[str] = None  # 公开访问链接
 
     class Config:
         from_attributes = True
@@ -56,11 +90,48 @@ async def get_reports(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
-    """获取举报列表"""
+    """获取举报列表（包含目标内容预览）"""
     reports, total = AdminService.get_reports(db, status, page, page_size)
     
+    # 构建响应项，添加跳转链接
+    items = []
+    for report in reports:
+        # 构建管理端和公开访问链接
+        admin_target_url = None
+        public_watch_url = None
+        
+        if report.target_type == "VIDEO":
+            admin_target_url = f"/admin/videos/{report.target_id}"
+            public_watch_url = f"/videos/{report.target_id}"
+        elif report.target_type == "COMMENT":
+            snapshot = getattr(report, 'target_snapshot', None)
+            if snapshot and 'video_id' in snapshot:
+                admin_target_url = f"/admin/videos/{snapshot['video_id']}"
+                public_watch_url = f"/videos/{snapshot['video_id']}"
+        elif report.target_type == "DANMAKU":
+            snapshot = getattr(report, 'target_snapshot', None)
+            if snapshot and 'video_id' in snapshot:
+                admin_target_url = f"/admin/videos/{snapshot['video_id']}"
+                public_watch_url = f"/videos/{snapshot['video_id']}"
+        
+        # 构建响应项
+        item_dict = {
+            "id": report.id,
+            "target_type": report.target_type,
+            "target_id": report.target_id,
+            "reason": report.reason,
+            "description": report.description,
+            "status": report.status,
+            "created_at": report.created_at,
+            "reporter": report.reporter,
+            "target_snapshot": getattr(report, 'target_snapshot', None),
+            "admin_target_url": admin_target_url,
+            "public_watch_url": public_watch_url
+        }
+        items.append(ReportItemResponse(**item_dict))
+    
     return {
-        "items": reports,
+        "items": items,
         "total": total,
         "page": page,
         "page_size": page_size,

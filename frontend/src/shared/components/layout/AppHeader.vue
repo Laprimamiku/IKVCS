@@ -105,8 +105,7 @@
                 >
                   <span class="hot-rank" :class="'rank-' + (index + 1)">{{ index + 1 }}</span>
                   <span class="item-text">{{ item.keyword }}</span>
-                  <span v-if="item.isHot" class="hot-badge">热</span>
-                  <span v-if="item.isNew" class="new-badge">新</span>
+                  <span v-if="item.count && item.count > 100" class="hot-badge">热</span>
                 </div>
               </div>
             </div>
@@ -254,16 +253,7 @@ const searchContainerRef = ref<HTMLElement | null>(null);
 // Search suggestions data
 const suggestions = ref<string[]>([]);
 const searchHistory = ref<string[]>([]);
-const hotSearches = ref<{ keyword: string; isHot?: boolean; isNew?: boolean }[]>([
-  { keyword: "2024年度总结", isHot: true },
-  { keyword: "圣诞节特辑", isNew: true },
-  { keyword: "游戏实况", isHot: true },
-  { keyword: "美食教程" },
-  { keyword: "科技数码" },
-  { keyword: "音乐推荐" },
-  { keyword: "动漫新番", isNew: true },
-  { keyword: "生活日常" },
-]);
+const hotSearches = ref<{ keyword: string; count?: number }[]>([]);
 
 const emit = defineEmits(["login", "register"]);
 
@@ -274,9 +264,33 @@ onMounted(() => {
     searchHistory.value = JSON.parse(saved);
   }
   
+  // 加载热词榜
+  loadHotwords();
+  
   // Global keyboard shortcuts
   document.addEventListener('keydown', handleGlobalKeydown);
 });
+
+// Load hot words from API
+const loadHotwords = async () => {
+  try {
+    const { getSearchSuggestions } = await import("@/features/search/api/search.api");
+    const response = await getSearchSuggestions("", 10);
+    if (response.success && response.data) {
+      // 如果 API 返回热词，使用 API 数据
+      if (response.data.hotwords && response.data.hotwords.length > 0) {
+        hotSearches.value = response.data.hotwords.map((item: any) => ({
+          keyword: item.keyword || item,
+          count: item.count || 0
+        }));
+      }
+    }
+  } catch (error) {
+    console.error("加载热词榜失败:", error);
+    // 如果 API 失败，使用空数组（不显示热词）
+    hotSearches.value = [];
+  }
+};
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleGlobalKeydown);
@@ -325,28 +339,25 @@ const handleSearchBlur = () => {
   }, 200);
 };
 
-const handleSearchInput = () => {
+const handleSearchInput = async () => {
   selectedIndex.value = -1;
   if (keyword.value.trim()) {
-    // Simulate search suggestions (in real app, call API)
-    suggestions.value = generateSuggestions(keyword.value);
+    // 调用真实 API 获取搜索建议
+    try {
+      const { getSearchSuggestions } = await import("@/features/search/api/search.api");
+      const response = await getSearchSuggestions(keyword.value, 10);
+      if (response.success && response.data) {
+        suggestions.value = response.data.suggestions || [];
+      } else {
+        suggestions.value = [];
+      }
+    } catch (error) {
+      console.error("获取搜索建议失败:", error);
+      suggestions.value = [];
+    }
   } else {
     suggestions.value = [];
   }
-};
-
-const generateSuggestions = (query: string): string[] => {
-  // Mock suggestions based on query
-  const mockData = [
-    '游戏实况', '游戏攻略', '游戏解说', '游戏推荐',
-    '美食教程', '美食探店', '美食vlog',
-    '科技数码', '科技评测', '科技新闻',
-    '音乐推荐', '音乐翻唱', '音乐教学',
-    '动漫推荐', '动漫解说', '动漫混剪',
-  ];
-  return mockData.filter(item => 
-    item.toLowerCase().includes(query.toLowerCase())
-  ).slice(0, 10);
 };
 
 const handleSearch = () => {

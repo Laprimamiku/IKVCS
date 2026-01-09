@@ -3,19 +3,36 @@
     <div class="page-header">
       <h2>视频审核管理</h2>
       <div class="header-actions">
-        <div class="status-filter">
-          <el-button
-            v-for="status in statusOptions"
-            :key="status.value"
-            :type="currentStatus === status.value ? 'primary' : 'default'"
-            size="small"
-            @click="switchStatus(status.value)"
+        <div class="filter-group">
+          <el-select
+            v-model="currentCategory"
+            placeholder="全部分类"
+            clearable
+            style="width: 180px; margin-right: 12px;"
+            @change="handleCategoryChange"
+            :loading="categories.length === 0"
           >
-            {{ status.label }}
-          </el-button>
+            <el-option
+              v-for="category in categories"
+              :key="category.id"
+              :label="category.name"
+              :value="category.id"
+            />
+          </el-select>
+          <div class="status-filter">
+            <el-button
+              v-for="status in statusOptions"
+              :key="status.value"
+              :type="currentStatus === status.value ? 'primary' : 'default'"
+              size="small"
+              @click="switchStatus(status.value)"
+            >
+              {{ status.label }}
+            </el-button>
+          </div>
         </div>
-        <el-button class="refresh-btn" @click="loadData">
-          <i class="iconfont icon-refresh"></i> 刷新
+        <el-button class="refresh-btn" @click="loadData" :icon="Refresh">
+          刷新
         </el-button>
       </div>
     </div>
@@ -57,6 +74,17 @@
                 查看详情
               </el-button>
             </div>
+          </div>
+          
+          <!-- 举报状态展示 -->
+          <div v-if="video.is_reported" class="report-info">
+            <el-tag type="warning" size="small" effect="dark">
+              <el-icon><Warning /></el-icon>
+              被举报 ({{ video.open_report_count }}条待处理)
+            </el-tag>
+            <span v-if="video.last_reported_at" class="report-time">
+              最近: {{ formatDate(video.last_reported_at) }}
+            </span>
           </div>
           
           <div class="actions">
@@ -310,13 +338,17 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Refresh, View } from "@element-plus/icons-vue";
+import { Refresh, View, Warning } from "@element-plus/icons-vue";
 import { adminApi, type AuditVideoItem } from "../api/admin.api";
 import { formatDuration } from "@/shared/utils/formatters";
+import { getPublicCategories } from "@/features/video/shared/api/category.api";
+import type { Category } from "@/shared/types/entity";
 
 const videos = ref<AuditVideoItem[]>([]);
 const previewVideo = ref<AuditVideoItem | null>(null);
 const currentStatus = ref<number | null>(1); // 默认显示待审核视频
+const currentCategory = ref<number | null>(null); // 当前选中的分类
+const categories = ref<Category[]>([]); // 分类列表
 const reReviewing = ref<number | null>(null); // 正在重新审核的视频ID（已废弃，保留兼容）
 const reviewDetailsVisible = ref(false); // AI审核详情对话框显示状态
 const currentReviewVideo = ref<AuditVideoItem | null>(null); // 当前查看审核详情的视频
@@ -335,6 +367,7 @@ const statusOptions = [
   { label: '审核中', value: 1 },
   { label: '已发布', value: 2 },
   { label: '已拒绝', value: 3 },
+  { label: '已发布但被举报', value: 'reported' }, // 特殊状态：已发布但被举报
 ];
 
 const formatDate = (dateStr: string) => {
@@ -351,13 +384,62 @@ const formatSubtitleTime = (seconds: number) => {
 
 const loadData = async () => {
   try {
-    // 使用 manage_videos 接口，支持状态筛选
-    const res = await adminApi.manageVideos(1, 20, currentStatus.value);
-    // @ts-ignore
-    videos.value = res.items || res.data?.items || [];
+    // 如果选择的是"已发布但被举报"状态，需要特殊处理
+    let statusToQuery: number | null | undefined = currentStatus.value;
+    if (currentStatus.value === 'reported') {
+      // 查询已发布的视频，然后在前端筛选出被举报的
+      statusToQuery = 2; // 已发布状态
+    }
+
+    // 使用 manage_videos 接口，支持状态和分类筛选
+    const res = await adminApi.manageVideos(
+      1,
+      100, // 增加数量以支持前端筛选
+      statusToQuery,
+      currentCategory.value || undefined, // 确保 null 转换为 undefined
+      undefined // keyword 参数
+    );
+    
+    let videoList: any[] = [];
+    if (res.success && res.data) {
+      videoList = res.data.items || [];
+    } else {
+      // @ts-ignore
+      videoList = res.items || res.data?.items || [];
+    }
+
+    // 如果选择的是"已发布但被举报"状态，筛选出被举报的视频
+    if (currentStatus.value === 'reported') {
+      videoList = videoList.filter((video: any) => video.is_reported === true);
+    }
+
+    videos.value = videoList;
   } catch (e) {
     console.error(e);
+    ElMessage.error('加载视频列表失败');
+    videos.value = [];
   }
+};
+
+const loadCategories = async () => {
+  try {
+    const res = await getPublicCategories();
+    if (res && res.data && Array.isArray(res.data)) {
+      categories.value = res.data;
+    } else if (Array.isArray(res)) {
+      categories.value = res;
+    } else {
+      categories.value = [];
+    }
+  } catch (e) {
+    console.error('加载分类列表失败:', e);
+    ElMessage.warning('加载分类列表失败，将无法按分类筛选');
+    categories.value = [];
+  }
+};
+
+const handleCategoryChange = () => {
+  loadData();
 };
 
 const switchStatus = (status: number | null) => {
@@ -567,7 +649,10 @@ const getSubtitleReviewTitle = (isNotCompleted = false): string => {
   }
 };
 
-onMounted(loadData);
+onMounted(async () => {
+  await loadCategories();
+  await loadData();
+});
 </script>
 
 <style scoped lang="scss">
@@ -577,115 +662,111 @@ onMounted(loadData);
     justify-content: space-between;
     align-items: center;
     margin-bottom: 24px;
+    padding: 0 4px;
+
+    h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+      color: #303133;
+    }
 
     .header-actions {
       display: flex;
       align-items: center;
       gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
     }
 
     .status-filter {
       display: flex;
       gap: 8px;
+      flex-wrap: wrap;
     }
 
     .refresh-btn {
-      padding: 8px 16px;
-      background: #fff;
-      border: 1px solid #dcdfe6;
-      border-radius: 4px;
-      cursor: pointer;
-      &:hover {
-        color: var(--primary-color);
-        border-color: var(--primary-color);
+      .el-icon {
+        margin-right: 4px;
       }
     }
   }
 
   .video-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 24px;
+    padding: 0;
+
+    @media (max-width: 768px) {
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 16px;
+    }
   }
 
   .audit-card {
     background: #fff;
-    border-radius: 6px;
+    border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-    transition: transform 0.2s;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+    border: 1px solid #ebeef5;
 
     &:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      transform: translateY(-4px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+      border-color: var(--el-color-primary-light-7);
     }
 
     .cover-wrapper {
       position: relative;
-      height: 160px;
+      width: 100%;
+      height: 180px;
       cursor: pointer;
+      overflow: hidden;
+      background: #f5f7fa;
 
       .cover {
         width: 100%;
         height: 100%;
         object-fit: cover;
+        transition: transform 0.3s ease;
       }
+
+      &:hover .cover {
+        transform: scale(1.05);
+      }
+
       .duration {
         position: absolute;
         bottom: 8px;
         right: 8px;
-        background: rgba(0, 0, 0, 0.6);
+        background: rgba(0, 0, 0, 0.75);
         color: #fff;
-        padding: 2px 6px;
+        padding: 4px 8px;
         border-radius: 4px;
         font-size: 12px;
-      }
-      .play-mask {
-        position: absolute;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        opacity: 0;
-        transition: opacity 0.2s;
-        .iconfont {
-          font-size: 40px;
-          color: #fff;
-        }
-      }
-      &:hover .play-mask {
-        opacity: 1;
-      }
-    }
-
-    .info {
-      padding: 12px;
-      .title {
-        font-size: 14px;
-        margin-bottom: 8px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .meta {
-        font-size: 12px;
-        color: #999;
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 12px;
+        font-weight: 500;
+        z-index: 2;
       }
 
       .status-badge {
         position: absolute;
         top: 8px;
         left: 8px;
-        padding: 4px 8px;
+        padding: 4px 10px;
         border-radius: 4px;
         font-size: 12px;
         font-weight: 500;
         color: #fff;
         z-index: 2;
+        backdrop-filter: blur(4px);
         
         &.status-transcoding {
           background: rgba(255, 193, 7, 0.9);
@@ -707,13 +788,71 @@ onMounted(loadData);
           background: rgba(158, 158, 158, 0.9);
         }
       }
-      
+
+      .play-mask {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        z-index: 1;
+
+        .iconfont {
+          font-size: 48px;
+          color: #fff;
+        }
+      }
+
+      &:hover .play-mask {
+        opacity: 1;
+      }
+    }
+
+    .info {
+      padding: 16px;
+
+      .title {
+        font-size: 15px;
+        font-weight: 500;
+        margin-bottom: 10px;
+        color: #303133;
+        line-height: 1.5;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-height: 45px;
+      }
+
+      .meta {
+        font-size: 12px;
+        color: #909399;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #f0f0f0;
+
+        .uploader {
+          font-weight: 500;
+        }
+
+        .time {
+          color: #c0c4cc;
+        }
+      }
+
       .ai-review-info {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 8px 0;
-        margin-bottom: 8px;
+        padding: 10px 0;
+        margin-bottom: 10px;
         border-top: 1px solid #f0f0f0;
         border-bottom: 1px solid #f0f0f0;
         
@@ -724,10 +863,11 @@ onMounted(loadData);
           
           .label {
             font-size: 12px;
-            color: #666;
+            color: #606266;
+            font-weight: 500;
           }
         }
-        
+
         .review-details {
           .el-button {
             padding: 0;
@@ -735,30 +875,40 @@ onMounted(loadData);
           }
         }
       }
+
+      .report-info {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        background: #fffbf0;
+        border: 1px solid #ffe4b5;
+        border-radius: 6px;
+
+        .report-time {
+          font-size: 12px;
+          color: #909399;
+          margin-left: auto;
+        }
+      }
       
       .actions {
         display: flex;
-        gap: 10px;
-        .btn {
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #f0f0f0;
+
+        .el-button {
           flex: 1;
-          padding: 6px 0;
-          border-radius: 4px;
-          border: none;
-          cursor: pointer;
+          min-width: 80px;
           font-size: 13px;
-          &.reject {
-            background: #f5f5f5;
-            color: #666;
-            &:hover {
-              background: #e7e7e7;
-            }
-          }
-          &.approve {
-            background: var(--primary-color);
-            color: #fff;
-            &:hover {
-              opacity: 0.9;
-            }
+
+          .el-icon {
+            margin-right: 4px;
           }
         }
       }

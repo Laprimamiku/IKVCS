@@ -87,6 +87,7 @@ class VideoListItemResponse(BaseModel):
     video_url: Optional[str] = None  # 视频 URL（m3u8 格式）
     subtitle_url: Optional[str] = None  # 字幕文件 URL
     duration: int
+    status: Optional[int] = None  # 视频状态：0=转码中, 1=审核中, 2=已发布, 3=已拒绝, 4=已删除
     view_count: int
     like_count: int
     collect_count: int
@@ -114,6 +115,10 @@ class AdminVideoListItemResponse(VideoListItemResponse):
     review_score: Optional[int] = None  # 综合审核评分（0-100）
     review_status: Optional[int] = None  # 审核状态：0=待审核，1=通过，2=拒绝
     review_report: Optional[dict] = None  # 审核报告详情（JSON格式）
+    # 举报相关派生字段
+    is_reported: bool = False  # 是否有待处理的举报
+    open_report_count: int = 0  # 待处理举报数量
+    last_reported_at: Optional[datetime] = None  # 最近举报时间
     
     class Config:
         from_attributes = True

@@ -98,6 +98,7 @@ import VideoCard from "@/features/video/shared/components/VideoCard.vue";
 import AuthDialog from "@/features/auth/components/AuthDialog.vue";
 import { getVideoList } from "@/features/video/shared/api/video.api";
 import { getPublicCategories } from "@/features/video/shared/api/category.api";
+import { getRecommendations } from "@/features/recommendation/api/recommendation.api";
 import type { Video, Category, PageResult } from "@/shared/types/entity";
 
 const router = useRouter();
@@ -114,14 +115,11 @@ const currentCategory = ref<number | null>(null);
 const authVisible = ref(false);
 const authMode = ref<"login" | "register">("login");
 
-// TODO: 后期优化推荐算法
-// 当前使用最新上传时间作为轮播图内容
-// 未来可以考虑以下因素：
-// 1. 视频热度（播放量、点赞数、评论数）
-// 2. 用户偏好（观看历史、收藏记录）
-// 3. 时间衰减因子（新视频权重更高）
-// 4. 分类平衡（确保不同分类都有展示机会）
-// 5. 内容质量评分（AI分析结果）
+// 推荐算法已实现：
+// 1. 热门推荐（播放量、点赞数、收藏数加权）
+// 2. 同类推荐（同分类/同作者）
+// 3. 个性化推荐（基于用户观看/点赞/收藏行为）
+// 4. 去重与冷启动（新用户显示热门+最新）
 
 // 计算属性：过滤掉轮播图中的视频，避免重复显示
 const videos = computed(() => {
@@ -186,11 +184,21 @@ const loadVideos = async (append = false) => {
     const skipCount = bannerVideos.value.length;
     const actualPage = append ? currentPage.value : 1;
     
-    const res = await getVideoList({
-      page: actualPage,
-      page_size: pageSize.value + (actualPage === 1 ? skipCount : 0), // 第一页多获取几个，用于过滤轮播图视频
-      category_id: currentCategory.value,
-    });
+    let res;
+    // 如果是推荐页（currentCategory 为 null），使用推荐 API
+    if (currentCategory.value === null && actualPage === 1) {
+      res = await getRecommendations({
+        scene: "home",
+        limit: pageSize.value + skipCount,
+      });
+    } else {
+      // 其他情况使用普通列表 API
+      res = await getVideoList({
+        page: actualPage,
+        page_size: pageSize.value + (actualPage === 1 ? skipCount : 0), // 第一页多获取几个，用于过滤轮播图视频
+        category_id: currentCategory.value,
+      });
+    }
     
     if (res.success) {
       const data = res.data as PageResult<Video>;

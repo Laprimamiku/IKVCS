@@ -92,3 +92,55 @@ async def unban_user(
     db.commit()
     return {"message": f"用户 {user.username} 已解封"}
 
+
+class UserDetailResponse(UserResponse):
+    """用户详情响应（包含行为统计）"""
+    video_count: int = 0  # 上传视频数
+    watch_count: int = 0  # 观看视频数
+    like_count: int = 0  # 点赞数
+    collect_count: int = 0  # 收藏数
+    comment_count: int = 0  # 评论数
+
+
+@router.get("/{user_id}", response_model=UserDetailResponse, summary="获取用户详情")
+async def get_user_detail(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    """获取用户详情（包含行为统计）"""
+    from app.models.video import Video
+    from app.models.watch_history import WatchHistory
+    from app.models.interaction import UserLike, UserCollection
+    from app.models.comment import Comment
+    from sqlalchemy import func
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "用户不存在")
+    
+    # 统计用户行为
+    video_count = db.query(func.count(Video.id)).filter(Video.uploader_id == user_id).scalar() or 0
+    watch_count = db.query(func.count(WatchHistory.id)).filter(WatchHistory.user_id == user_id).scalar() or 0
+    like_count = db.query(func.count(UserLike.id)).filter(UserLike.user_id == user_id).scalar() or 0
+    collect_count = db.query(func.count(UserCollection.id)).filter(UserCollection.user_id == user_id).scalar() or 0
+    comment_count = db.query(func.count(Comment.id)).filter(Comment.user_id == user_id).scalar() or 0
+    
+    # 构建响应
+    user_dict = {
+        "id": user.id,
+        "username": user.username,
+        "nickname": user.nickname,
+        "email": user.email,
+        "avatar": user.avatar,
+        "status": user.status,
+        "created_at": user.created_at,
+        "video_count": video_count,
+        "watch_count": watch_count,
+        "like_count": like_count,
+        "collect_count": collect_count,
+        "comment_count": comment_count
+    }
+    
+    return UserDetailResponse(**user_dict)
+

@@ -91,6 +91,7 @@ async def manage_videos(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1),
     status: Optional[int] = Query(None),
+    category_id: Optional[int] = Query(None),
     keyword: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
@@ -100,6 +101,8 @@ async def manage_videos(
 
     if status is not None:
         query = query.filter(Video.status == status)
+    if category_id is not None:
+        query = query.filter(Video.category_id == category_id)
     if keyword:
         query = query.filter(Video.title.like(f"%{keyword}%"))
 
@@ -132,6 +135,33 @@ async def manage_videos(
                         pass
     except Exception:
         view_count_map = {}
+    
+    # 批量查询举报信息，避免 N+1
+    from app.models.report import Report
+    from sqlalchemy import func
+    report_stats = {}
+    if video_ids:
+        # 查询每个视频的待处理举报数量和最近举报时间
+        report_rows = (
+            db.query(
+                Report.target_id,
+                func.count(Report.id).label('count'),
+                func.max(Report.created_at).label('last_reported_at')
+            )
+            .filter(
+                Report.target_type == 'VIDEO',
+                Report.target_id.in_(video_ids),
+                Report.status == 0  # 只统计待处理的举报
+            )
+            .group_by(Report.target_id)
+            .all()
+        )
+        for row in report_rows:
+            report_stats[row.target_id] = {
+                'count': row.count,
+                'last_reported_at': row.last_reported_at
+            }
+    
     for video in videos:
         # 解析 review_report JSON 字符串
         review_report_dict = None
@@ -143,6 +173,12 @@ async def manage_videos(
                     review_report_dict = video.review_report
             except (json.JSONDecodeError, TypeError):
                 review_report_dict = None
+        
+        # 获取举报统计信息
+        report_info = report_stats.get(video.id, {})
+        is_reported = video.id in report_stats
+        open_report_count = report_info.get('count', 0)
+        last_reported_at = report_info.get('last_reported_at')
         
         items.append(AdminVideoListItemResponse(
             id=video.id,
@@ -172,6 +208,10 @@ async def manage_videos(
             review_score=video.review_score,
             review_status=video.review_status,
             review_report=review_report_dict,
+            # 举报相关字段
+            is_reported=is_reported,
+            open_report_count=open_report_count,
+            last_reported_at=last_reported_at,
         ))
 
     return AdminVideoListResponse(

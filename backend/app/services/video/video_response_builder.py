@@ -571,6 +571,7 @@ class VideoResponseBuilder:
                     "description": video.description,
                     "cover_url": video.cover_url,
                     "duration": video.duration,
+                    "status": video.status,  # 添加状态字段，用于测试验证
                     "view_count": view_count_map.get(video.id, video.view_count or 0),
                     "like_count": video.like_count,
                     "collect_count": video.collect_count,

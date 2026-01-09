@@ -6,11 +6,14 @@ from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from app.core.database import get_db
 from app.core.redis import get_redis
 from app.core.config import settings
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 # HTTP Bearer 认证方案
 # 类似 Spring Security 的 BearerTokenAuthenticationFilter
@@ -150,3 +153,42 @@ def get_current_admin(
             detail="需要管理员权限"
         )
     return current_user
+
+
+def get_current_user_optional(
+    request: Request,
+    db: Session = Depends(get_db)
+) -> Optional["User"]:
+    """
+    获取当前用户（可选，未登录返回 None）
+    
+    用于公开接口，支持登录和未登录用户
+    """
+    from app.models.user import User
+    from app.core.security import decode_access_token
+    
+    # 尝试从请求头获取 token
+    authorization = request.headers.get("Authorization")
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    
+    token = authorization.replace("Bearer ", "")
+    
+    # 解码令牌
+    payload = decode_access_token(token)
+    if payload is None:
+        return None
+    
+    # 检查 Redis 黑名单
+    redis_client = get_redis()
+    if redis_client.sismember("jwt_blacklist", token):
+        return None
+    
+    # 获取用户名
+    username: str = payload.get("sub")
+    if username is None:
+        return None
+    
+    # 查询用户
+    user = db.query(User).filter(User.username == username).first()
+    return user

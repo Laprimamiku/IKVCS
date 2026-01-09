@@ -1,7 +1,8 @@
 import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { getVideoDetail, getVideoList } from "@/features/video/shared/api/video.api";
+import { getVideoDetail } from "@/features/video/shared/api/video.api";
+import { getRecommendations } from "@/features/recommendation/api/recommendation.api";
 import type { Video, RecommendVideo } from "@/shared/types/entity";
 
 export function useVideoPlayer() {
@@ -58,10 +59,11 @@ export function useVideoPlayer() {
     if (!videoData.value) return;
 
     try {
-      const res = await getVideoList({
-        page: 1,
-        page_size: 10,
-        category_id: videoData.value.category_id,
+      // 使用推荐 API，传入当前视频的分类ID和场景
+      const res = await getRecommendations({
+        scene: "detail",
+        category_id: videoData.value.category_id || null,
+        limit: 10,
       });
 
       if (res.success && res.data) {

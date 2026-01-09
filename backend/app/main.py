@@ -238,9 +238,10 @@ app.mount("/covers", StaticFiles(directory=cover_dir), name="covers")
 
 # 注册路由
 # 类比 Spring Boot：相当于在 Application.java 中配置 Controller 扫描路径
-from app.api import auth, users, categories, upload, danmaku, websocket, comments, interactions
+from app.api import auth, users, categories, upload, danmaku, websocket, comments, interactions, search
 from app.api.videos import router as videos_router
 from app.api.admin import router as admin_router
+from app.api.recommendations import router as recommendations_router
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["用户"])
@@ -263,6 +264,8 @@ app.include_router(danmaku.router, prefix="/api/v1", tags=["弹幕"])
 app.include_router(comments.router, prefix="/api/v1", tags=["评论"]) 
 app.include_router(interactions.router, prefix="/api/v1", tags=["互动"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["管理"])
+app.include_router(search.router, prefix="/api/v1/search", tags=["搜索"])
+app.include_router(recommendations_router, prefix="/api/v1/recommendations", tags=["推荐"])
 
 
 @app.get("/")

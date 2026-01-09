@@ -6,20 +6,71 @@ import type { User, AiAnalysisResult } from '@/shared/types/entity';
 export interface StatsOverview {
   total_users: number;
   new_users_today: number;
+  active_users_today: number;
   total_videos: number;
   new_videos_today: number;
   total_reports_pending: number;
+  total_views: number;
+  total_likes: number;
+  total_collections: number;
+  videos_pending_review: number;
 }
 
 export interface ChartData {
   date: string;
   user_count: number;
   video_count: number;
+  views?: number;
+  likes?: number;
+  collections?: number;
 }
 
 export interface CategoryStat {
   name: string;
   count: number;
+}
+
+export interface TargetSnapshotVideo {
+  id: number;
+  title: string;
+  cover_url?: string;
+  video_url?: string;
+  uploader?: {
+    id: number;
+    username: string;
+    nickname: string;
+    avatar?: string;
+  };
+  status: number;
+  review_status: number;
+  created_at?: string;
+}
+
+export interface TargetSnapshotComment {
+  id: number;
+  content: string;
+  video_id: number;
+  user?: {
+    id: number;
+    username: string;
+    nickname: string;
+    avatar?: string;
+  };
+  created_at?: string;
+}
+
+export interface TargetSnapshotDanmaku {
+  id: number;
+  content: string;
+  video_id: number;
+  video_time: number;
+  user?: {
+    id: number;
+    username: string;
+    nickname: string;
+    avatar?: string;
+  };
+  created_at?: string;
 }
 
 export interface ReportItem {
@@ -31,6 +82,9 @@ export interface ReportItem {
   status: number;
   created_at: string;
   reporter: User;
+  target_snapshot?: TargetSnapshotVideo | TargetSnapshotComment | TargetSnapshotDanmaku;
+  admin_target_url?: string;
+  public_watch_url?: string;
 }
 
 export interface AuditVideoItem {
@@ -56,6 +110,10 @@ export interface AuditVideoItem {
     error?: string;
     message?: string;
   }; // 审核报告详情
+  // 举报相关字段
+  is_reported?: boolean; // 是否有待处理的举报
+  open_report_count?: number; // 待处理举报数量
+  last_reported_at?: string; // 最近举报时间
 }
 
 // ==================== API 方法 ====================
@@ -69,8 +127,8 @@ export const adminApi = {
   // 2. 视频审核
   getPendingVideos: (page = 1, pageSize = 20) => 
     request.get('/admin/videos/pending', { params: { page, page_size: pageSize } }),
-  manageVideos: (page = 1, pageSize = 20, status?: number | null, keyword?: string) =>
-    request.get('/admin/videos/manage', { params: { page, page_size: pageSize, status, keyword } }),
+  manageVideos: (page = 1, pageSize = 20, status?: number | null, categoryId?: number | null, keyword?: string) =>
+    request.get('/admin/videos/manage', { params: { page, page_size: pageSize, status, category_id: categoryId, keyword } }),
   approveVideo: (id: number) => request.post(`/admin/videos/${id}/approve`),
   rejectVideo: (id: number) => request.post(`/admin/videos/${id}/reject`),
   reReviewVideo: (id: number) => request.post(`/admin/videos/${id}/re-review`), // 重新触发AI初审（帧+字幕）
@@ -88,7 +146,7 @@ export const adminApi = {
   // 4. 举报处理
   getReports: (status = 0, page = 1) => 
     request.get('/admin/reports', { params: { status, page } }),
-  handleReport: (id: number, action: 'delete_target' | 'ignore', note?: string) => 
+  handleReport: (id: number, action: 'delete_target' | 'ignore' | 'disable' | 'request_review', note?: string) => 
     request.post(`/admin/reports/${id}/handle`, { action, admin_note: note }),
     
   // 5. 分类管理 (可选，根据之前后端实现)

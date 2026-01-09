@@ -179,14 +179,9 @@ import { ElMessage } from "element-plus";
 import { VideoPlay, ChatDotRound, User, Search } from "@element-plus/icons-vue";
 import AppHeader from "@/shared/components/layout/AppHeader.vue";
 import AuthDialog from "@/features/auth/components/AuthDialog.vue";
-import { getVideoList } from "@/features/video/shared/api/video.api";
 import { getPublicCategories } from "@/features/video/shared/api/category.api";
-import type {
-  Video,
-  Category,
-  PageResult,
-  VideoQueryParams,
-} from "@/shared/types/entity";
+import { searchVideos, getSearchSuggestions } from "../api/search.api";
+import type { Video, Category } from "@/shared/types/entity";
 
 const router = useRouter();
 const route = useRoute();
@@ -317,7 +312,7 @@ const loadCategories = async () => {
 };
 
 /**
- * 加载视频列表
+ * 加载视频列表（使用新的搜索 API）
  */
 const loadVideos = async (append = false) => {
   if (loading.value) return;
@@ -325,18 +320,20 @@ const loadVideos = async (append = false) => {
   loading.value = true;
 
   try {
-    const params: VideoQueryParams = {
+    // 构建搜索参数
+    const params = {
+      q: currentKeyword.value || undefined,
+      category_id: currentCategory.value || undefined,
       page: currentPage.value,
       page_size: pageSize.value,
-      keyword: currentKeyword.value || undefined,
-      category_id: currentCategory.value || null,
+      sort_by: getSortField(sortType.value),
+      order: "desc",
     };
 
-    const response = await getVideoList(params);
+    const response = await searchVideos(params as any);
 
-    if (response.success) {
-      const data = response.data as PageResult<Video>;
-      const newVideos = data.items || [];
+    if (response.success && response.data) {
+      const newVideos = response.data.items || [];
 
       if (append) {
         videos.value.push(...newVideos);
@@ -344,7 +341,7 @@ const loadVideos = async (append = false) => {
         videos.value = newVideos;
       }
 
-      total.value = data.total || 0;
+      total.value = response.data.total || 0;
       hasMore.value = videos.value.length < total.value;
     }
   } catch (error) {
@@ -353,6 +350,18 @@ const loadVideos = async (append = false) => {
   } finally {
     loading.value = false;
   }
+};
+
+/**
+ * 获取排序字段
+ */
+const getSortField = (sortType: string): "created" | "view" | "like" => {
+  const map: Record<string, "created" | "view" | "like"> = {
+    "default": "created",
+    "newest": "created",
+    "popular": "view",
+  };
+  return map[sortType] || "created";
 };
 
 /**
