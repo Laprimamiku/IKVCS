@@ -5,10 +5,13 @@
 import math
 import json
 import logging
+import mimetypes
 import os
+import re
 from typing import Optional
 from pathlib import Path as PathLib
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, BackgroundTasks, Request, Response
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc
 
@@ -32,6 +35,43 @@ from app.services.video.subtitle_parser import SubtitleParser
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _resolve_original_video_path(
+    db: Session,
+    video_id: int
+) -> tuple[str, str, str, str]:
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(404, "视频不存在")
+
+    upload_session = UploadSessionRepository.get_by_video_id(db, video_id)
+    if not upload_session:
+        raise HTTPException(404, "视频文件不存在")
+
+    input_path = os.path.join(
+        settings.VIDEO_ORIGINAL_DIR,
+        f"{upload_session.file_hash}_{upload_session.file_name}"
+    )
+    if not os.path.exists(input_path):
+        raise HTTPException(404, "视频文件不存在")
+
+    stored_file_name = f"{upload_session.file_hash}_{upload_session.file_name}"
+    display_name = video.title if video.title else upload_session.file_name
+    return input_path, stored_file_name, display_name, upload_session.file_name
+
+
+def _iter_file_range(file_path: str, start: int, end: int, chunk_size: int = 1024 * 1024):
+    with open(file_path, "rb") as file:
+        file.seek(start)
+        remaining = end - start + 1
+        while remaining > 0:
+            read_size = min(chunk_size, remaining)
+            data = file.read(read_size)
+            if not data:
+                break
+            yield data
+            remaining -= len(data)
 
 
 @router.get("/pending", response_model=VideoListResponse, summary="获取待审核视频列表")
@@ -268,37 +308,66 @@ async def get_original_video_url(
     admin: User = Depends(get_current_admin)
 ):
     """获取原始视频文件的访问 URL（用于管理员人工审核）"""
-    video = db.query(Video).filter(Video.id == video_id).first()
-    if not video:
-        raise HTTPException(404, "视频不存在")
-    
-    # 获取视频文件路径
-    upload_session = UploadSessionRepository.get_by_video_id(db, video_id)
-    if not upload_session:
-        raise HTTPException(404, "视频文件不存在")
-    
-    input_path = os.path.join(
-        settings.VIDEO_ORIGINAL_DIR,
-        f"{upload_session.file_hash}_{upload_session.file_name}"
-    )
-    
-    if not os.path.exists(input_path):
-        raise HTTPException(404, "视频文件不存在")
-    
-    # 返回文件路径
-    stored_file_name = f"{upload_session.file_hash}_{upload_session.file_name}"
+    input_path, stored_file_name, display_name, original_file_name = _resolve_original_video_path(db, video_id)
+
     file_url = f"/videos/originals/{stored_file_name}"
-    display_name = video.title if video.title else upload_session.file_name
+    stream_url = f"/api/v1/admin/videos/{video_id}/original/stream"
     
     return {
         "video_id": video_id,
         "file_path": input_path,
         "file_url": file_url,
-        "file_name": upload_session.file_name,
+        "stream_url": stream_url,
+        "file_name": original_file_name,
         "display_name": display_name,
         "stored_file_name": stored_file_name,
         "file_size": os.path.getsize(input_path) if os.path.exists(input_path) else 0
     }
+
+
+@router.get("/{video_id}/original/stream", summary="流式获取原始视频文件（支持拖动快进）")
+async def stream_original_video(
+    video_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    """流式输出原始视频，支持 Range 请求以便拖动快进。"""
+    input_path, stored_file_name, _display_name, _original_file_name = _resolve_original_video_path(db, video_id)
+    file_size = os.path.getsize(input_path)
+    content_type = mimetypes.guess_type(stored_file_name)[0] or "application/octet-stream"
+
+    range_header = request.headers.get("range") or request.headers.get("Range")
+    if not range_header:
+        return FileResponse(
+            input_path,
+            media_type=content_type,
+            headers={"Accept-Ranges": "bytes"},
+        )
+
+    match = re.match(r"bytes=(\d*)-(\d*)", range_header)
+    if not match:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
+
+    start_str, end_str = match.groups()
+    start = int(start_str) if start_str else 0
+    end = int(end_str) if end_str else file_size - 1
+    if start >= file_size:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
+
+    end = min(end, file_size - 1)
+    content_length = end - start + 1
+    headers = {
+        "Content-Range": f"bytes {start}-{end}/{file_size}",
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(content_length),
+    }
+    return StreamingResponse(
+        _iter_file_range(input_path, start, end),
+        status_code=206,
+        media_type=content_type,
+        headers=headers,
+    )
 
 
 @router.get("/{video_id}/subtitle-content", summary="获取字幕内容（用于人工审核）")

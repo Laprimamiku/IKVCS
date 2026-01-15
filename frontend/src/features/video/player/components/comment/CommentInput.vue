@@ -82,8 +82,6 @@ const emit = defineEmits<{
   (e: "submit", content: string): void;
 }>();
 
-const userStore = useUserStore();
-
 const content = ref("");
 const isFocused = ref(false);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);

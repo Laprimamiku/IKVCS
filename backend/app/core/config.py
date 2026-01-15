@@ -3,6 +3,7 @@
 从环境变量读取配置
 """
 from pathlib import Path
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -15,13 +16,25 @@ class Settings(BaseSettings):
     SECRET_KEY: str  # 必需，从 .env 读取
     
     # 数据库配置
-    DATABASE_URL: str  # 必需，从 .env 读取
+    # 优先使用 DATABASE_URL，如果未配置则根据 IKVCS_DB_* 等字段构建默认连接串（对齐 Docker MySQL）
+    DATABASE_URL: str | None = None
+    DB_HOST: str = Field("127.0.0.1", alias="IKVCS_DB_HOST")
+    DB_PORT: int = Field(3306, alias="IKVCS_DB_PORT")
+    DB_USER: str = Field("root", alias="IKVCS_DB_USER")
+    DB_PASSWORD: str = Field("", alias="IKVCS_DB_PASSWORD")
+    DB_NAME: str = Field("ikvcs", alias="IKVCS_DB_NAME")
     
-    # Redis 配置
-    REDIS_HOST: str = "localhost"  # 默认值，可通过环境变量 REDIS_HOST 覆盖
+    # Redis 配置（默认对齐 Docker Redis 的 host/port，同时兼容原有 REDIS_* 环境变量）
+    REDIS_HOST: str = "127.0.0.1"  # 默认值，可通过环境变量 REDIS_HOST 覆盖
     REDIS_PORT: int = 6379  # 默认值，可通过环境变量 REDIS_PORT 覆盖
     REDIS_DB: int = 0  # 默认值，可通过环境变量 REDIS_DB 覆盖
     REDIS_PASSWORD: str = ""  # 默认值，可通过环境变量 REDIS_PASSWORD 覆盖
+    
+    # MinIO 配置（为后续 P1/P2 存储抽象预留，与 docs/docker改造方案.md 对齐）
+    MINIO_ENDPOINT: str = Field("http://127.0.0.1:9000", alias="IKVCS_MINIO_ENDPOINT")
+    MINIO_ACCESS_KEY: str = Field("", alias="IKVCS_MINIO_ACCESS_KEY")
+    MINIO_SECRET_KEY: str = Field("", alias="IKVCS_MINIO_SECRET_KEY")
+    MINIO_BUCKET: str = Field("ikvcs", alias="IKVCS_MINIO_BUCKET")
     
     # JWT 配置
     JWT_SECRET_KEY: str  # 必需，从 .env 读取
@@ -203,12 +216,12 @@ class Settings(BaseSettings):
     # 第一阶段转码清晰度（快速转码，让用户能立即观看）
     TRANSCODE_PRIORITY_RESOLUTIONS: str = "360p,480p"  # 逗号分隔
     # GPU硬件加速配置（RTX 3050支持NVENC）
-    TRANSCODE_USE_GPU: bool = False  # 是否使用GPU硬件加速（默认禁用，避免AV1等格式兼容性问题）
+    TRANSCODE_USE_GPU: bool = True  # 是否使用GPU硬件加速（默认禁用，避免AV1等格式兼容性问题）
     TRANSCODE_GPU_DEVICE: int = 0  # GPU设备编号（多GPU时使用）
     
     # 全局功能开关
-    AUTO_REVIEW_ENABLED: bool = True  # 是否启用自动审核（视频上传后自动审核）
-    HIGH_BITRATE_TRANSCODE_ENABLED: bool = True  # 是否启用高码率转码（720p/1080p）
+    AUTO_REVIEW_ENABLED: bool = False  # 是否启用自动审核（视频上传后自动审核）
+    HIGH_BITRATE_TRANSCODE_ENABLED: bool = False  # 是否启用高码率转码（720p/1080p）
     
     # CORS 配置（多个源用逗号分隔）
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"  # 默认值，可通过环境变量 CORS_ORIGINS 覆盖

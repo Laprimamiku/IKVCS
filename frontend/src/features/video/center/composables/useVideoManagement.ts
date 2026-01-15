@@ -151,19 +151,44 @@ export function useVideoManagement() {
     }
 
     try {
-      ElMessage.info('正在生成章节大纲，请稍候...')
-      const response = await generateVideoOutline(video.id)
-      if (response.success) {
-        ElMessage.success('大纲生成任务已启动，请稍后刷新查看结果')
-        // 延迟后刷新视频列表
+      const startGenerate = async (force = false) => generateVideoOutline(video.id, force)
+      const response = await startGenerate()
+      const status = response.data?.status
+
+      if (status === 'running') {
+        ElMessage.info('章节生成进行中，请稍后再试')
+        return false
+      }
+
+      if (status === 'completed' && response.data?.confirm_required) {
+        try {
+          await ElMessageBox.confirm(
+            '章节已完成，是否确认继续？',
+            '生成章节',
+            { confirmButtonText: '继续', cancelButtonText: '取消', type: 'warning' }
+          )
+        } catch {
+          return false
+        }
+
+        const confirmResponse = await startGenerate(true)
+        const confirmStatus = confirmResponse.data?.status
+        if (confirmStatus === 'running') {
+          ElMessage.info('章节生成进行中，请稍后再试')
+          return false
+        }
+        ElMessage.success(confirmResponse.message || '章节生成任务已启动，请稍后刷新查看结果')
         setTimeout(async () => {
           await loadVideos()
         }, 3000)
         return true
-      } else {
-        ElMessage.error('启动大纲生成任务失败')
-        return false
       }
+
+      ElMessage.success(response.message || '章节生成任务已启动，请稍后刷新查看结果')
+      setTimeout(async () => {
+        await loadVideos()
+      }, 3000)
+      return true
     } catch (error: any) {
       console.error('生成章节大纲失败:', error)
       const errorMsg = error?.response?.data?.detail || error?.message || '生成章节大纲失败，请重试'
@@ -197,4 +222,3 @@ export function useVideoManagement() {
     refresh
   }
 }
-

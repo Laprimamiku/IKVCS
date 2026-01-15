@@ -1,5 +1,5 @@
 import { request } from "@/shared/utils/request";
-import type { Video, PageResult } from "@/shared/types/entity";
+import type { Video, PageResult, UserBrief } from "@/shared/types/entity";
 
 /**
  * 搜索视频参数
@@ -15,6 +15,12 @@ export interface SearchVideoParams {
   uploader_id?: number;
   sort_by?: "created" | "view" | "like";
   order?: "asc" | "desc";
+  page?: number;
+  page_size?: number;
+}
+
+export interface SearchUserParams {
+  q?: string;
   page?: number;
   page_size?: number;
 }
@@ -39,6 +45,13 @@ export interface SearchSuggestionsResponse {
   hotwords?: Array<{ keyword: string; count: number }>;
 }
 
+export interface SearchUserResponse {
+  items: UserBrief[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 /**
  * 搜索视频
  */
@@ -61,3 +74,9 @@ export async function getSearchSuggestions(q?: string, limit = 10) {
   });
 }
 
+/**
+ * 搜索用户（UP主精确匹配）
+ */
+export async function searchUsers(params: SearchUserParams) {
+  return request.get<SearchUserResponse>("/search/users", { params });
+}

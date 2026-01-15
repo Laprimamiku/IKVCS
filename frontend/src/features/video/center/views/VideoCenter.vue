@@ -162,43 +162,33 @@
                 </div>
                 
                 <div class="video-actions">
-                  <el-button size="small" @click="handleAnalyze(video)">
-                    <el-icon><DataAnalysis /></el-icon>
-                    智能分析
-                  </el-button>
-                  <el-button 
-                    size="small" 
-                    @click="handleGenerateOutline(video)"
-                    :disabled="!video.subtitle_url"
-                    :title="!video.subtitle_url ? '该视频没有字幕文件，无法生成章节' : '生成视频章节大纲'"
-                  >
-                    <el-icon><List /></el-icon>
-                    生成章节
-                  </el-button>
+                  <div class="video-action-grid">
+                    <el-button size="small" @click="handleAnalyze(video)">
+                      <el-icon><DataAnalysis /></el-icon>
+                      智能分析
+                    </el-button>
+                    <el-button 
+                      size="small" 
+                      @click="handleGenerateOutline(video)"
+                      :disabled="!video.subtitle_url"
+                      :title="!video.subtitle_url ? '该视频没有字幕文件，无法生成章节' : '生成视频章节大纲'"
+                    >
+                      <el-icon><List /></el-icon>
+                      生成章节
+                    </el-button>
                   <el-button size="small" @click="handleEdit(video)">
                     <el-icon><Edit /></el-icon>
-                    编辑
+                    编辑删除
                   </el-button>
-                  <el-button 
-                    size="small" 
-                    type="success"
-                    @click="handleTranscodeHighBitrate(video.id)"
-                    :loading="transcodingVideos.has(video.id)"
-                  >
-                    <el-icon><VideoPlay /></el-icon>
-                    高码率
-                  </el-button>
-                  <el-dropdown @command="(command) => handleAction(command, video)">
-                    <el-button size="small">
-                      <el-icon><More /></el-icon>
+                    <el-button 
+                      size="small" 
+                      @click="handleTranscodeHighBitrate(video.id)"
+                      :loading="transcodingVideos.has(video.id)"
+                    >
+                      <el-icon><VideoPlay /></el-icon>
+                      高码率
                     </el-button>
-                    <template #dropdown>
-                      <el-dropdown-menu>
-                        <el-dropdown-item command="share">分享</el-dropdown-item>
-                        <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
-                      </el-dropdown-menu>
-                    </template>
-                  </el-dropdown>
+                  </div>
                 </div>
               </div>
             </div>
@@ -252,6 +242,7 @@
       :video="editingVideo"
       :categories="categories"
       @save="handleSaveEdit"
+      @delete="handleDeleteFromDialog"
       @cancel="editDialogVisible = false"
     />
 
@@ -377,7 +368,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, watch, computed } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   VideoCamera,
@@ -387,7 +378,6 @@ import {
   Star,
   Edit,
   View,
-  More,
   Lightning,
   Cloudy,
   DataAnalysis,
@@ -412,11 +402,25 @@ import { formatNumber } from "@/shared/utils/formatters";
 import type { Video, Category } from "@/shared/types/entity";
 
 const router = useRouter();
+const route = useRoute();
 
 // 标签页管理
 const activeTab = ref<'videos' | 'data' | 'interaction'>('videos');
 const handleTabChange = (tab: 'videos' | 'data' | 'interaction') => {
   activeTab.value = tab;
+};
+const normalizeTab = (tab: unknown): 'videos' | 'data' | 'interaction' => {
+  const value = Array.isArray(tab) ? tab[0] : tab;
+  if (value === "data" || value === "interaction" || value === "videos") {
+    return value;
+  }
+  return "videos";
+};
+const syncTabFromRoute = () => {
+  const nextTab = normalizeTab(route.query.tab);
+  if (nextTab !== activeTab.value) {
+    activeTab.value = nextTab;
+  }
 };
 
 // 使用视频管理 Composable
@@ -562,6 +566,24 @@ const handleUpload = async () => {
   if (uploadCategories.value.length === 0) {
     await loadUploadCategories();
   }
+};
+
+const shouldOpenUpload = (value: unknown): boolean => {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === "1" || raw === "true";
+};
+
+const clearUploadQuery = () => {
+  if (!route.query.upload) return;
+  const nextQuery = { ...route.query };
+  delete nextQuery.upload;
+  router.replace({ query: nextQuery });
+};
+
+const syncUploadFromRoute = async () => {
+  if (!shouldOpenUpload(route.query.upload)) return;
+  await handleUpload();
+  clearUploadQuery();
 };
 
 // 加载上传分类
@@ -715,7 +737,47 @@ const handleTranscodeHighBitrate = async (videoId: number) => {
   try {
     transcodingVideos.value.add(videoId);
     const { request } = await import("@/shared/utils/request");
-    const response = await request.post(`/api/videos/management/${videoId}/transcode-high-bitrate`);
+    const startTranscode = async (force = false) =>
+      request.post(
+        `/videos/${videoId}/transcode-high-bitrate`,
+        null,
+        force ? { params: { force: true } } : undefined
+      );
+    const response = await startTranscode();
+    const status = response.data?.status;
+    const confirmRequired = response.data?.confirm_required;
+
+    if (confirmRequired) {
+      const confirmMessage =
+        response.data?.confirm_message ||
+        (status === "completed"
+          ? "高码率已完成，是否确认继续？"
+          : "检测到未完成的高码率任务，是否重新开始？");
+      try {
+        await ElMessageBox.confirm(confirmMessage, "高码率转码", {
+          confirmButtonText: "继续",
+          cancelButtonText: "取消",
+          type: "warning",
+        });
+      } catch {
+        return;
+      }
+
+      const confirmResponse = await startTranscode(true);
+      const confirmStatus = confirmResponse.data?.status;
+      if (confirmStatus === "running") {
+        ElMessage.info("高码率转码进行中，请稍后再试");
+        return;
+      }
+      ElMessage.success(confirmResponse.message || "高码率转码任务已启动");
+      return;
+    }
+
+    if (status === "running") {
+      ElMessage.info("高码率转码进行中，请稍后再试");
+      return;
+    }
+
     ElMessage.success(response.message || "高码率转码任务已启动");
   } catch (error: any) {
     console.error("触发高码率转码失败:", error);
@@ -741,33 +803,10 @@ const handleEdit = (video: Video) => {
   editDialogVisible.value = true;
 };
 
-const handleAction = async (command: string, video: Video) => {
-  switch (command) {
-    case 'share':
-      // 分享功能
-      ElMessage.info('分享功能开发中');
-      break;
-    case 'delete':
-      await handleDelete(video);
-      break;
-  }
-};
-
-const handleDelete = async (video: Video) => {
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除视频"${video.title}"吗？此操作不可恢复。`,
-      '删除确认',
-      {
-        confirmButtonText: '确定删除',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    );
-    await deleteVideoItem(video);
-  } catch (error) {
-    // 用户取消删除
-  }
+const handleDeleteFromDialog = async (video: Video) => {
+  await deleteVideoItem(video);
+  editDialogVisible.value = false;
+  editingVideo.value = null;
 };
 
 // 保存编辑
@@ -796,8 +835,14 @@ const handleSaveEdit = async (data: {
 watch(currentPage, () => {
   loadVideos();
 });
+watch(() => route.query.tab, syncTabFromRoute);
+watch(() => route.query.upload, () => {
+  syncUploadFromRoute();
+});
 
 onMounted(() => {
+  syncTabFromRoute();
+  syncUploadFromRoute();
   loadCategories();
   loadVideos();
 });
@@ -1069,13 +1114,15 @@ onMounted(() => {
 }
 
 .video-card {
+  background: var(--bg-white);
+  border: 1px solid var(--el-border-color-light, #ebeef5);
   border-radius: var(--radius-lg);
   overflow: hidden;
   transition: var(--transition-base);
   
   &:hover {
     transform: translateY(-4px);
-    box-shadow: var(--shadow-card-hover);
+    box-shadow: var(--el-box-shadow-light, 0 6px 16px rgba(0, 0, 0, 0.08));
     
     .video-overlay {
       opacity: 1;
@@ -1093,6 +1140,7 @@ onMounted(() => {
   aspect-ratio: 16/9;
   overflow: hidden;
   cursor: pointer;
+  background: var(--bg-gray-1);
   
   img {
     width: 100%;
@@ -1238,12 +1286,28 @@ onMounted(() => {
   
   .video-actions {
     display: flex;
+    align-items: flex-start;
     gap: 8px;
-    
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--el-border-color-lighter, #f0f2f5);
+  }
+
+  .video-action-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    flex: 1;
+
     .el-button {
-      flex: 1;
+      width: 100%;
       height: 32px;
       font-size: 12px;
+      margin-left: 0;
+      justify-content: center;
+    }
+
+    .el-button + .el-button {
+      margin-left: 0;
     }
   }
 }

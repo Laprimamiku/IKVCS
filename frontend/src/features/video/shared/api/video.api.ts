@@ -169,8 +169,12 @@ export async function getVideoOutline(videoId: number) {
 /**
  * 生成视频大纲
  */
-export function generateVideoOutline(videoId: number) {
-  return request.post<{ outline: any[]; message: string }>(`/videos/${videoId}/outline/generate`);
+export function generateVideoOutline(videoId: number, force?: boolean) {
+  return request.post<{ outline: any[]; message: string }>(
+    `/videos/${videoId}/outline/generate`,
+    null,
+    force ? { params: { force: true } } : undefined
+  );
 }
 
 /**

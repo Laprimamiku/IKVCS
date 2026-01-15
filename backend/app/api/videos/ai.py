@@ -34,6 +34,7 @@ router = APIRouter()
 async def generate_video_outline(
     video_id: int,
     background_tasks: BackgroundTasks,
+    force: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -49,9 +50,48 @@ async def generate_video_outline(
     
     if not video.subtitle_url:
         raise ValidationException(message="视频没有字幕文件，无法生成大纲")
+
+    status_key = f"outline:status:{video_id}"
+    progress_key = f"outline:progress:{video_id}"
+    lock_ttl_seconds = 2 * 60 * 60
+    progress_ttl_seconds = 24 * 60 * 60
+
+    if redis_service.redis.get(status_key):
+        return success_response(
+            data={"video_id": video_id, "status": "running"},
+            message="Outline generation is already running.",
+        )
+
+    if video.outline and not force:
+        return success_response(
+            data={
+                "video_id": video_id,
+                "status": "completed",
+                "confirm_required": True,
+            },
+            message="Outline already exists. Confirm to run again.",
+        )
     
     # 异步生成大纲
     from app.services.video.outline_service import OutlineService
+
+    def _set_progress(progress: int, message: str, status: str) -> None:
+        payload = {"progress": progress, "message": message, "status": status}
+        try:
+            redis_service.redis.setex(
+                progress_key,
+                progress_ttl_seconds,
+                json.dumps(payload),
+            )
+        except Exception as exc:
+            logger.warning(f"Failed to update outline progress: {progress_key}, error={exc}")
+
+    try:
+        redis_service.redis.setex(status_key, lock_ttl_seconds, "running")
+    except Exception as exc:
+        logger.warning(f"Failed to set outline status: {status_key}, error={exc}")
+
+    _set_progress(1, "Outline generation started", "running")
     
     async def generate_and_save():
         # 使用新的数据库会话保存
@@ -66,11 +106,13 @@ async def generate_video_outline(
                 video_obj.outline = None  # 直接删除
                 db_session.commit()
             
-            # 生成新大纲（不使用进度回调）
+            async def progress_callback(progress: int, _message: str):
+                _set_progress(progress, f"Outline progress {progress}%", "running")
+
             outline = await OutlineService.extract_outline(
-                video_id, 
+                video_id,
                 video.subtitle_url,
-                progress_callback=None  # 不使用进度回调
+                progress_callback=progress_callback,
             )
             
             # 保存新大纲（仅当生成成功时保存，失败则不保存）
@@ -81,12 +123,15 @@ async def generate_video_outline(
                     video_obj.outline = json.dumps(outline, ensure_ascii=False)
                     db_session.commit()
                     logger.info(f"[视频 {video_id}] 视频大纲已生成完毕，共 {len(outline)} 个章节")
+                    _set_progress(100, "Outline generation completed", "completed")
                 else:
                     # 生成失败，不保存（保持为 None）
                     db_session.commit()
                     logger.error(f"[视频 {video_id}] 视频大纲生成出错：生成结果为空")
+                    _set_progress(100, "Outline generation returned empty result", "failed")
         except Exception as e:
             logger.error(f"[视频 {video_id}] 视频大纲生成出错：{str(e)}", exc_info=True)
+            _set_progress(0, "Outline generation failed", "failed")
             # 确保大纲被删除
             try:
                 video_obj = db_session.query(Video).filter(Video.id == video_id).first()
@@ -97,12 +142,16 @@ async def generate_video_outline(
                 pass
         finally:
             db_session.close()
+            try:
+                redis_service.redis.delete(status_key)
+            except Exception as exc:
+                logger.warning(f"Failed to clear outline status: {status_key}, error={exc}")
     
     background_tasks.add_task(generate_and_save)
     
     return success_response(
-        data={},
-        message="大纲生成任务已启动，请稍后查询"
+        data={"video_id": video_id, "status": "started"},
+        message="Outline generation task started."
     )
 
 

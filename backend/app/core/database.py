@@ -13,10 +13,34 @@ from typing import Generator
 
 from app.core.config import settings
 
+
+def _build_database_url() -> str:
+    """
+    根据配置构建最终的数据库连接字符串。
+    
+    优先使用 DATABASE_URL；如果未配置，则根据 IKVCS_DB_* 等字段构建
+    默认的 MySQL + PyMySQL 连接串，以便本地后端直接连接 Docker 中的 MySQL。
+    """
+    if settings.DATABASE_URL:
+        return settings.DATABASE_URL
+    
+    user = settings.DB_USER
+    password = settings.DB_PASSWORD or ""
+    host = settings.DB_HOST
+    port = settings.DB_PORT
+    db = settings.DB_NAME
+    
+    # 使用 mysql+pymysql，与 backend/requirements.txt 中的依赖保持一致
+    return (
+        f"mysql+pymysql://{user}:{password}@{host}:{port}/{db}"
+        "?charset=utf8mb4"
+    )
+
+
 # 创建数据库引擎
 # echo=True 会打印 SQL 语句（开发时方便调试，生产环境建议关闭）
 engine = create_engine(
-    settings.DATABASE_URL,
+    _build_database_url(),
     echo=settings.DEBUG,  # 开发环境打印 SQL
     pool_pre_ping=True,   # 连接池预检查（防止连接失效）
     pool_recycle=3600     # 连接回收时间（1小时）

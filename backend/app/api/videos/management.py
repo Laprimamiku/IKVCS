@@ -221,6 +221,8 @@ async def finish_reupload(
     """
     from app.services.upload.upload_orchestration_service import UploadOrchestrationService
     from app.services.transcode import TranscodeService
+    from app.services.transcode.playlist_generator import PlaylistGenerator
+    from app.services.transcode.transcode_service import RESOLUTIONS
     
     try:
         video = UploadOrchestrationService.finish_reupload(
@@ -251,6 +253,7 @@ async def finish_reupload(
 async def transcode_high_bitrate(
     video_id: int,
     background_tasks: BackgroundTasks,
+    force: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -262,6 +265,8 @@ async def transcode_high_bitrate(
     from app.repositories.video_repository import VideoRepository
     from app.repositories.upload_repository import UploadSessionRepository
     from app.services.transcode import TranscodeService
+    from app.services.transcode.playlist_generator import PlaylistGenerator
+    from app.services.transcode.transcode_service import RESOLUTIONS
     
     # 验证视频存在且属于当前用户
     video = VideoRepository.get_by_id(db, video_id)
@@ -271,12 +276,8 @@ async def transcode_high_bitrate(
     if video.uploader_id != current_user.id:
         raise ForbiddenException("无权操作此视频")
     
-    # 检查是否已启用高码率转码
     if not settings.HIGH_BITRATE_TRANSCODE_ENABLED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="高码率转码功能已禁用"
-        )
+        logger.info(f"自动高码率转码已禁用，手动触发继续执行：video_id={video_id}")
     
     # 获取原始视频路径
     upload_session = UploadSessionRepository.get_by_video_id(db, video_id)
@@ -293,41 +294,201 @@ async def transcode_high_bitrate(
     
     # 获取输出目录
     output_dir = os.path.join(settings.VIDEO_HLS_DIR, str(video_id))
-    
-    # 确定需要转码的高码率清晰度（720p和1080p）
-    high_bitrate_resolutions = []
-    for res in TranscodeService.RESOLUTIONS:
-        name = res[0]
-        if name in ["720p", "1080p"]:
-            # 检查是否已转码
+
+    def _parse_master_resolutions(master_path: str) -> set:
+        if not os.path.exists(master_path):
+            return set()
+        resolutions = set()
+        try:
+            with open(master_path, "r", encoding="utf-8") as file:
+                for raw_line in file:
+                    line = raw_line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if "index.m3u8" not in line:
+                        continue
+                    parts = line.split("/")
+                    if len(parts) >= 2 and parts[-1].startswith("index.m3u8"):
+                        resolutions.add(parts[-2])
+        except Exception as exc:
+            logger.warning(f"Failed to parse master.m3u8: {master_path}, error={exc}")
+        return resolutions
+
+    def _playlist_has_segments(playlist_path: str) -> bool:
+        if not os.path.exists(playlist_path):
+            return False
+        try:
+            with open(playlist_path, "r", encoding="utf-8") as file:
+                for raw_line in file:
+                    line = raw_line.strip()
+                    if line and not line.startswith("#"):
+                        return True
+        except Exception as exc:
+            logger.warning(f"Failed to read resolution playlist: {playlist_path}, error={exc}")
+        return False
+
+    # Determine which high bitrate resolutions should be (re)generated.
+    high_bitrate_names = {"720p", "1080p"}
+    high_bitrate_resolutions = [res for res in RESOLUTIONS if res[0] in high_bitrate_names]
+    if not high_bitrate_resolutions:
+        raise ValidationException(message="High bitrate resolutions are not configured.")
+
+    from app.services.cache.redis_service import redis_service
+    lock_key = f"transcode:high:running:{video_id}"
+    lock_ttl_seconds = 2 * 60 * 60
+    lock_value = redis_service.redis.get(lock_key)
+
+    master_playlist_path = os.path.join(output_dir, "master.m3u8")
+    master_resolutions = _parse_master_resolutions(master_playlist_path)
+
+    resolution_order = {"360p": 1, "480p": 2, "720p": 3, "1080p": 4}
+
+    def _collect_existing_resolutions():
+        existing = []
+        for res in RESOLUTIONS:
+            name = res[0]
             resolution_dir = os.path.join(output_dir, name)
             resolution_output = os.path.join(resolution_dir, "index.m3u8")
-            if not os.path.exists(resolution_output):
-                high_bitrate_resolutions.append(res)
-    
-    if not high_bitrate_resolutions:
+            if _playlist_has_segments(resolution_output):
+                bandwidth = int(res[2].replace('k', '')) * 1000
+                existing.append((name, res[1], bandwidth))
+        existing.sort(key=lambda item: resolution_order.get(item[0], 99))
+        return existing
+
+    invalid_resolutions = []
+    missing_in_master = []
+    for res in high_bitrate_resolutions:
+        name = res[0]
+        resolution_dir = os.path.join(output_dir, name)
+        resolution_output = os.path.join(resolution_dir, "index.m3u8")
+        playlist_ok = _playlist_has_segments(resolution_output)
+        in_master = name in master_resolutions
+        if playlist_ok:
+            if not in_master:
+                logger.info(f"master.m3u8 missing resolution: {name}")
+                missing_in_master.append(res)
+        else:
+            logger.info(f"Resolution playlist missing segments: {resolution_output}")
+            invalid_resolutions.append(res)
+
+    if missing_in_master and not invalid_resolutions:
+        existing = _collect_existing_resolutions()
+        if existing:
+            master_playlist_content = PlaylistGenerator.build_master_playlist(
+                video_id,
+                existing
+            )
+            with open(master_playlist_path, 'w', encoding='utf-8') as f:
+                f.write(master_playlist_content)
+            logger.info(
+                f"高码率播放列表已补全：video_id={video_id}, resolutions={[r[0] for r in existing]}"
+            )
+        if lock_value:
+            try:
+                redis_service.redis.delete(lock_key)
+            except Exception as exc:
+                logger.warning(f"Failed to clear stale transcode lock: {lock_key}, error={exc}")
         return success_response(
-            message="所有高码率清晰度已转码完成",
-            data={"video_id": video_id, "status": "completed"}
+            message="高码率播放列表已同步",
+            data={
+                "video_id": video_id,
+                "status": "completed",
+                "synced": True,
+                "resolutions": [res[0] for res in high_bitrate_resolutions],
+            },
         )
-    
-    # 启动后台转码任务
+
+    if lock_value:
+        if not invalid_resolutions and not missing_in_master:
+            try:
+                redis_service.redis.delete(lock_key)
+            except Exception as exc:
+                logger.warning(f"Failed to clear stale transcode lock: {lock_key}, error={exc}")
+        elif not force:
+            return success_response(
+                message="检测到高码率任务锁，确认继续将重新转码。",
+                data={
+                    "video_id": video_id,
+                    "status": "locked",
+                    "confirm_required": True,
+                    "confirm_message": "检测到未完成的高码率任务，是否重新开始？",
+                    "resolutions": [res[0] for res in high_bitrate_resolutions],
+                },
+            )
+        else:
+            try:
+                redis_service.redis.delete(lock_key)
+            except Exception as exc:
+                logger.warning(f"Failed to clear stale transcode lock: {lock_key}, error={exc}")
+
+    if not invalid_resolutions and not force:
+        return success_response(
+            message="High bitrate streams are already available. Confirm to run again.",
+            data={
+                "video_id": video_id,
+                "status": "completed",
+                "confirm_required": True,
+                "confirm_message": "高码率已完成，是否确认继续？",
+                "resolutions": [res[0] for res in high_bitrate_resolutions],
+            },
+        )
+
+    if not invalid_resolutions and force:
+        invalid_resolutions = high_bitrate_resolutions
+
+    # Clear existing outputs before forcing a re-transcode.
+    import shutil
+    for res in invalid_resolutions:
+        name = res[0]
+        resolution_dir = os.path.join(output_dir, name)
+        resolution_output = os.path.join(resolution_dir, "index.m3u8")
+        if os.path.exists(resolution_dir):
+            try:
+                shutil.rmtree(resolution_dir)
+                continue
+            except Exception as exc:
+                logger.warning(f"Failed to remove resolution directory: {resolution_dir}, error={exc}")
+        if os.path.exists(resolution_output):
+            try:
+                os.remove(resolution_output)
+            except Exception as exc:
+                logger.warning(f"Failed to remove resolution playlist: {resolution_output}, error={exc}")
+
+    try:
+        redis_service.redis.setex(lock_key, lock_ttl_seconds, "1")
+    except Exception as exc:
+        logger.warning(f"Failed to set transcode lock: {lock_key}, error={exc}")
+
+    def _run_transcode():
+        try:
+            TranscodeService._transcode_other_resolutions_sync(
+                video_id, invalid_resolutions, input_path, output_dir
+            )
+        finally:
+            try:
+                redis_service.redis.delete(lock_key)
+            except Exception as exc:
+                logger.warning(f"Failed to release transcode lock: {lock_key}, error={exc}")
+
+    # Start background transcode task.
+
     import threading
     thread = threading.Thread(
-        target=TranscodeService._transcode_other_resolutions_sync,
-        args=(video_id, high_bitrate_resolutions, input_path, output_dir),
-        daemon=True
+        target=_run_transcode,
+        daemon=True,
     )
     thread.start()
     
-    logger.info(f"用户 {current_user.id} 触发高码率转码：video_id={video_id}, resolutions={[r[0] for r in high_bitrate_resolutions]}")
+    logger.info(
+        f"用户 {current_user.id} 触发高码率转码：video_id={video_id}, resolutions={[r[0] for r in invalid_resolutions]}"
+    )
     
     return success_response(
         message="高码率转码任务已启动",
         data={
             "video_id": video_id,
             "status": "transcoding",
-            "resolutions": [r[0] for r in high_bitrate_resolutions]
+            "resolutions": [r[0] for r in invalid_resolutions],
+            "force": force,
         }
     )
-

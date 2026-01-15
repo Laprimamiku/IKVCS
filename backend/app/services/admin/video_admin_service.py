@@ -289,6 +289,13 @@ class VideoAdminService(BaseService[Video, VideoRepository]):
         for video in videos:
             # 解析 review_report JSON 字符串
             review_report_dict = VideoAdminService._parse_review_report(video.review_report)
+            review_score = video.review_score
+            review_status = video.review_status
+            if review_report_dict:
+                if review_score is None:
+                    review_score = review_report_dict.get("final_score")
+                if review_status is None:
+                    review_status = review_report_dict.get("final_status")
             
             # 获取举报统计信息
             report_info = report_stats.get(video.id, {})
@@ -320,8 +327,8 @@ class VideoAdminService(BaseService[Video, VideoRepository]):
                     name=video.category.name
                 ),
                 created_at=video.created_at,
-                review_score=video.review_score,
-                review_status=video.review_status,
+                review_score=review_score,
+                review_status=review_status,
                 review_report=review_report_dict,
                 is_reported=is_reported,
                 open_report_count=open_report_count,

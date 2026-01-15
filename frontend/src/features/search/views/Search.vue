@@ -11,72 +11,71 @@
           <div class="search-info">
             <h1 class="search-title">
               <template v-if="currentKeyword">
-                搜索：<span class="keyword">{{ currentKeyword }}</span>
+                搜索{{ searchType === 'uploader' ? 'UP主' : '视频' }}：
+                <span class="keyword">{{ currentKeyword }}</span>
               </template>
-              <template v-else>全部视频</template>
+              <template v-else>
+                {{ searchType === 'uploader' ? 'UP主搜索' : '全部视频' }}
+              </template>
             </h1>
             <div class="search-meta">
-              <span class="result-count">共 {{ formatNumber(total) }} 个结果</span>
+              <span class="result-count">
+                共 {{ formatNumber(total) }} 个{{ searchType === 'uploader' ? 'UP主' : '视频' }}
+              </span>
               <span class="search-time">{{ searchTime }}</span>
             </div>
           </div>
-          
-          <!-- 排序选项 -->
-          <div class="sort-options">
-            <div class="sort-label">排序：</div>
-            <div class="sort-tabs">
-              <div 
-                class="sort-tab" 
-                :class="{ active: sortType === 'default' }"
-                @click="handleSortChange('default')"
+
+          <div class="search-controls">
+            <div class="type-tabs">
+              <div
+                class="type-tab"
+                :class="{ active: searchType === 'video' }"
+                @click="handleTypeChange('video')"
               >
-                综合排序
+                视频
               </div>
-              <div 
-                class="sort-tab" 
-                :class="{ active: sortType === 'newest' }"
-                @click="handleSortChange('newest')"
+              <div
+                class="type-tab"
+                :class="{ active: searchType === 'uploader' }"
+                @click="handleTypeChange('uploader')"
               >
-                最新发布
-              </div>
-              <div 
-                class="sort-tab" 
-                :class="{ active: sortType === 'popular' }"
-                @click="handleSortChange('popular')"
-              >
-                最多播放
+                UP主
               </div>
             </div>
-          </div>
-        </div>
 
-        <!-- 筛选栏 -->
-        <div class="filter-section">
-          <div class="filter-group">
-            <span class="filter-label">分区：</span>
-            <div class="filter-options">
-              <div 
-                class="filter-option" 
-                :class="{ active: currentCategory === null }"
-                @click="handleCategoryChange(null)"
-              >
-                全部
-              </div>
-              <div 
-                v-for="category in categories" 
-                :key="category.id"
-                class="filter-option" 
-                :class="{ active: currentCategory === category.id }"
-                @click="handleCategoryChange(category.id)"
-              >
-                {{ category.name }}
+            <!-- 排序选项 -->
+            <div class="sort-options" v-if="searchType === 'video'">
+              <div class="sort-label">排序：</div>
+              <div class="sort-tabs">
+                <div 
+                  class="sort-tab" 
+                  :class="{ active: sortType === 'default' }"
+                  @click="handleSortChange('default')"
+                >
+                  综合排序
+                </div>
+                <div 
+                  class="sort-tab" 
+                  :class="{ active: sortType === 'newest' }"
+                  @click="handleSortChange('newest')"
+                >
+                  最新发布
+                </div>
+                <div 
+                  class="sort-tab" 
+                  :class="{ active: sortType === 'popular' }"
+                  @click="handleSortChange('popular')"
+                >
+                  最多播放
+                </div>
               </div>
             </div>
           </div>
         </div>
 
         <!-- 视频列表 -->
-        <div class="video-section">
+        <div class="video-section" v-if="searchType === 'video'">
           <!-- 加载状态 -->
           <div v-if="loading && videos.length === 0" class="loading-grid">
             <div v-for="i in 12" :key="i" class="video-skeleton">
@@ -143,19 +142,66 @@
           </div>
         </div>
 
+        <!-- UP主列表 -->
+        <div class="user-section" v-else>
+          <div v-if="loading && users.length === 0" class="user-skeleton-list">
+            <div v-for="i in 6" :key="i" class="user-skeleton">
+              <div class="skeleton-avatar"></div>
+              <div class="skeleton-info">
+                <div class="skeleton-title"></div>
+                <div class="skeleton-meta"></div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="users.length > 0" class="user-list">
+            <div
+              v-for="user in users"
+              :key="user.id"
+              class="user-card"
+              @click="handleUserClick(user)"
+            >
+              <el-avatar :size="48" :src="user.avatar">
+                {{ (user.nickname || user.username).charAt(0).toUpperCase() }}
+              </el-avatar>
+              <div class="user-info">
+                <div class="user-name">{{ user.nickname || user.username }}</div>
+                <div class="user-meta">@{{ user.username }}</div>
+              </div>
+              <div class="user-action">进入主页</div>
+            </div>
+          </div>
+
+          <div v-else class="empty-state">
+            <el-icon class="empty-icon" :size="48"><Search /></el-icon>
+            <div class="empty-title">
+              {{ currentKeyword ? '没有找到该UP主' : '请输入UP主名称进行搜索' }}
+            </div>
+            <div class="empty-desc">
+              <template v-if="currentKeyword">
+                请确认名称完整匹配，或切换到
+                <span class="link" @click="handleTypeChange('video')">视频搜索</span>
+              </template>
+              <template v-else>
+                支持用户名或昵称的精确查询
+              </template>
+            </div>
+          </div>
+        </div>
+
         <!-- 加载更多 -->
-        <div v-if="hasMore && videos.length > 0" class="load-more-section">
+        <div v-if="hasMore && (videos.length > 0 || users.length > 0)" class="load-more-section">
           <el-button 
             class="load-more-btn"
             :loading="loading"
-            @click="loadMoreVideos"
+            @click="loadMoreResults"
           >
             {{ loading ? '加载中...' : '点击加载更多' }}
           </el-button>
         </div>
 
         <!-- 到底了 -->
-        <div v-if="!hasMore && videos.length > 0" class="no-more-section">
+        <div v-if="!hasMore && (videos.length > 0 || users.length > 0)" class="no-more-section">
           <div class="no-more-line"></div>
           <span class="no-more-text">没有更多了</span>
           <div class="no-more-line"></div>
@@ -179,27 +225,20 @@ import { ElMessage } from "element-plus";
 import { VideoPlay, ChatDotRound, User, Search } from "@element-plus/icons-vue";
 import AppHeader from "@/shared/components/layout/AppHeader.vue";
 import AuthDialog from "@/features/auth/components/AuthDialog.vue";
-import { getPublicCategories } from "@/features/video/shared/api/category.api";
-import { searchVideos, getSearchSuggestions } from "../api/search.api";
-import type { Video, Category } from "@/shared/types/entity";
+import { searchVideos, searchUsers } from "../api/search.api";
+import type { Video, UserBrief } from "@/shared/types/entity";
 
 const router = useRouter();
 const route = useRoute();
 
 // 搜索相关
 const currentKeyword = ref<string>("");
+const searchType = ref<"video" | "uploader">("video");
 const sortType = ref<string>("default");
 
-// 分类相关
-const currentCategory = ref<number | null>(null);
-const categories = ref<Category[]>([]);
-
-const { handleError, handleApiError } = useErrorHandler({
-  messagePrefix: '搜索'
-});
-
-// 视频数据
+// 视频/用户数据
 const videos = ref<Video[]>([]);
+const users = ref<UserBrief[]>([]);
 const loading = ref<boolean>(false);
 const total = ref<number>(0);
 const currentPage = ref<number>(1);
@@ -215,6 +254,22 @@ const searchTime = computed(() => {
   const now = new Date();
   return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 });
+
+const normalizeSearchType = (value: unknown): "video" | "uploader" => {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === "uploader" ? "uploader" : "video";
+};
+
+const buildQuery = () => {
+  const query: Record<string, string | number> = {};
+  if (searchType.value === "uploader") {
+    query.type = "uploader";
+  }
+  if (currentKeyword.value) {
+    query.keyword = currentKeyword.value;
+  }
+  return query;
+};
 
 /**
  * 格式化数字
@@ -258,21 +313,15 @@ const formatTime = (dateStr: string): string => {
  * 初始化
  */
 onMounted(async () => {
+  searchType.value = normalizeSearchType(route.query.type);
+
   // 从URL获取搜索关键词
   if (route.query.keyword) {
     currentKeyword.value = route.query.keyword as string;
   }
 
-  // 从URL获取分类
-  if (route.query.category_id) {
-    currentCategory.value = parseInt(route.query.category_id as string);
-  }
-
-  // 加载分类列表
-  await loadCategories();
-
-  // 加载视频列表
-  await loadVideos();
+  // 加载搜索结果
+  await loadResults();
 });
 
 /**
@@ -281,38 +330,37 @@ onMounted(async () => {
 watch(
   () => route.query,
   (newQuery) => {
+    const nextType = normalizeSearchType(newQuery.type);
+    const nextKeyword = (newQuery.keyword as string) || "";
+
     if (
-      newQuery.keyword !== currentKeyword.value ||
-      newQuery.category_id !== currentCategory.value?.toString()
+      nextType !== searchType.value ||
+      nextKeyword !== currentKeyword.value
     ) {
-      currentKeyword.value = (newQuery.keyword as string) || "";
-      currentCategory.value = newQuery.category_id
-        ? parseInt(newQuery.category_id as string)
-        : null;
+      searchType.value = nextType;
+      currentKeyword.value = nextKeyword;
       currentPage.value = 1;
-      loadVideos();
+      loadResults();
     }
   }
 );
 
 /**
- * 加载分类列表
+ * 加载搜索结果
  */
-const loadCategories = async () => {
-  try {
-    const response = await getPublicCategories();
-
-    if (response && response.data && Array.isArray(response.data)) {
-      categories.value = response.data as Category[];
-    } else if (Array.isArray(response)) {
-      categories.value = response as Category[];
-    } else {
-      categories.value = [];
+const loadResults = async (append = false) => {
+  if (searchType.value === "video") {
+    if (!append) {
+      users.value = [];
     }
-  } catch (error) {
-    console.error("加载分类失败:", error);
-    categories.value = [];
+    await loadVideos(append);
+    return;
   }
+
+  if (!append) {
+    videos.value = [];
+  }
+  await loadUsers(append);
 };
 
 /**
@@ -327,7 +375,6 @@ const loadVideos = async (append = false) => {
     // 构建搜索参数
     const params = {
       q: currentKeyword.value || undefined,
-      category_id: currentCategory.value || undefined,
       page: currentPage.value,
       page_size: pageSize.value,
       sort_by: getSortField(sortType.value),
@@ -357,6 +404,50 @@ const loadVideos = async (append = false) => {
 };
 
 /**
+ * 加载UP主列表（精确匹配）
+ */
+const loadUsers = async (append = false) => {
+  if (loading.value) return;
+
+  if (!currentKeyword.value.trim()) {
+    users.value = [];
+    total.value = 0;
+    hasMore.value = false;
+    return;
+  }
+
+  loading.value = true;
+
+  try {
+    const params = {
+      q: currentKeyword.value.trim(),
+      page: currentPage.value,
+      page_size: pageSize.value,
+    };
+
+    const response = await searchUsers(params);
+
+    if (response.success && response.data) {
+      const newUsers = response.data.items || [];
+
+      if (append) {
+        users.value.push(...newUsers);
+      } else {
+        users.value = newUsers;
+      }
+
+      total.value = response.data.total || 0;
+      hasMore.value = users.value.length < total.value;
+    }
+  } catch (error) {
+    console.error("加载UP主列表失败:", error);
+    ElMessage.error("加载UP主列表失败");
+  } finally {
+    loading.value = false;
+  }
+};
+
+/**
  * 获取排序字段
  */
 const getSortField = (sortType: string): "created" | "view" | "like" => {
@@ -369,13 +460,13 @@ const getSortField = (sortType: string): "created" | "view" | "like" => {
 };
 
 /**
- * 加载更多视频
+ * 加载更多结果
  */
-const loadMoreVideos = async () => {
+const loadMoreResults = async () => {
   if (!hasMore.value || loading.value) return;
 
   currentPage.value++;
-  await loadVideos(true);
+  await loadResults(true);
 };
 
 /**
@@ -391,36 +482,36 @@ const handleVideoClick = (video: Video) => {
 const handleSortChange = (type: string) => {
   sortType.value = type;
   currentPage.value = 1;
-  loadVideos();
+  loadResults();
 };
 
 /**
- * 分类变化
+ * 搜索类型切换
  */
-const handleCategoryChange = (categoryId: number | null) => {
-  currentCategory.value = categoryId;
+const handleTypeChange = (type: "video" | "uploader") => {
+  if (searchType.value === type) return;
+  searchType.value = type;
   currentPage.value = 1;
+  router.push({ path: "/search", query: buildQuery() });
+  loadResults();
+};
 
-  // 更新URL
-  const query: Record<string, string | number> = {};
-  if (currentKeyword.value) {
-    query.keyword = currentKeyword.value;
-  }
-  if (categoryId !== null) {
-    query.category_id = categoryId;
-  }
-
-  router.push({
-    path: "/search",
-    query,
-  });
+/**
+ * 点击UP主
+ */
+const handleUserClick = (user: UserBrief) => {
+  router.push(`/users/${user.id}`);
 };
 
 /**
  * 清除搜索
  */
 const clearSearch = () => {
-  router.push("/search");
+  const query: Record<string, string> = {};
+  if (searchType.value === "uploader") {
+    query.type = "uploader";
+  }
+  router.push({ path: "/search", query });
 };
 
 /**
@@ -490,6 +581,40 @@ const handleAuthSuccess = () => {
   }
 }
 
+.search-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.type-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: #f1f2f3;
+}
+
+.type-tab {
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  color: #61666d;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: #e3e5e7;
+    color: #18191c;
+  }
+
+  &.active {
+    background: #00aeec;
+    color: #fff;
+  }
+}
+
 /* 排序选项 */
 .sort-options {
   display: flex;
@@ -527,55 +652,6 @@ const handleAuthSuccess = () => {
   }
 }
 
-/* 筛选栏 */
-.filter-section {
-  background: #fff;
-  border-radius: 8px;
-  padding: 16px 24px;
-  margin-bottom: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.filter-group {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.filter-label {
-  font-size: 14px;
-  color: #61666d;
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-.filter-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.filter-option {
-  padding: 4px 12px;
-  border-radius: 16px;
-  font-size: 13px;
-  color: #61666d;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: 1px solid #e3e5e7;
-  
-  &:hover {
-    border-color: #00aeec;
-    color: #00aeec;
-  }
-  
-  &.active {
-    background: #00aeec;
-    border-color: #00aeec;
-    color: #fff;
-  }
-}
-
 /* 视频区域 */
 .video-section {
   background: #fff;
@@ -583,6 +659,106 @@ const handleAuthSuccess = () => {
   padding: 24px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   margin-bottom: 20px;
+}
+
+.user-section {
+  background: #fff;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+}
+
+.user-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.user-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  border: 1px solid #e3e5e7;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: #00aeec;
+    box-shadow: 0 2px 6px rgba(0, 174, 236, 0.12);
+  }
+}
+
+.user-info {
+  flex: 1;
+  min-width: 0;
+
+  .user-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #18191c;
+    margin-bottom: 4px;
+  }
+
+  .user-meta {
+    font-size: 12px;
+    color: #61666d;
+  }
+}
+
+.user-action {
+  font-size: 12px;
+  color: #00aeec;
+  font-weight: 500;
+}
+
+.user-skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.user-skeleton {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  border: 1px solid #e3e5e7;
+  border-radius: 8px;
+
+  .skeleton-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: linear-gradient(90deg, #f1f2f3 25%, #e3e5e7 50%, #f1f2f3 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+  }
+
+  .skeleton-info {
+    flex: 1;
+  }
+
+  .skeleton-title {
+    height: 16px;
+    width: 160px;
+    margin-bottom: 8px;
+    background: linear-gradient(90deg, #f1f2f3 25%, #e3e5e7 50%, #f1f2f3 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+    border-radius: 4px;
+  }
+
+  .skeleton-meta {
+    height: 12px;
+    width: 120px;
+    background: linear-gradient(90deg, #f1f2f3 25%, #e3e5e7 50%, #f1f2f3 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+    border-radius: 4px;
+  }
 }
 
 /* 加载骨架屏 */
@@ -838,8 +1014,8 @@ const handleAuthSuccess = () => {
   }
   
   .search-header,
-  .filter-section,
-  .video-section {
+  .video-section,
+  .user-section {
     padding: 16px;
     margin-bottom: 12px;
   }
@@ -853,11 +1029,15 @@ const handleAuthSuccess = () => {
     align-items: flex-start;
     gap: 8px;
   }
-  
-  .filter-group {
+
+  .search-controls {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
+  }
+
+  .type-tabs {
+    width: 100%;
   }
   
   .video-grid {
@@ -868,6 +1048,14 @@ const handleAuthSuccess = () => {
   .loading-grid {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 12px;
+  }
+
+  .user-card {
+    align-items: flex-start;
+  }
+
+  .user-action {
+    display: none;
   }
 }
 </style>

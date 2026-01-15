@@ -4,6 +4,7 @@ FFmpeg 命令构建器
 职责：构建 FFmpeg 转码命令
 相当于 Java 的 FFmpegCommandBuilder
 """
+import math
 import os
 from typing import Optional
 
@@ -54,8 +55,43 @@ class FFmpegBuilder:
         segment_pattern = os.path.join(output_dir, f"{output_name}_%03d.ts")
         
         # 检查是否使用GPU硬件加速
-        use_gpu = getattr(settings, 'TRANSCODE_USE_GPU', False)
+        use_gpu = getattr(settings, 'TRANSCODE_USE_GPU', True)
         gpu_device = getattr(settings, 'TRANSCODE_GPU_DEVICE', 0)
+        cpu_count = os.cpu_count() or 8
+        cpu_threads = max(4, min(8, int(math.ceil(cpu_count * 0.4))))
+
+        def _parse_resolution(value: str):
+            if not value:
+                return None
+            parts = value.lower().split('x')
+            if len(parts) != 2:
+                return None
+            try:
+                width = int(parts[0])
+                height = int(parts[1])
+            except ValueError:
+                return None
+            if width <= 0 or height <= 0:
+                return None
+            return width, height
+
+        def _normalize_bitrate_k(value: Optional[str]):
+            if not value:
+                return None
+            raw = value.strip().lower()
+            try:
+                if raw.endswith('k'):
+                    return int(float(raw[:-1]))
+                if raw.endswith('m'):
+                    return int(float(raw[:-1]) * 1000)
+                number = float(raw)
+            except ValueError:
+                return None
+            if number <= 0:
+                return None
+            if number > 10000:
+                return int(number / 1000)
+            return int(number)
         
         # 构建FFmpeg命令
         command = ['ffmpeg']
@@ -73,7 +109,15 @@ class FFmpegBuilder:
         if resolution:
             if use_gpu:
                 # GPU硬件加速：使用GPU缩放
-                command.extend(['-vf', f'scale_cuda={resolution}'])
+                resolution_dims = _parse_resolution(resolution)
+                if resolution_dims:
+                    width, height = resolution_dims
+                    command.extend([
+                        '-vf',
+                        f'hwupload_cuda,scale_cuda=w={width}:h={height}:format=nv12',
+                    ])
+                else:
+                    command.extend(['-vf', f'hwupload_cuda,scale_cuda={resolution}'])
             else:
                 # CPU转码：使用CPU缩放
                 command.extend(['-vf', f'scale={resolution}'])
@@ -82,26 +126,32 @@ class FFmpegBuilder:
             # GPU硬件加速编码（NVENC H.264）
             # 注意：输入视频可能是AV1编码，NVENC不支持AV1解码，需要CPU解码
             # 但可以使用GPU进行编码和缩放，提高效率
+            bitrate_k = _normalize_bitrate_k(video_bitrate)
+            maxrate = f"{int(bitrate_k * 1.2)}k" if bitrate_k else '2400k'
+            bufsize = f"{int(bitrate_k * 2)}k" if bitrate_k else '4000k'
             command.extend([
                 '-c:v', 'h264_nvenc',    # NVIDIA硬件编码器（RTX 3050支持）
-                '-preset', 'p4',         # NVENC预设：p4平衡速度和质量（p1最快，p7最慢但质量最好）
+                '-preset', 'p3',         # NVENC preset: p3 favors speed (p1 fastest, p7 slowest/best quality)
                 '-rc', 'vbr',            # 码率控制模式：VBR（可变码率）
+                '-rc-lookahead', '8',
+                '-bf', '2',
+                '-gpu', str(gpu_device),
                 '-b:v', video_bitrate if video_bitrate else '2000k',  # 目标码率
-                '-maxrate', str(int(video_bitrate.replace('k', '')) * 1.2) + 'k' if video_bitrate else '2400k',  # 最大码率（目标码率的1.2倍）
-                '-bufsize', str(int(video_bitrate.replace('k', '')) * 2) + 'k' if video_bitrate else '4000k',  # 缓冲区大小（目标码率的2倍）
+                '-maxrate', maxrate,     # 最大码率（目标码率的1.2倍）
+                '-bufsize', bufsize,     # 缓冲区大小（目标码率的2倍）
             ])
         else:
             # CPU软件编码（libx264）
             # 优化策略：降低CPU占用但保持转码效率
-            # 1. 使用 medium preset（比 fast 稍慢但质量更好，比 slow 快很多）
+            # 1. 使用 fast preset（更快的编码速度）
             # 2. 使用 CRF 模式（恒定质量）而不是码率模式，更高效
-            # 3. 限制线程数为4（i5-11260H为6核12线程，使用4线程避免过度占用，留出资源给系统）
+            # 3. 线程数约为CPU的40%（提升速度同时避免过度占用）
             # 4. 使用 film tune（适合视频内容，比 zerolatency 更高效）
             command.extend([
                 '-c:v', 'libx264',          # 视频编码器
-                '-preset', 'medium',        # 编码速度：medium 平衡速度和质量（比 fast 稍慢但质量更好，比 slow 快很多）
+                '-preset', 'fast',          # 编码速度：fast 提升转码速度
                 '-crf', '23',               # 质量因子：23 是较好的平衡点（18-28范围，越小质量越好）
-                '-threads', '4',            # 转码线程数：4线程（i5-11260H为6核12线程，使用4线程避免过度占用）
+                '-threads', str(cpu_threads),  # 转码线程数：约占CPU 40%
                 '-tune', 'film',            # 视频内容调优（适合视频内容，比 zerolatency 更高效）
                 '-movflags', '+faststart',   # 优化网络播放（将元数据移到文件开头）
             ])
@@ -128,4 +178,3 @@ class FFmpegBuilder:
         ])
         
         return command
-

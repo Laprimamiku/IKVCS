@@ -506,7 +506,33 @@ const getStatusText = (status: number): string => {
 const handleReviewFrames = async (videoId: number) => {
   reviewingFrames.value = videoId;
   try {
-    await adminApi.reviewFramesOnly(videoId);
+    const startReview = async (force = false) => adminApi.reviewFramesOnly(videoId, force);
+    const response = await startReview();
+    const status = response.data?.status;
+
+    if (status === "running") {
+      ElMessage.info("抽帧审核进行中，请稍后再试");
+      return;
+    }
+
+    if (status === "completed" && response.data?.confirm_required) {
+      try {
+        await ElMessageBox.confirm(
+          "抽帧审核已完成，是否确认继续？",
+          "抽帧审核",
+          { confirmButtonText: "继续", cancelButtonText: "取消", type: "warning" }
+        );
+      } catch {
+        return;
+      }
+
+      const confirmResponse = await startReview(true);
+      if (confirmResponse.data?.status === "running") {
+        ElMessage.info("抽帧审核进行中，请稍后再试");
+        return;
+      }
+    }
+
     ElMessage.success("抽帧审核任务已启动，请稍后查看结果");
     // 延迟刷新数据，等待审核完成
     setTimeout(() => {
@@ -522,7 +548,33 @@ const handleReviewFrames = async (videoId: number) => {
 const handleReviewSubtitle = async (videoId: number) => {
   reviewingSubtitle.value = videoId;
   try {
-    await adminApi.reviewSubtitleOnly(videoId);
+    const startReview = async (force = false) => adminApi.reviewSubtitleOnly(videoId, force);
+    const response = await startReview();
+    const status = response.data?.status;
+
+    if (status === "running") {
+      ElMessage.info("字幕审核进行中，请稍后再试");
+      return;
+    }
+
+    if (status === "completed" && response.data?.confirm_required) {
+      try {
+        await ElMessageBox.confirm(
+          "字幕审核已完成，是否确认继续？",
+          "字幕审核",
+          { confirmButtonText: "继续", cancelButtonText: "取消", type: "warning" }
+        );
+      } catch {
+        return;
+      }
+
+      const confirmResponse = await startReview(true);
+      if (confirmResponse.data?.status === "running") {
+        ElMessage.info("字幕审核进行中，请稍后再试");
+        return;
+      }
+    }
+
     ElMessage.success("字幕审核任务已启动，请稍后查看结果");
     // 延迟刷新数据，等待审核完成
     setTimeout(() => {
@@ -550,7 +602,7 @@ const handleManualReview = async (videoId: number) => {
     const videoRes = await adminApi.getOriginalVideoUrl(videoId);
     // API 返回格式可能是 {success: true, data: {...}}，需要提取 data
     const videoData = (videoRes as any).data || videoRes;
-    originalVideoUrl.value = videoData.file_url || "";
+    originalVideoUrl.value = videoData.stream_url || videoData.file_url || "";
     originalVideoInfo.value = videoData; // 保存视频信息
     console.log("原始视频信息:", videoData);
     

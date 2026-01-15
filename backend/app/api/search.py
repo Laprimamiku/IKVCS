@@ -8,12 +8,15 @@ from typing import Optional, List
 from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.services.search.mysql_search_provider import MySQLSearchProvider
 from app.services.search.hotword_service import HotwordService
 from app.schemas.video import VideoListResponse, VideoListItemResponse
+from app.schemas.user import UserBriefResponse
+from app.models.user import User
 from app.services.video.video_response_builder import VideoResponseBuilder
 
 logger = logging.getLogger(__name__)
@@ -55,6 +58,14 @@ class SearchResponse(BaseModel):
     page_size: int
     suggestions: Optional[List[str]] = None
     highlights: Optional[dict] = None
+
+
+class UserSearchResponse(BaseModel):
+    """用户搜索响应"""
+    items: List[UserBriefResponse]
+    total: int
+    page: int
+    page_size: int
 
 
 @router.get("/videos", response_model=SearchResponse, summary="搜索视频")
@@ -151,3 +162,41 @@ async def get_suggestions(
         "suggestions": suggestions
     }
 
+
+@router.get("/users", response_model=UserSearchResponse, summary="搜索UP主")
+async def search_users(
+    q: Optional[str] = Query(None, description="UP主名称（精确匹配）"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    db: Session = Depends(get_db),
+):
+    """
+    搜索 UP 主（用户名/昵称精确匹配）
+    """
+    if not q:
+        return {
+            "items": [],
+            "total": 0,
+            "page": page,
+            "page_size": page_size,
+        }
+
+    base_query = (
+        db.query(User)
+        .filter(User.status == 1)
+        .filter(or_(User.username == q, User.nickname == q))
+        .order_by(User.id.desc())
+    )
+
+    total = base_query.count()
+    offset = (page - 1) * page_size
+    users = base_query.offset(offset).limit(page_size).all()
+
+    items = [UserBriefResponse.model_validate(user) for user in users]
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }

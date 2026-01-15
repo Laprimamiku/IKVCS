@@ -243,11 +243,19 @@ class TranscodeService:
         
         resolution_output = os.path.join(resolution_dir, "index.m3u8")
 
-        # 如果该清晰度已经存在产物，直接复用，避免重复耗时
+        # 如果该清晰度已经存在产物，优先复用有效播放列表
         if os.path.exists(resolution_output):
-            bandwidth = int(video_bitrate.replace('k', '')) * 1000
-            logger.info(f"检测到已有转码产物，复用 {name}: {resolution_output}")
-            return (name, resolution, bandwidth)
+            if TranscodeService._playlist_has_segments(resolution_output):
+                bandwidth = int(video_bitrate.replace('k', '')) * 1000
+                logger.info(f"检测到已有转码产物，复用 {name}: {resolution_output}")
+                return (name, resolution, bandwidth)
+            logger.warning(f"检测到损坏或空播放列表，将重新转码：{resolution_output}")
+            try:
+                import shutil
+                shutil.rmtree(resolution_dir, ignore_errors=True)
+                os.makedirs(resolution_dir, exist_ok=True)
+            except Exception as exc:
+                logger.warning(f"清理残留转码产物失败：{resolution_dir}, error={exc}")
         
         # 构建 FFmpeg 命令
         ffmpeg_cmd = FFmpegBuilder.build_ffmpeg_command(
@@ -371,6 +379,20 @@ class TranscodeService:
             logger.info(f"视频审核任务已启动（后台线程）: video_id={video_id}")
         else:
             logger.info(f"自动审核已禁用，跳过审核流程：video_id={video_id}")
+
+    @staticmethod
+    def _playlist_has_segments(playlist_path: str) -> bool:
+        if not os.path.exists(playlist_path):
+            return False
+        try:
+            with open(playlist_path, "r", encoding="utf-8") as file:
+                for raw_line in file:
+                    line = raw_line.strip()
+                    if line and not line.startswith("#"):
+                        return True
+        except Exception as exc:
+            logger.warning(f"Failed to read resolution playlist: {playlist_path}, error={exc}")
+        return False
     
     @staticmethod
     def _transcode_other_resolutions_sync(
@@ -413,16 +435,14 @@ class TranscodeService:
                 
                 # 从现有播放列表解析已转码的清晰度
                 if os.path.exists(existing_playlist_path):
-                    with open(existing_playlist_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        # 简单解析：查找所有已存在的清晰度目录
-                        for res in RESOLUTIONS:
-                            name = res[0]
-                            resolution_dir = os.path.join(output_dir, name)
-                            resolution_output = os.path.join(resolution_dir, "index.m3u8")
-                            if os.path.exists(resolution_output):
-                                bandwidth = int(res[2].replace('k', '')) * 1000
-                                existing_resolutions.append((name, res[1], bandwidth))
+                    # 简单解析：查找所有已存在且有效的清晰度目录
+                    for res in RESOLUTIONS:
+                        name = res[0]
+                        resolution_dir = os.path.join(output_dir, name)
+                        resolution_output = os.path.join(resolution_dir, "index.m3u8")
+                        if TranscodeService._playlist_has_segments(resolution_output):
+                            bandwidth = int(res[2].replace('k', '')) * 1000
+                            existing_resolutions.append((name, res[1], bandwidth))
                 
                 # 合并所有清晰度（去重）
                 all_resolutions = existing_resolutions + new_resolutions
@@ -450,4 +470,3 @@ class TranscodeService:
             logger.error(f"后台转码失败：video_id={video_id}, error={e}", exc_info=True)
         finally:
             db.close()
-

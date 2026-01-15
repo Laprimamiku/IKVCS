@@ -17,18 +17,16 @@
             <span>首页</span>
           </router-link>
           <a href="#" class="nav-item">
-            <span>番剧</span>
-            <i class="nav-arrow"></i>
+            <span></span>
           </a>
           <a href="#" class="nav-item">
-            <span>直播</span>
+            <span></span>
           </a>
           <a href="#" class="nav-item">
-            <span>游戏中心</span>
+            <span></span>
           </a>
           <a href="#" class="nav-item more-btn">
-            <span>更多</span>
-            <i class="nav-arrow"></i>
+            <span></span>
           </a>
         </nav>
       </div>
@@ -74,7 +72,7 @@
               </div>
               <div class="suggestion-list">
                 <div 
-                  v-for="(item, index) in searchHistory.slice(0, 8)" 
+                  v-for="(item, index) in searchHistory.slice(0, 5)" 
                   :key="'history-' + index"
                   class="suggestion-item"
                   :class="{ active: selectedIndex === index }"
@@ -84,28 +82,6 @@
                   <el-icon class="item-icon"><Clock /></el-icon>
                   <span class="item-text">{{ item }}</span>
                   <button class="remove-btn" @click.stop="removeHistoryItem(index)">×</button>
-                </div>
-              </div>
-            </div>
-            
-            <!-- Hot Searches -->
-            <div v-if="!keyword && hotSearches.length > 0" class="suggestion-section">
-              <div class="section-header">
-                <el-icon class="section-icon"><TrendCharts /></el-icon>
-                <span class="section-title">热搜榜</span>
-              </div>
-              <div class="suggestion-list hot-list">
-                <div 
-                  v-for="(item, index) in hotSearches" 
-                  :key="'hot-' + index"
-                  class="suggestion-item hot-item"
-                  :class="{ active: selectedIndex === searchHistory.length + index }"
-                  @click="selectSuggestion(item.keyword)"
-                  @mouseenter="selectedIndex = searchHistory.length + index"
-                >
-                  <span class="hot-rank" :class="'rank-' + (index + 1)">{{ index + 1 }}</span>
-                  <span class="item-text">{{ item.keyword }}</span>
-                  <span v-if="item.count && item.count > 100" class="hot-badge">热</span>
                 </div>
               </div>
             </div>
@@ -158,7 +134,7 @@
                   </div>
                   <div class="menu-item" @click="goToVideoCenter">
                     <el-icon><VideoCamera /></el-icon>
-                    <span>内容管理</span>
+                    <span>创作中心</span>
                   </div>
                   <div class="menu-item" @click="goToCollections">
                     <el-icon><Star /></el-icon>
@@ -181,13 +157,9 @@
 
           <!-- Quick Action Icons -->
           <div class="action-icons">
-            <div class="icon-item" title="消息">
-              <el-icon :size="20"><Message /></el-icon>
-              <span class="icon-label">消息</span>
-            </div>
-            <div class="icon-item" title="动态">
-              <el-icon :size="20"><Bell /></el-icon>
-              <span class="icon-label">动态</span>
+            <div class="icon-item" title="投稿" @click="handlePostClick">
+              <el-icon :size="20"><Upload /></el-icon>
+              <span class="icon-label">投稿</span>
             </div>
             <div class="icon-item" title="收藏" @click="goToCollections">
               <el-icon :size="20"><Star /></el-icon>
@@ -232,11 +204,8 @@ import {
   User,
   SwitchButton,
   Upload,
-  Message,
   Star,
   Clock,
-  Bell,
-  TrendCharts,
 } from "@element-plus/icons-vue";
 
 const router = useRouter();
@@ -253,7 +222,6 @@ const searchContainerRef = ref<HTMLElement | null>(null);
 // Search suggestions data
 const suggestions = ref<string[]>([]);
 const searchHistory = ref<string[]>([]);
-const hotSearches = ref<{ keyword: string; count?: number }[]>([]);
 
 const emit = defineEmits(["login", "register"]);
 
@@ -261,36 +229,12 @@ const emit = defineEmits(["login", "register"]);
 onMounted(() => {
   const saved = localStorage.getItem('searchHistory');
   if (saved) {
-    searchHistory.value = JSON.parse(saved);
+    searchHistory.value = JSON.parse(saved).slice(0, 5);
   }
-  
-  // 加载热词榜
-  loadHotwords();
-  
+
   // Global keyboard shortcuts
   document.addEventListener('keydown', handleGlobalKeydown);
 });
-
-// Load hot words from API
-const loadHotwords = async () => {
-  try {
-    const { getSearchSuggestions } = await import("@/features/search/api/search.api");
-    const response = await getSearchSuggestions("", 10);
-    if (response.success && response.data) {
-      // 如果 API 返回热词，使用 API 数据
-      if (response.data.hotwords && response.data.hotwords.length > 0) {
-        hotSearches.value = response.data.hotwords.map((item: any) => ({
-          keyword: item.keyword || item,
-          count: item.count || 0
-        }));
-      }
-    }
-  } catch (error) {
-    console.error("加载热词榜失败:", error);
-    // 如果 API 失败，使用空数组（不显示热词）
-    hotSearches.value = [];
-  }
-};
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleGlobalKeydown);
@@ -372,15 +316,12 @@ const handleSearch = () => {
   
   keyword.value = searchTerm;
   closeSuggestions();
-  router.push({ path: "/search", query: { keyword: searchTerm } });
+  goToSearch(searchTerm);
 };
 
 const getSelectedSuggestion = (): string => {
   if (!keyword.value) {
-    if (selectedIndex.value < searchHistory.value.length) {
-      return searchHistory.value[selectedIndex.value];
-    }
-    return hotSearches.value[selectedIndex.value - searchHistory.value.length]?.keyword || '';
+    return searchHistory.value[selectedIndex.value] || '';
   }
   return suggestions.value[selectedIndex.value] || '';
 };
@@ -389,13 +330,13 @@ const selectSuggestion = (text: string) => {
   keyword.value = text;
   addToHistory(text);
   closeSuggestions();
-  router.push({ path: "/search", query: { keyword: text } });
+  goToSearch(text);
 };
 
 const navigateSuggestion = (direction: number) => {
   const totalItems = keyword.value 
     ? suggestions.value.length 
-    : searchHistory.value.length + hotSearches.value.length;
+    : searchHistory.value.length;
     
   if (totalItems === 0) return;
   
@@ -411,7 +352,7 @@ const closeSuggestions = () => {
 
 const addToHistory = (term: string) => {
   const filtered = searchHistory.value.filter(h => h !== term);
-  searchHistory.value = [term, ...filtered].slice(0, 20);
+  searchHistory.value = [term, ...filtered].slice(0, 5);
   localStorage.setItem('searchHistory', JSON.stringify(searchHistory.value));
 };
 
@@ -429,6 +370,14 @@ const highlightKeyword = (text: string): string => {
   if (!keyword.value) return text;
   const regex = new RegExp(`(${keyword.value})`, 'gi');
   return text.replace(regex, '<em class="highlight">$1</em>');
+};
+
+const goToSearch = (term: string) => {
+  const query: Record<string, string> = { keyword: term };
+  if (route.query.type === "uploader") {
+    query.type = "uploader";
+  }
+  router.push({ path: "/search", query });
 };
 
 // Navigation handlers
@@ -463,12 +412,25 @@ const handleUploadClick = () => {
     emit("login");
     return;
   }
-  // 确保路由跳转
+  // 确保路由跳转到创作中心
   router.push({ name: "VideoCenter" }).catch((err) => {
-    console.error("跳转到视频中心失败:", err);
+    console.error("跳转到创作中心失败:", err);
     // 如果路由名称失败，尝试使用路径
     router.push("/video-center").catch((err2) => {
       console.error("使用路径跳转也失败:", err2);
+    });
+  });
+};
+
+const handlePostClick = () => {
+  if (!userStore.isLoggedIn) {
+    emit("login");
+    return;
+  }
+  router.push({ name: "VideoCenter", query: { tab: "videos", upload: "1" } }).catch((err) => {
+    console.error("跳转到投稿入口失败:", err);
+    router.push("/video-center?tab=videos&upload=1").catch((err2) => {
+      console.error("使用路径跳转投稿入口失败:", err2);
     });
   });
 };
@@ -778,57 +740,6 @@ const handleLogout = async () => {
 
   &.active {
     background: var(--primary-light);
-  }
-}
-
-/* Hot Search Styles */
-.hot-list {
-  .hot-item {
-    .hot-rank {
-      width: 18px;
-      height: 18px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 11px;
-      font-weight: var(--font-weight-bold);
-      color: var(--text-tertiary);
-      background: var(--bg-gray-1);
-      border-radius: var(--radius-sm);
-
-      &.rank-1 {
-        color: var(--text-white);
-        background: #FF6B6B;
-      }
-
-      &.rank-2 {
-        color: var(--text-white);
-        background: #FF9F43;
-      }
-
-      &.rank-3 {
-        color: var(--text-white);
-        background: #FECA57;
-      }
-    }
-
-    .hot-badge,
-    .new-badge {
-      padding: 0 4px;
-      font-size: 10px;
-      font-weight: var(--font-weight-medium);
-      border-radius: var(--radius-xs);
-    }
-
-    .hot-badge {
-      color: #FF6B6B;
-      background: rgba(255, 107, 107, 0.1);
-    }
-
-    .new-badge {
-      color: var(--primary-color);
-      background: var(--primary-light);
-    }
   }
 }
 

@@ -132,8 +132,10 @@ export const adminApi = {
   approveVideo: (id: number) => request.post(`/admin/videos/${id}/approve`),
   rejectVideo: (id: number) => request.post(`/admin/videos/${id}/reject`),
   reReviewVideo: (id: number) => request.post(`/admin/videos/${id}/re-review`), // 重新触发AI初审（帧+字幕）
-  reviewFramesOnly: (id: number) => request.post(`/admin/videos/${id}/review-frames`), // 仅审核视频帧
-  reviewSubtitleOnly: (id: number) => request.post(`/admin/videos/${id}/review-subtitle`), // 仅审核字幕
+  reviewFramesOnly: (id: number, force?: boolean) =>
+    request.post(`/admin/videos/${id}/review-frames`, null, force ? { params: { force: true } } : undefined), // 仅审核视频帧
+  reviewSubtitleOnly: (id: number, force?: boolean) =>
+    request.post(`/admin/videos/${id}/review-subtitle`, null, force ? { params: { force: true } } : undefined), // 仅审核字幕
   getOriginalVideoUrl: (id: number) => request.get(`/admin/videos/${id}/original`), // 获取原始视频文件 URL
   getSubtitleContent: (id: number) => request.get(`/admin/videos/${id}/subtitle-content`), // 获取字幕内容
 

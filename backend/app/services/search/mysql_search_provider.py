@@ -7,11 +7,10 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func, desc, asc
+from sqlalchemy import func, desc, asc
 
 from app.services.search.search_provider import SearchProvider
 from app.models.video import Video
-from app.models.user import User
 from app.core.video_constants import VideoStatus
 
 logger = logging.getLogger(__name__)
@@ -37,7 +36,7 @@ class MySQLSearchProvider(SearchProvider):
         实现 SearchProvider 接口，使用 MySQL LIKE 查询实现搜索功能
         
         Args:
-            query: 搜索关键词（可选），搜索标题、描述、上传者
+            query: 搜索关键词（可选），仅匹配视频标题
             filters: 筛选条件字典
                 - category_id: 分类ID
                 - status: 视频状态（默认 VideoStatus.PUBLISHED）
@@ -112,31 +111,10 @@ class MySQLSearchProvider(SearchProvider):
         count_only: bool = False
     ):
         """应用筛选条件"""
-        from sqlalchemy.orm import joinedload
-        
-        # 关键词搜索（搜索标题、描述、上传者）
+        # 关键词搜索（仅视频标题模糊匹配）
         if search_query:
             keyword_pattern = f"%{search_query}%"
-            if count_only:
-                # 计数查询需要 join User 表
-                query = query.join(User, Video.uploader_id == User.id).filter(
-                    or_(
-                        Video.title.like(keyword_pattern),
-                        Video.description.like(keyword_pattern),
-                        User.username.like(keyword_pattern),
-                        User.nickname.like(keyword_pattern)
-                    )
-                )
-            else:
-                # 列表查询已经 joinedload，直接过滤
-                query = query.filter(
-                    or_(
-                        Video.title.like(keyword_pattern),
-                        Video.description.like(keyword_pattern),
-                        Video.uploader.has(User.username.like(keyword_pattern)),
-                        Video.uploader.has(User.nickname.like(keyword_pattern))
-                    )
-                )
+            query = query.filter(Video.title.like(keyword_pattern))
         
         # 分类筛选
         if filters.get("category_id"):
@@ -190,4 +168,3 @@ class MySQLSearchProvider(SearchProvider):
             query = query.order_by(desc(Video.created_at))
         
         return query
-

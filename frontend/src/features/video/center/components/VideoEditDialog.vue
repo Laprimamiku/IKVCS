@@ -146,10 +146,15 @@
     </el-form>
 
     <template #footer>
-      <el-button @click="handleCancel">取消</el-button>
-      <el-button type="primary" :loading="saving" @click="handleSave"
-        >保存</el-button
-      >
+      <div class="dialog-footer">
+        <el-button type="danger" @click="handleDelete">删除</el-button>
+        <div class="footer-actions">
+          <el-button @click="handleCancel">取消</el-button>
+          <el-button type="primary" :loading="saving" @click="handleSave">
+            保存
+          </el-button>
+        </div>
+      </div>
     </template>
   </el-dialog>
 </template>
@@ -184,6 +189,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:modelValue": [value: boolean];
   save: [data: SaveData];
+  delete: [video: Video];
   cancel: [];
 }>();
 
@@ -440,6 +446,25 @@ const handleCancel = () => {
   emit("cancel");
 };
 
+const handleDelete = async () => {
+  if (!props.video) return;
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除视频"${props.video.title}"吗？此操作不可恢复。`,
+      "删除确认",
+      {
+        confirmButtonText: "确定删除",
+        cancelButtonText: "取消",
+        type: "warning",
+      }
+    );
+    emit("delete", props.video);
+  } catch (error) {
+    // 用户取消删除
+  }
+};
+
 const handleSave = async () => {
   if (!formRef.value || !form.id) return;
 
@@ -503,10 +528,23 @@ const handleSave = async () => {
   width: 100%;
 }
 
-.reupload-progress {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-}
+  .reupload-progress {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+
+  .dialog-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+  }
+
+  .footer-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+  }
 </style>

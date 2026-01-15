@@ -24,6 +24,7 @@ from app.core.dependencies import get_current_admin
 from app.core.video_constants import VideoStatus, ReportStatus
 from app.core.app_constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from app.core.error_handler import handle_api_errors
+from app.core.response import success_response
 from app.utils.json_utils import parse_json_field
 from app.models.video import Video, Category
 from app.models.user import User
@@ -283,8 +284,13 @@ async def manage_videos(
     for video in videos:
         # 解析 review_report JSON 字符串
         review_report_dict = parse_json_field(video.review_report) if video.review_report else None
+        review_score = video.review_score
+        review_status = video.review_status
         if review_report_dict:
-                review_report_dict = None
+            if review_score is None:
+                review_score = review_report_dict.get("final_score")
+            if review_status is None:
+                review_status = review_report_dict.get("final_status")
         
         items.append(AdminVideoListItemResponse(
             id=video.id,
@@ -311,8 +317,8 @@ async def manage_videos(
             ),
             created_at=video.created_at,
             status=video.status,
-            review_score=video.review_score,
-            review_status=video.review_status,
+            review_score=review_score,
+            review_status=review_status,
             review_report=review_report_dict,
         ))
 
@@ -407,6 +413,7 @@ async def re_review_video(
 async def review_frames_only(
     video_id: int,
     background_tasks: BackgroundTasks,
+    force: bool = False,
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
@@ -439,12 +446,48 @@ async def review_frames_only(
     if not os.path.exists(input_path):
         raise HTTPException(404, "视频文件不存在")
     
+    from app.services.cache.redis_service import redis_service
+    from app.utils.json_utils import parse_review_report
+
+    lock_key = f"review:frames:running:{video_id}"
+    lock_ttl_seconds = 2 * 60 * 60
+
+    if redis_service.redis.get(lock_key):
+        return success_response(
+            data={"video_id": video_id, "status": "running"},
+            message="Frame review is already running.",
+        )
+
+    review_report = parse_review_report(video.review_report, default={}) if video.review_report else {}
+    if "frame_review" in review_report and not force:
+        return success_response(
+            data={
+                "video_id": video_id,
+                "status": "completed",
+                "confirm_required": True,
+            },
+            message="Frame review already completed. Confirm to run again.",
+        )
+
+    try:
+        redis_service.redis.setex(lock_key, lock_ttl_seconds, "1")
+    except Exception as exc:
+        logger.warning(f"Failed to set frame review lock: {lock_key}, error={exc}")
+
+    async def run_frame_review():
+        try:
+            await video_review_service.review_frames_only(
+                video_id=video_id,
+                video_path=input_path,
+            )
+        finally:
+            try:
+                redis_service.redis.delete(lock_key)
+            except Exception as exc:
+                logger.warning(f"Failed to release frame review lock: {lock_key}, error={exc}")
+
     # 异步触发帧审核（后台任务）
-    background_tasks.add_task(
-        video_review_service.review_frames_only,
-        video_id=video_id,
-        video_path=input_path
-    )
+    background_tasks.add_task(run_frame_review)
     
     logger.info(f"管理员 {admin.username} 触发视频帧审核: video_id={video_id}")
     vision_mode = getattr(settings, "VISION_MODE", "hybrid").lower()
@@ -452,16 +495,17 @@ async def review_frames_only(
     use_cloud_vision = vision_mode in ("cloud_only", "hybrid") and has_vision_key
     vision_model_name = settings.LLM_VISION_MODEL or settings.LLM_MODEL or "unknown"
     model_info = f"云端视觉模型({vision_model_name})" if use_cloud_vision else f"本地视觉模型({vision_model_name})"
-    return {
-        "message": f"帧审核任务已启动（{model_info}），请稍后查看审核结果",
-        "video_id": video_id
-    }
+    return success_response(
+        data={"video_id": video_id, "status": "started"},
+        message=f"Frame review task started ({model_info}).",
+    )
 
 
 @router.post("/videos/{video_id}/review-subtitle", summary="仅审核字幕（云端/本地模型）")
 async def review_subtitle_only(
     video_id: int,
     background_tasks: BackgroundTasks,
+    force: bool = False,
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
@@ -509,22 +553,57 @@ async def review_subtitle_only(
     else:
         logger.warning(f"字幕目录不存在: {subtitle_dir}")
     
+    from app.utils.json_utils import parse_review_report
+
+    lock_key = f"review:subtitle:running:{video_id}"
+    lock_ttl_seconds = 2 * 60 * 60
+
+    if redis_service.redis.get(lock_key):
+        return success_response(
+            data={"video_id": video_id, "status": "running"},
+            message="Subtitle review is already running.",
+        )
+
+    review_report = parse_review_report(video.review_report, default={}) if video.review_report else {}
+    if "subtitle_review" in review_report and not force:
+        return success_response(
+            data={
+                "video_id": video_id,
+                "status": "completed",
+                "confirm_required": True,
+            },
+            message="Subtitle review already completed. Confirm to run again.",
+        )
+
+    try:
+        redis_service.redis.setex(lock_key, lock_ttl_seconds, "1")
+    except Exception as exc:
+        logger.warning(f"Failed to set subtitle review lock: {lock_key}, error={exc}")
+
+    async def run_subtitle_review():
+        try:
+            await video_review_service.review_subtitle_only(
+                video_id=video_id,
+                subtitle_path=subtitle_path,
+            )
+        finally:
+            try:
+                redis_service.redis.delete(lock_key)
+            except Exception as exc:
+                logger.warning(f"Failed to release subtitle review lock: {lock_key}, error={exc}")
+
     # 异步触发字幕审核（后台任务）
-    background_tasks.add_task(
-        video_review_service.review_subtitle_only,
-        video_id=video_id,
-        subtitle_path=subtitle_path
-    )
+    background_tasks.add_task(run_subtitle_review)
     
     logger.info(f"管理员 {admin.username} 触发字幕审核: video_id={video_id}, subtitle_path={subtitle_path}")
     llm_mode = getattr(settings, "LLM_MODE", "hybrid").lower()
     use_cloud_text = llm_mode in ("cloud_only", "hybrid") and bool(settings.LLM_API_KEY)
     model_name = settings.LLM_MODEL if use_cloud_text else settings.LOCAL_LLM_MODEL
     model_info = f"云端模型({model_name})" if use_cloud_text else f"本地模型({model_name})"
-    return {
-        "message": f"字幕审核任务已启动（{model_info}），请稍后查看审核结果",
-        "video_id": video_id
-    }
+    return success_response(
+        data={"video_id": video_id, "status": "started"},
+        message=f"Subtitle review task started ({model_info}).",
+    )
 
 
 @router.get("/videos/{video_id}/original", summary="获取原始视频文件 URL（用于人工审核）")
