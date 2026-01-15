@@ -34,13 +34,24 @@ class Settings(BaseSettings):
     
     # LLM API 配置（LLM_MODE=off/local_only 时允许为空）
     LLM_API_KEY: str = ""  # 可选，off/local_only 模式时允许为空
-    LLM_BASE_URL: str = "https://api.openai.com/v1"  # 默认值，可通过环境变量覆盖
-    LLM_MODEL: str = "glm-4-flash"  # 默认值，可通过环境变量覆盖
     
-    # 云端图像识别模型配置
-    LLM_VISION_API_KEY: str = ""  # 图像识别API密钥，可选
-    LLM_VISION_BASE_URL: str = ""  # 图像识别API地址，可选
-    LLM_VISION_MODEL: str = ""  # 图像识别模型名称，可选
+    # ==================== 智谱GLM配置（推荐） ====================
+    # 文本模型配置（用于字幕分点、弹幕/评论分析等）
+    LLM_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4"  # 智谱GLM API地址
+    LLM_MODEL: str = "glm-4-flash"  # 文本模型：免费用户并发限制200次
+    
+    # 云端图像识别模型配置（用于视频抽帧审核）
+    LLM_VISION_API_KEY: str = ""  # 图像识别API密钥，可选（与LLM_API_KEY相同）
+    LLM_VISION_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4"  # 智谱GLM视觉模型API地址
+    LLM_VISION_MODEL: str = "glm-4v-plus"  # 视觉模型：免费用户并发限制5次
+    
+    # ==================== CLIProxyAPI配置（已注释，保留备用） ====================
+    # 之前的CLI API配置（通过CLIProxyAPI访问反重力模型）
+    # LLM_BASE_URL: str = "https://cli.309831.xyz/v1"  # CLIProxyAPI地址
+    # LLM_MODEL: str = "gemini-3-flash-preview"  # 反重力模型
+    # LLM_VISION_BASE_URL: str = "https://cli.309831.xyz/v1"
+    # LLM_VISION_MODEL: str = "gemini-3-flash-preview"
+    # 注意：CLIProxyAPI存在429限流问题（model_cooldown），已切换为智谱GLM
     
     # 视觉模式配置（可选但建议）
     VISION_MODE: str = "hybrid"  # off | cloud_only | local_only | hybrid
@@ -109,11 +120,19 @@ class Settings(BaseSettings):
     AI_ANALYSIS_TRACE_LOW_CONFIDENCE: float = 0.6  # 低置信度默认写入 trace
     
     # 云端模型并发控制配置（精细化）
-    CLOUD_FRAME_REVIEW_MAX_CONCURRENT: int = 2  # 云端帧审核最大并发数（RTX 3050优化）
+    # 注意：智谱GLM免费用户并发限制
+    # - glm-4v-plus（视觉模型）：5次并发
+    # - glm-4-flash（文本模型）：200次并发
+    CLOUD_FRAME_REVIEW_MAX_CONCURRENT: int = 5  # 云端帧审核最大并发数（GLM-4V-Plus免费用户限制：5次）
     CLOUD_MAX_CALLS_PER_VIDEO: int = 50  # 每个视频云端模型最大调用次数（成本控制）
     CLOUD_MAX_INPUT_CHARS_PER_VIDEO: int = 5000  # 每个视频云端模型最大输入字符数（Token控制）
     CLOUD_DAILY_BUDGET_CALLS: int = 1000  # 每日云端调用预算限制
     CLOUD_HOURLY_BUDGET_CALLS: int = 100  # 每小时云端调用预算限制
+    
+    # 图片批量审核配置（模型调度优化）
+    FRAME_BATCH_REVIEW_ENABLED: bool = True  # 是否启用批量审核（图片拼接）
+    FRAME_GRID_ROWS: int = 3  # 网格行数（默认3×3）
+    FRAME_GRID_COLS: int = 3  # 网格列数（默认3×3）
 
     # 多模态两阶段审核配置（Stage 1 低成本初筛 + Stage 2 精审）
     TWO_STAGE_REVIEW_ENABLED: bool = True

@@ -121,10 +121,14 @@ class SubtitleReviewService:
                 logger.warning(f"字幕文本过长 ({len(subtitle_text)} 字符)，截取前 {max_input_length} 字符")
                 subtitle_text = subtitle_text[:max_input_length] + "...[文本已截断]"
             
+            # 从配置读取API信息（确保全局统一配置）
             api_key = settings.LLM_API_KEY
             base_url = settings.LLM_BASE_URL.rstrip("/")
             model = settings.LLM_MODEL
             timeout = 30.0
+            
+            # 记录当前使用的配置（便于调试和确认模型切换）
+            logger.info(f"[SubtitleReview] 📋 字幕审核配置: API={base_url}, Model={model}")
             
             headers = {
                 "Authorization": f"Bearer {api_key}",

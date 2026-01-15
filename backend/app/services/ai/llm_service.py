@@ -507,8 +507,9 @@ class LLMService:
             except ImportError:
                 logger.warning("压缩版Prompt模板不可用，使用标准版本")
         
-        # 优化Prompt以减少Token消耗
-        optimized_prompt = token_optimizer.optimize_prompt_for_llm(system_prompt)
+        # 优化Prompt以减少Token消耗（注意：这里先不区分模型类型，后续在调用时区分）
+        # 云端模型会使用压缩版Prompt，本地模型会使用详细版Prompt
+        optimized_prompt = system_prompt  # 先保持原样，在调用时根据模型类型优化
         
         trace = [
             {
@@ -724,13 +725,36 @@ class LLMService:
             logger.warning("云端模型 API_KEY 为空，跳过调用")
             return None
         
+        # 云端模型：使用压缩版Prompt
+        try:
+            from app.services.ai.prompt_compressor import prompt_compressor
+            budget_status = token_optimizer.get_budget_status()
+            daily_usage = budget_status.get("daily", {}).get("usage_rate", 0.0)
+            
+            if daily_usage > 0.8:
+                strategy = "aggressive"
+            elif daily_usage > 0.5:
+                strategy = "moderate"
+            else:
+                strategy = "conservative"
+            
+            original_len = len(system_prompt)
+            compressed_prompt = prompt_compressor.compress_prompt(system_prompt, strategy, model_type="cloud")
+            compressed_len = len(compressed_prompt)
+            savings = (original_len - compressed_len) / original_len * 100 if original_len > 0 else 0
+            
+            logger.info(f"[CloudPrompt] 📝 Prompt压缩: 策略={strategy}, 原始={original_len}字符, 压缩后={compressed_len}字符, 节省={savings:.1f}%")
+        except Exception as e:
+            logger.warning(f"[CloudPrompt] ⚠️  Prompt压缩失败，使用原始Prompt: {e}")
+            compressed_prompt = system_prompt
+        
         headers = {
             "Authorization": f"Bearer {model_config.api_key}",
             "Content-Type": "application/json",
         }
 
         messages = [
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": compressed_prompt},
             {"role": "user", "content": f"输入内容: {content}"},
         ]
 

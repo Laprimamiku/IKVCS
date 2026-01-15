@@ -203,7 +203,9 @@ class TokenOptimizer:
             else:
                 strategy = "conservative"  # 预算充足时使用保守压缩
             
-            compressed = prompt_compressor.compress_prompt(system_prompt, strategy)
+            # 注意：这里不指定model_type，由调用方根据实际模型类型传入
+            # 默认使用云端模型压缩策略
+            compressed = prompt_compressor.compress_prompt(system_prompt, strategy, model_type="cloud")
             
             # 记录压缩效果
             savings = prompt_compressor.estimate_token_savings(system_prompt, compressed)

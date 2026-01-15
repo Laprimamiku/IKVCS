@@ -343,6 +343,7 @@ import { adminApi, type AuditVideoItem } from "../api/admin.api";
 import { formatDuration } from "@/shared/utils/formatters";
 import { getPublicCategories } from "@/features/video/shared/api/category.api";
 import type { Category } from "@/shared/types/entity";
+import { useErrorHandler } from "@/shared/composables/useErrorHandler";
 
 const videos = ref<AuditVideoItem[]>([]);
 const previewVideo = ref<AuditVideoItem | null>(null);
@@ -623,13 +624,13 @@ const getFrameReviewTitle = (isNotCompleted = false): string => {
   }
   
   const modelInfo = currentReviewVideo.value.review_report.model_info;
-  if (modelInfo.use_cloud_llm) {
-    // 云端模型，显示具体模型名称
-    const visionModel = modelInfo.vision_model || "云端视觉模型";
-    return `${visionModel}分析`;
+  if (modelInfo.use_cloud_llm || modelInfo.use_cloud_vision) {
+    // 云端模型，显示具体模型名称 + 抽帧分析
+    const visionModel = modelInfo.vision_model || "未知模型";
+    return `${visionModel}抽帧分析`;
   } else {
     // 本地模型，保持原有显示
-    return "Moondream分析";
+    return "Moondream抽帧分析";
   }
 };
 
@@ -644,12 +645,13 @@ const getSubtitleReviewTitle = (isNotCompleted = false): string => {
   
   const modelInfo = currentReviewVideo.value.review_report.model_info;
   if (modelInfo.use_cloud_llm) {
-    // 云端模型，显示具体模型名称
-    const textModel = modelInfo.text_model || "云端文本模型";
-    return `${textModel}分析`;
+    // 云端模型，显示具体模型名称 + 字幕分析
+    const textModel = modelInfo.text_model || modelInfo.cloud_text_model || "未知模型";
+    return `${textModel}字幕分析`;
   } else {
     // 本地模型，保持原有显示
-    return "qwen2.5:0.5b-instruct分析";
+    const localModel = modelInfo.local_text_model || "qwen2.5:0.5b-instruct";
+    return `${localModel}字幕分析`;
   }
 };
 

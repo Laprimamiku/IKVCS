@@ -29,6 +29,15 @@ setup_logging(
 
 logger = logging.getLogger(__name__)
 
+# 启动时打印LLM配置信息（便于确认模型切换）
+logger.info("=" * 80)
+logger.info("📋 LLM配置信息（启动时）:")
+logger.info(f"  LLM_MODE: {settings.LLM_MODE}")
+logger.info(f"  文本模型: {settings.LLM_MODEL} @ {settings.LLM_BASE_URL}")
+logger.info(f"  视觉模型: {settings.LLM_VISION_MODEL or settings.LLM_MODEL} @ {settings.LLM_VISION_BASE_URL or settings.LLM_BASE_URL}")
+logger.info(f"  API Key: {'已配置' if settings.LLM_API_KEY else '未配置'}")
+logger.info("=" * 80)
+
 # 创建 FastAPI 应用
 app = FastAPI(
     title="IKVCS API",

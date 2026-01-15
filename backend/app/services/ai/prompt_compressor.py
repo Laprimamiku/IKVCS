@@ -18,13 +18,14 @@ class PromptCompressor:
     """Prompt压缩器"""
     
     @staticmethod
-    def compress_prompt(prompt: str, strategy: str = "aggressive") -> str:
+    def compress_prompt(prompt: str, strategy: str = "aggressive", model_type: str = "cloud") -> str:
         """
         压缩Prompt
         
         Args:
             prompt: 原始Prompt
             strategy: 压缩策略 (conservative/moderate/aggressive)
+            model_type: 模型类型 (cloud/local)，云端模型使用更激进的压缩，本地模型保持详细
         
         Returns:
             str: 压缩后的Prompt
@@ -32,6 +33,12 @@ class PromptCompressor:
         if not prompt:
             return prompt
         
+        # 本地模型：保持详细Prompt，不压缩
+        if model_type == "local":
+            logger.debug("本地模型使用详细Prompt，不压缩")
+            return prompt
+        
+        # 云端模型：根据策略压缩
         compressed = prompt
         
         # 1. 移除多余空白
@@ -42,9 +49,14 @@ class PromptCompressor:
         # 2. 压缩JSON格式说明
         compressed = PromptCompressor._compress_json_format(compressed)
         
-        # 3. 压缩示例（Few-Shot）
+        # 3. 压缩示例（Few-Shot）- 云端模型可以移除示例
         if strategy in ("moderate", "aggressive"):
-            compressed = PromptCompressor._compress_examples(compressed, strategy)
+            if strategy == "aggressive":
+                # 激进策略：完全移除示例
+                compressed = PromptCompressor._remove_all_examples(compressed)
+            else:
+                # 中等策略：压缩示例格式
+                compressed = PromptCompressor._compress_examples(compressed, strategy)
         
         # 4. 压缩评分标准说明
         if strategy == "aggressive":
@@ -54,6 +66,31 @@ class PromptCompressor:
         compressed = PromptCompressor._remove_redundant_text(compressed)
         
         return compressed
+    
+    @staticmethod
+    def _remove_all_examples(prompt: str) -> str:
+        """移除所有示例（Few-Shot）"""
+        # 移除示例部分（通常以"示例："、"Examples："等开头）
+        prompt = re.sub(r'示例[：:].*?(?=\n\n|\n[^示例]|$)', '', prompt, flags=re.DOTALL)
+        prompt = re.sub(r'Examples?[：:].*?(?=\n\n|\n[^E]|$)', '', prompt, flags=re.DOTALL | re.IGNORECASE)
+        
+        # 移除"输入:"和"输出:"行
+        lines = prompt.split('\n')
+        filtered_lines = []
+        skip_until_output = False
+        
+        for line in lines:
+            if '输入:' in line or '输入：' in line or 'Input:' in line:
+                skip_until_output = True
+                continue
+            if skip_until_output and ('输出:' in line or '输出：' in line or 'Output:' in line):
+                skip_until_output = False
+                continue
+            if skip_until_output:
+                continue
+            filtered_lines.append(line)
+        
+        return '\n'.join(filtered_lines)
     
     @staticmethod
     def _compress_json_format(prompt: str) -> str:
@@ -92,6 +129,11 @@ class PromptCompressor:
                 r'输入:"\1" 输出:\2',
                 prompt
             )
+            prompt = re.sub(
+                r'输入："([^"]+)"\s*输出：(\{[^}]+\})',
+                r'输入:"\1" 输出:\2',
+                prompt
+            )
         elif strategy == "aggressive":
             # 只保留关键示例（高分、低分、违规）
             # 移除中等分数的示例
@@ -104,7 +146,7 @@ class PromptCompressor:
                     continue
                 
                 # 保留高分（90+）和低分（<60）的示例
-                if '输入:' in line and i + 1 < len(lines):
+                if ('输入:' in line or '输入：' in line) and i + 1 < len(lines):
                     next_line = lines[i + 1]
                     if '"score": 9' in next_line or '"score": 8' in next_line or '"score": [0-5]' in next_line:
                         filtered_lines.append(line)

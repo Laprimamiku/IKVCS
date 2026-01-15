@@ -121,42 +121,59 @@ async def review_frames(
             # logger.info(f"[LocalVision] 开始审核 {len(frames)} 帧，并发数: {max_concurrent}（本地视觉模型）")
             logger.info(f"[LocalModel] 开始审核 {len(frames)} 帧，并发数: {max_concurrent}（本地模型: {vision_model_name}）")
         
-        # 使用信号量控制并发
-        # 云端模型：优化网络请求并发，避免API限流
-        # 本地模型：实现流水线处理，避免 GPU 负载剧烈波动（已注释，保留逻辑）
-        semaphore = asyncio.Semaphore(max_concurrent)
+        # 准备帧路径列表
+        frame_paths = []
+        for frame_info in frames:
+            frame_path = frame_info["frame_path"]
+            if os.path.isabs(frame_path):
+                full_path = frame_path
+            else:
+                storage_root = settings.STORAGE_ROOT
+                if not os.path.isabs(storage_root):
+                    storage_root = os.path.abspath(storage_root)
+                full_path = os.path.normpath(os.path.join(storage_root, frame_path))
+            frame_paths.append(full_path)
         
-        async def review_frame_with_semaphore(frame_info, frame_num):
-            """带信号量控制的帧审核"""
-            async with semaphore:
-                frame_path = frame_info["frame_path"]
-                # frame_path 已经是相对于 STORAGE_ROOT 的路径（如：frames/24/frame_0001.jpg）
-                # 需要构建绝对路径，避免在 image_review_service 中重复拼接
-                if os.path.isabs(frame_path):
-                    # 已经是绝对路径，直接使用
-                    full_path = frame_path
-                else:
-                    # 拼接 STORAGE_ROOT 和相对路径，然后规范化
-                    # 注意：如果 STORAGE_ROOT 是相对路径（如 ./storage），需要先转换为绝对路径
-                    storage_root = settings.STORAGE_ROOT
-                    if not os.path.isabs(storage_root):
-                        # 如果 STORAGE_ROOT 是相对路径，转换为绝对路径
-                        storage_root = os.path.abspath(storage_root)
-                    full_path = os.path.normpath(os.path.join(storage_root, frame_path))
-                return await image_review_service.review_image(full_path)
+        # 云端模型：使用批量审核（图片拼接）
+        # 本地模型：使用单张审核（保持原有逻辑）
+        if use_cloud:
+            # 检查是否启用批量审核
+            use_batch = getattr(settings, 'FRAME_BATCH_REVIEW_ENABLED', True)
+            if use_batch:
+                logger.info(f"[FrameReview] 🚀 使用批量审核模式（图片拼接）: {len(frame_paths)}帧")
+                batch_results = await image_review_service.review_images_batch(frame_paths)
+                logger.info(f"[FrameReview] ✅ 批量审核完成: 收到{len(batch_results)}个结果")
+            else:
+                # 回退到单张审核（使用信号量控制并发）
+                semaphore = asyncio.Semaphore(max_concurrent)
+                
+                async def review_frame_with_semaphore(full_path, frame_num):
+                    """带信号量控制的帧审核"""
+                    async with semaphore:
+                        return await image_review_service.review_image(full_path)
+                
+                tasks = [
+                    review_frame_with_semaphore(path, idx + 1)
+                    for idx, path in enumerate(frame_paths)
+                ]
+                batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+        else:
+            # 本地模型：使用信号量控制并发
+            semaphore = asyncio.Semaphore(max_concurrent)
+            
+            async def review_frame_with_semaphore(full_path, frame_num):
+                """带信号量控制的帧审核"""
+                async with semaphore:
+                    return await image_review_service.review_image(full_path)
+            
+            tasks = [
+                review_frame_with_semaphore(path, idx + 1)
+                for idx, path in enumerate(frame_paths)
+            ]
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # 创建所有任务（使用信号量控制，实现并发处理）
-        # 云端模型：优化网络请求效率
-        # 本地模型：保持 GPU 负载相对平稳，避免批处理导致的负载波动（已注释，保留逻辑）
         review_results = []
         frame_details = []  # 存储每帧的详细信息
-        
-        # 使用 asyncio.gather 并行处理所有帧，但通过信号量控制并发数
-        tasks = [
-            review_frame_with_semaphore(frame_info, idx + 1)
-            for idx, frame_info in enumerate(frames)
-        ]
-        batch_results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # 记录每帧的详细评价
         model_name = f"CloudVision({vision_model_name})" if use_cloud else f"LocalModel({vision_model_name})"

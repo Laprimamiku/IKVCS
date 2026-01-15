@@ -14,8 +14,11 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# 并发控制：限制同时进行的 LLM 请求数量，避免 GPU 负载波动
-_llm_semaphore = asyncio.Semaphore(1)  # 同时只允许 1 个 LLM 请求
+# 并发控制：限制同时进行的 LLM 请求数量
+# 注意：智谱GLM免费用户并发限制
+# - glm-4-flash（文本模型）：200次并发
+# 当前设置为保守值，避免触发限流
+_llm_semaphore = asyncio.Semaphore(10)  # 字幕分点并发数：10（远低于200的限制）
 
 # 请求冷却时间：避免频繁调用 GPU，减少电流滋滋声
 _last_request_time = None

@@ -50,12 +50,14 @@ class ModelRegistry:
         vision_model = getattr(settings, 'LLM_VISION_MODEL', settings.LLM_MODEL) or settings.LLM_MODEL
         
         if vision_mode in ("cloud_only", "hybrid") and vision_api_key:
+            # 智谱GLM免费用户并发限制：glm-4v-plus 最多5次并发
+            vision_max_concurrent = min(settings.CLOUD_FRAME_REVIEW_MAX_CONCURRENT, 5)
             self._models["cloud_vision"] = ModelConfig(
                 name=vision_model,
                 api_key=vision_api_key,
                 base_url=vision_base_url,
                 timeout=60.0,
-                max_concurrent=settings.CLOUD_FRAME_REVIEW_MAX_CONCURRENT,
+                max_concurrent=vision_max_concurrent,  # 确保不超过GLM免费用户限制
                 enabled=True
             )
         
