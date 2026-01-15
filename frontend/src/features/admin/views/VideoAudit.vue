@@ -359,6 +359,10 @@ const currentManualReviewVideo = ref<AuditVideoItem | null>(null); // 当前人�
 const originalVideoUrl = ref<string>(""); // 原始视频 URL
 const originalVideoInfo = ref<any>(null); // 原始视频信息
 const subtitleContent = ref<any>(null); // 字幕内容
+const { handleError, handleApiError } = useErrorHandler({
+  messagePrefix: '视频审核'
+});
+
 const loadingManualReview = ref(false); // 加载人工审核数据中
 
 const statusOptions = [
@@ -416,7 +420,7 @@ const loadData = async () => {
     videos.value = videoList;
   } catch (e) {
     console.error(e);
-    ElMessage.error('加载视频列表失败');
+      handleError(e, '加载视频列表失败');
     videos.value = [];
   }
 };
@@ -433,7 +437,7 @@ const loadCategories = async () => {
     }
   } catch (e) {
     console.error('加载分类列表失败:', e);
-    ElMessage.warning('加载分类列表失败，将无法按分类筛选');
+      handleError(e, '加载分类列表失败，将无法按分类筛选');
     categories.value = [];
   }
 };
@@ -505,7 +509,7 @@ const handleReviewFrames = async (videoId: number) => {
       loadData();
     }, 3000);
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.message || "抽帧审核启动失败");
+      handleError(e, e.response?.data?.message || "抽帧审核启动失败");
   } finally {
     reviewingFrames.value = null;
   }
@@ -521,7 +525,7 @@ const handleReviewSubtitle = async (videoId: number) => {
       loadData();
     }, 3000);
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.message || "字幕审核启动失败");
+      handleError(e, e.response?.data?.message || "字幕审核启动失败");
   } finally {
     reviewingSubtitle.value = null;
   }
@@ -560,7 +564,7 @@ const handleManualReview = async (videoId: number) => {
     }
   } catch (e: any) {
     console.error("获取审核数据失败:", e);
-    ElMessage.error(e.response?.data?.message || "获取审核数据失败");
+      handleError(e, e.response?.data?.message || "获取审核数据失败");
     manualReviewVisible.value = false;
   } finally {
     loadingManualReview.value = false;
@@ -591,7 +595,7 @@ const handleReReview = async (videoId: number) => {
   } catch (error: any) {
     if (error !== "cancel") {
       console.error("重新触发AI初审失败:", error);
-      ElMessage.error("重新触发AI初审失败");
+      handleError(e, "重新触发AI初审失败");
     }
   } finally {
     reReviewing.value = null;

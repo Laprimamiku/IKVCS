@@ -14,7 +14,6 @@
 
 import asyncio
 import logging
-import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -22,7 +21,9 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
 from app.core.config import settings
 from app.core.model_registry import model_registry
+from app.core.video_constants import VideoStatus, ReviewStatus
 from app.models.video import Video
+from app.utils.json_utils import parse_review_report, safe_json_dumps, dump_json_field
 from app.services.video.frame_extractor import frame_extractor
 from app.services.ai.image_review_service import image_review_service
 from app.services.ai.subtitle_review_service import subtitle_review_service
@@ -232,7 +233,7 @@ class VideoReviewService:
             video.status = final_status
             video.review_score = final_score
             video.review_status = final_status
-            video.review_report = json.dumps(review_report, ensure_ascii=False)
+            video.review_report = dump_json_field(review_report)
             db.commit()
 
             logger.info(f"视频审核完成: video_id={video_id}, status={final_status}, score={final_score}")
@@ -289,12 +290,7 @@ class VideoReviewService:
             )
             
             # 更新审核报告（保留原有的字幕审核结果）
-            review_report = {}
-            if video.review_report:
-                try:
-                    review_report = json.loads(video.review_report) if isinstance(video.review_report, str) else video.review_report
-                except:
-                    review_report = {}
+            review_report = parse_review_report(video.review_report, default={})
             
             # 更新帧审核结果
             review_report["frame_review"] = {
@@ -329,7 +325,7 @@ class VideoReviewService:
                 review_report["final_status"] = 1  # 审核中
                 review_report["conclusion"] = f"仅完成帧审核。共审核 {frame_review.get('total_frames', 0)} 帧，平均评分 {frame_review.get('avg_score', 100)} 分。"
             
-            video.review_report = json.dumps(review_report, ensure_ascii=False)
+            video.review_report = dump_json_field(review_report)
             db.commit()
             
             logger.info(f"帧审核完成: video_id={video_id}")
@@ -375,12 +371,7 @@ class VideoReviewService:
             subtitle_review = await self._review_subtitle(subtitle_path)
             
             # 更新审核报告（保留原有的帧审核结果）
-            review_report = {}
-            if video.review_report:
-                try:
-                    review_report = json.loads(video.review_report) if isinstance(video.review_report, str) else video.review_report
-                except:
-                    review_report = {}
+            review_report = parse_review_report(video.review_report, default={})
             
             # 更新字幕审核结果
             if subtitle_review:
@@ -412,7 +403,7 @@ class VideoReviewService:
                     review_report["final_status"] = 1
                     review_report["conclusion"] = "字幕审核失败或字幕文件不存在。"
             
-            video.review_report = json.dumps(review_report, ensure_ascii=False)
+            video.review_report = dump_json_field(review_report)
             db.commit()
             
             logger.info(f"字幕审核完成: video_id={video_id}")

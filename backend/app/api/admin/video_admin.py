@@ -20,10 +20,7 @@ from app.models.video import Video
 from app.schemas.user import MessageResponse
 from app.schemas.video import (
     VideoListResponse,
-    AdminVideoListItemResponse,
-    AdminVideoListResponse,
-    UploaderBriefResponse,
-    CategoryBriefResponse
+    AdminVideoListResponse
 )
 from app.services.admin.video_admin_service import VideoAdminService
 from app.services.video.video_stats_service import VideoStatsService
@@ -97,129 +94,13 @@ async def manage_videos(
     admin: User = Depends(get_current_admin)
 ):
     """视频管理列表（支持筛选）"""
-    query = db.query(Video)
-
-    if status is not None:
-        query = query.filter(Video.status == status)
-    if category_id is not None:
-        query = query.filter(Video.category_id == category_id)
-    if keyword:
-        query = query.filter(Video.title.like(f"%{keyword}%"))
-
-    total = query.count()
-    offset = (page - 1) * page_size
-
-    videos = (
-        query.options(joinedload(Video.uploader), joinedload(Video.category))
-        .order_by(desc(Video.created_at))
-        .offset(offset)
-        .limit(page_size)
-        .all()
-    )
-
-    # 构建包含审核信息的响应
-    items = []
-
-    # 批量读取 Redis 中的播放量，避免列表页逐条访问 Redis（N+1）
-    view_count_map: dict[int, int] = {}
-    try:
-        video_ids = [v.id for v in videos]
-        if video_ids:
-            keys = [f"video:view_count:{vid}" for vid in video_ids]
-            values = redis_service.redis.mget(keys)
-            for vid, raw in zip(video_ids, values):
-                if raw is not None and raw != "":
-                    try:
-                        view_count_map[int(vid)] = int(raw)
-                    except Exception:
-                        pass
-    except Exception:
-        view_count_map = {}
-    
-    # 批量查询举报信息，避免 N+1
-    from app.models.report import Report
-    from sqlalchemy import func
-    report_stats = {}
-    if video_ids:
-        # 查询每个视频的待处理举报数量和最近举报时间
-        report_rows = (
-            db.query(
-                Report.target_id,
-                func.count(Report.id).label('count'),
-                func.max(Report.created_at).label('last_reported_at')
-            )
-            .filter(
-                Report.target_type == 'VIDEO',
-                Report.target_id.in_(video_ids),
-                Report.status == 0  # 只统计待处理的举报
-            )
-            .group_by(Report.target_id)
-            .all()
-        )
-        for row in report_rows:
-            report_stats[row.target_id] = {
-                'count': row.count,
-                'last_reported_at': row.last_reported_at
-            }
-    
-    for video in videos:
-        # 解析 review_report JSON 字符串
-        review_report_dict = None
-        if video.review_report:
-            try:
-                if isinstance(video.review_report, str):
-                    review_report_dict = json.loads(video.review_report)
-                else:
-                    review_report_dict = video.review_report
-            except (json.JSONDecodeError, TypeError):
-                review_report_dict = None
-        
-        # 获取举报统计信息
-        report_info = report_stats.get(video.id, {})
-        is_reported = video.id in report_stats
-        open_report_count = report_info.get('count', 0)
-        last_reported_at = report_info.get('last_reported_at')
-        
-        items.append(AdminVideoListItemResponse(
-            id=video.id,
-            title=video.title,
-            description=video.description,
-            cover_url=video.cover_url,
-            video_url=video.video_url or "",
-            subtitle_url=video.subtitle_url,
-            duration=video.duration,
-            # 避免 get_merged_view_count() 对每个 video 单独查一次 DB（N+1）
-            view_count=view_count_map.get(video.id, video.view_count or 0),
-            like_count=video.like_count,
-            collect_count=video.collect_count,
-            danmaku_count=0,
-            uploader=UploaderBriefResponse(
-                id=video.uploader.id,
-                username=video.uploader.username,
-                nickname=video.uploader.nickname,
-                avatar=video.uploader.avatar,
-            ),
-            category=CategoryBriefResponse(
-                id=video.category.id,
-                name=video.category.name
-            ),
-            created_at=video.created_at,
-            status=video.status,
-            review_score=video.review_score,
-            review_status=video.review_status,
-            review_report=review_report_dict,
-            # 举报相关字段
-            is_reported=is_reported,
-            open_report_count=open_report_count,
-            last_reported_at=last_reported_at,
-        ))
-
-    return AdminVideoListResponse(
-        items=items,
-        total=total,
+    return VideoAdminService.get_manage_videos_response(
+        db=db,
         page=page,
         page_size=page_size,
-        total_pages=math.ceil(total / page_size)
+        status=status,
+        category_id=category_id,
+        keyword=keyword
     )
 
 

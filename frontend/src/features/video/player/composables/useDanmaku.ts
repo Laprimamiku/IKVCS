@@ -20,6 +20,8 @@ export function useDanmaku(videoId: Ref<number | null>, options: UseDanmakuOptio
   const isConnected = ref(false)
   const loadingHistory = ref(false)
   const lastTimeRef = ref(0)
+  // 轨道占用情况：记录每个轨道上最后一条弹幕的结束时间
+  const laneOccupiedUntil = ref<number[]>(new Array(MAX_LANES).fill(0))
   
   const colorPreset = ['#ffffff', '#fe0302', '#ff7204', '#ffc402', '#00eaff', '#89d519']
 
@@ -99,20 +101,47 @@ export function useDanmaku(videoId: Ref<number | null>, options: UseDanmakuOptio
     wsRef.value = null
   }
 
-// 修改 enqueue 方法，增加 extra 参数来接收 AI 字段
+  /**
+   * 智能分配轨道，避免弹幕覆盖
+   * 当弹幕数量少时，优先使用空闲轨道；当弹幕数量多时，允许覆盖
+   */
+  const findAvailableLane = (): number => {
+    const now = Date.now()
+    const activeCount = activeList.value.length
+    
+    // 如果弹幕数量较少（少于轨道数的2倍），尝试找到空闲轨道
+    if (activeCount < MAX_LANES * 2) {
+      // 查找空闲轨道（最后一条弹幕已结束）
+      for (let i = 0; i < MAX_LANES; i++) {
+        if (laneOccupiedUntil.value[i] <= now) {
+          // 更新轨道占用时间（弹幕持续时间）
+          laneOccupiedUntil.value[i] = now + DANMAKU_DURATION
+          return i
+        }
+      }
+    }
+    
+    // 如果所有轨道都被占用，或弹幕数量很多，随机分配
+    const lane = Math.floor(Math.random() * MAX_LANES)
+    laneOccupiedUntil.value[lane] = now + DANMAKU_DURATION
+    return lane
+  }
+
+  // 修改 enqueue 方法，增加 extra 参数来接收 AI 字段和视频时间
   const enqueue = (
     text: string, 
     color = '#ffffff', 
     initialOffset = 0,
-    extra: { ai_score?: number; is_highlight?: boolean; id?: number } = {} // [New] 添加id字段
+    extra: { ai_score?: number; is_highlight?: boolean; id?: number; videoTime?: number } = {} // [New] 添加videoTime字段
   ) => {
-    const lane = Math.floor(Math.random() * MAX_LANES)
+    const lane = findAvailableLane()
     const item: DanmakuDisplayItem = {
       key: `${Date.now()}-${Math.random()}`,
       text,
       color,
       lane,
       initialOffset,
+      videoTime: extra.videoTime, // [New] 保存原始视频时间
       ...extra // [New] 注入 AI 字段和id
     }
     activeList.value.push(item)
@@ -140,11 +169,12 @@ const handleTimeChange = (time: number, forceSeek = false) => {
         if (item.video_time < startTimeWindow) break 
         const elapsed = (time - item.video_time) * 1000
         
-        // [修改点 1] 传递 AI 字段 (ai_score, is_highlight) 和 id
+        // [修改点 1] 传递 AI 字段 (ai_score, is_highlight) 和 id，以及原始视频时间
         enqueue(item.content, item.color, elapsed, {
           ai_score: item.ai_score,
           is_highlight: item.is_highlight,
-          id: item.id
+          id: item.id,
+          videoTime: item.video_time // [New] 保存原始视频时间
         })
         
         backIndex--
@@ -158,12 +188,13 @@ const handleTimeChange = (time: number, forceSeek = false) => {
       while (historyIndex.value < list.length && list[historyIndex.value].video_time <= time) {
         const item = list[historyIndex.value]
         
-        // [修改点 2] 正常播放时也传递 AI 字段和 id
+        // [修改点 2] 正常播放时也传递 AI 字段和 id，以及原始视频时间
         // 注意：第3个参数 initialOffset 传 0
         enqueue(item.content, item.color, 0, {
           ai_score: item.ai_score,
           is_highlight: item.is_highlight,
-          id: item.id
+          id: item.id,
+          videoTime: item.video_time // [New] 保存原始视频时间
         })
         
         historyIndex.value += 1
@@ -203,7 +234,8 @@ const handleTimeChange = (time: number, forceSeek = false) => {
         enqueue(res.data.content, res.data.color, 0, {
           id: res.data.id,
           ai_score: res.data.ai_score,
-          is_highlight: res.data.is_highlight
+          is_highlight: res.data.is_highlight,
+          videoTime: time // [New] 保存发送时的视频时间
         })
       }
       return res

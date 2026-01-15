@@ -244,6 +244,11 @@ const isFollowed = ref(false);
 const filterLowScore = ref(false);
 // 播放量统计在后端拉取详情时处理，这里不在播放事件中重复计数
 
+// 注意：精选开关切换时不需要任何操作
+// DanmakuDisplay 组件使用 CSS class (is-filtered) 控制显示/隐藏，只改变 opacity 和 pointer-events
+// 不会改变 display 属性，因此不会重置 CSS 动画
+// 弹幕会继续按照原来的时间位置滚动，只是根据 filterLowScore 控制可见性
+
 // Video data
 const { videoData, recommendVideos, videoIdRef } = useVideoPlayer();
 

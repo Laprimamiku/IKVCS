@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_admin
+from app.core.error_handler import handle_api_errors
 from app.core.config import settings
 from app.core.response import success_response
 from app.models.user import User
@@ -274,24 +275,20 @@ async def get_corrections(
 
 
 @router.post("/self-correction/analyze", summary="触发自我纠错分析")
+@handle_api_errors(default_message="自我纠错分析失败")
 async def trigger_self_correction_analysis(
     request: ErrorAnalysisRequest,
     current_admin: User = Depends(get_current_admin)
 ):
     """触发AI自我纠错分析"""
-    try:
-        logger.info(f"管理员 {current_admin.username} 触发自我纠错分析")
-        
-        result = await self_correction_service.analyze_errors(
-            days=request.days,
-            content_type=request.content_type
-        )
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"自我纠错分析失败: {e}")
-        raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
+    logger.info(f"管理员 {current_admin.username} 触发自我纠错分析")
+    
+    result = await self_correction_service.analyze_errors(
+        days=request.days,
+        content_type=request.content_type
+    )
+    
+    return result
 
 
 @router.post("/self-correction/update-prompt", response_model=MessageResponse, summary="更新System Prompt")

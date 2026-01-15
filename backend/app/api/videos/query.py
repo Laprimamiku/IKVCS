@@ -18,6 +18,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.core.video_constants import VideoStatus
+from app.core.app_constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from app.core.exceptions import ResourceNotFoundException, ForbiddenException
 from app.core.response import success_response
 from app.models.user import User
@@ -129,7 +131,7 @@ async def get_video_detail(
             raise ForbiddenException("该视频正在审核中，只有上传者和管理员可以查看")
     
     # 增加播放量（仅对已发布的视频）
-    if video.status == 2:
+    if video.status == VideoStatus.PUBLISHED:
         VideoStatsService.increment_view_count(db, video_id)
     
     # 如果用户已登录，记录观看历史

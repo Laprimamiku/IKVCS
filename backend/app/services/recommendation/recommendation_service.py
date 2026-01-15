@@ -12,6 +12,7 @@ from sqlalchemy import func, desc, and_, or_
 from app.models.video import Video
 from app.models.watch_history import WatchHistory
 from app.models.interaction import UserLike, UserCollection
+from app.core.video_constants import VideoStatus
 
 logger = logging.getLogger(__name__)
 
@@ -38,17 +39,27 @@ class RecommendationService:
         limit: int = 20
     ) -> List[Video]:
         """
-        获取推荐视频列表
+        获取推荐视频列表（三路召回算法）
+        
+        实现策略：
+        1. 热门推荐：基于播放量、点赞数、收藏数加权排序
+        2. 同类推荐：同分类/同作者的视频
+        3. 个性化推荐：基于用户最近30天的观看/点赞/收藏行为
+        
+        去重与冷启动：
+        - 新用户（user_id=None）：返回热门+最新视频
+        - 已登录用户：返回个性化推荐（优先级最高）+ 同类推荐 + 热门推荐
+        - 已看过的视频会被过滤或降权
         
         Args:
             db: 数据库会话
             user_id: 用户ID（可选，用于个性化推荐）
             category_id: 分类ID（可选，用于分类推荐）
-            scene: 推荐场景（home/detail/category）
-            limit: 返回数量
+            scene: 推荐场景（home/detail/category），当前未使用，预留扩展
+            limit: 返回数量（1-100）
             
         Returns:
-            List[Video]: 推荐视频列表
+            List[Video]: 推荐视频列表（已去重，按优先级排序）
         """
         # 三路召回
         hot_videos = cls._get_hot_videos(db, category_id, cls.HOT_LIMIT)
@@ -86,18 +97,15 @@ class RecommendationService:
             joinedload(Video.uploader),
             joinedload(Video.category)
         ).filter(
-            Video.status == 2  # 只推荐已发布的视频
+            Video.status == VideoStatus.PUBLISHED  # 只推荐已发布的视频
         )
         
         if category_id:
             query = query.filter(Video.category_id == category_id)
         
         # 热门排序：综合播放量、点赞数、收藏数
-        # 使用简单加权：view_count * 1 + like_count * 3 + collect_count * 5
         videos = query.order_by(
-            desc(
-                Video.view_count + Video.like_count * 3 + Video.collect_count * 5
-            )
+            desc(cls._calculate_hot_score(Video))
         ).limit(limit).all()
         
         return videos
@@ -121,7 +129,7 @@ class RecommendationService:
             joinedload(Video.uploader),
             joinedload(Video.category)
         ).filter(
-            Video.status == 2
+            Video.status == VideoStatus.PUBLISHED
         )
         
         if category_id:
@@ -164,8 +172,8 @@ class RecommendationService:
         ).all()
         
         for record in watch_records:
-            if record.video and record.video.category_id:
-                cat_id = record.video.category_id
+            cat_id = getattr(record.video, 'category_id', None) if record.video else None
+            if cat_id:
                 category_weights[cat_id] = category_weights.get(cat_id, 0) + 1
         
         # 2. 点赞行为（权重 3）
@@ -196,8 +204,8 @@ class RecommendationService:
         ).all()
         
         for record in collect_records:
-            if record.video and record.video.category_id:
-                cat_id = record.video.category_id
+            cat_id = getattr(record.video, 'category_id', None) if record.video else None
+            if cat_id:
                 category_weights[cat_id] = category_weights.get(cat_id, 0) + 5
         
         # 如果没有行为数据，返回空列表（使用热门推荐）
@@ -222,17 +230,39 @@ class RecommendationService:
             joinedload(Video.uploader),
             joinedload(Video.category)
         ).filter(
-            Video.status == 2,
+            Video.status == VideoStatus.PUBLISHED,
             Video.category_id.in_(category_ids),
             ~Video.id.in_(db.query(watched_video_ids_subquery.c.video_id))
         )
         
         # 按热门度排序
         videos = query.order_by(
-            desc(Video.view_count + Video.like_count * 3 + Video.collect_count * 5)
+            desc(cls._calculate_hot_score(Video))
         ).limit(limit).all()
         
         return videos
+    
+    @classmethod
+    def _calculate_hot_score(cls, video_model):
+        """
+        计算视频热门度分数（用于排序）
+        
+        使用加权公式：view_count * 1 + like_count * 3 + collect_count * 5
+        权重说明：
+        - 播放量权重：1（基础指标）
+        - 点赞数权重：3（用户主动反馈）
+        - 收藏数权重：5（用户深度认可）
+        
+        Args:
+            video_model: Video 模型类（用于 SQLAlchemy 表达式）
+            
+        Returns:
+            SQLAlchemy 表达式：热门度分数（用于 order_by）
+            
+        示例：
+            query.order_by(desc(cls._calculate_hot_score(Video)))
+        """
+        return video_model.view_count + video_model.like_count * 3 + video_model.collect_count * 5
     
     @classmethod
     def _merge_and_deduplicate(

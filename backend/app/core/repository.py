@@ -15,7 +15,7 @@
     video = VideoRepository.get_by_id(db, 1)
     videos = VideoRepository.get_all(db, skip=0, limit=20)
 """
-from typing import Type, TypeVar, Optional, List, Union, Dict, Any, Sequence
+from typing import Type, TypeVar, Optional, List, Union, Dict, Any, Sequence, Tuple
 from sqlalchemy.orm import Session, joinedload, RelationshipProperty
 from sqlalchemy import and_, or_
 
@@ -279,4 +279,74 @@ class BaseRepository:
                     query = query.options(joinedload(getattr(cls.model, rel)))
         
         return query.first()
+    
+    @classmethod
+    def paginate(
+        cls,
+        db: Session,
+        page: int = 1,
+        page_size: int = 20,
+        filters: Optional[FilterDict] = None,
+        order_by: Optional[str] = None,
+        relations: Optional[List[str]] = None
+    ) -> Tuple[List[ModelType], int]:
+        """
+        分页查询（统一的分页查询模式）
+        
+        Args:
+            db: 数据库会话
+            page: 页码（从1开始）
+            page_size: 每页数量
+            filters: 筛选条件字典
+            order_by: 排序字段，如 "created_at.desc()"
+            relations: 关联字段列表，如 ["uploader", "category"]
+            
+        Returns:
+            Tuple[List[ModelType], int]: (模型对象列表, 总数)
+            
+        使用示例：
+            videos, total = VideoRepository.paginate(
+                db, page=1, page_size=20, 
+                filters={"status": 2}, 
+                order_by="created_at.desc()",
+                relations=["uploader", "category"]
+            )
+        """
+        if cls.model is None:
+            raise ValueError("子类必须设置 model 属性")
+        
+        # 构建查询
+        query = db.query(cls.model)
+        
+        # 加载关联数据
+        if relations:
+            for rel in relations:
+                if hasattr(cls.model, rel):
+                    query = query.options(joinedload(getattr(cls.model, rel)))
+        
+        # 应用筛选条件
+        if filters:
+            for key, value in filters.items():
+                if hasattr(cls.model, key):
+                    query = query.filter(getattr(cls.model, key) == value)
+        
+        # 获取总数（在应用排序和分页之前）
+        total = query.count()
+        
+        # 应用排序
+        if order_by:
+            if "." in order_by:
+                field, direction = order_by.split(".")
+                if hasattr(cls.model, field):
+                    attr = getattr(cls.model, field)
+                    if direction == "desc":
+                        query = query.order_by(attr.desc())
+                    else:
+                        query = query.order_by(attr.asc())
+        
+        # 分页
+        offset = (page - 1) * page_size
+        items = query.offset(offset).limit(page_size).all()
+        
+        return items, total
 

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 
 from app.core.repository import BaseRepository
+from app.core.video_constants import VideoStatus
 from app.models.video import Video, Category
 
 
@@ -57,11 +58,11 @@ class VideoRepository(BaseRepository):
         Returns:
             Tuple[List[Video], int]: (视频列表, 总数)
         """
-        # 基础查询：只显示已发布的视频（status=2）
+        # 基础查询：只显示已发布的视频
         query = db.query(Video).options(
             joinedload(Video.uploader),
             joinedload(Video.category)
-        ).filter(Video.status == 2)
+        ).filter(Video.status == VideoStatus.PUBLISHED)
         
         # 按分类筛选
         if category_id:
@@ -85,12 +86,12 @@ class VideoRepository(BaseRepository):
         # 优化：对于总数查询，不需要加载关联数据，使用更轻量的查询
         # 优化：尝试从缓存获取总数
         from app.services.cache.redis_service import redis_service
-        count_cache_key = f"video:count:status:2:cat:{category_id or 'all'}:kw:{keyword or 'none'}"
+        count_cache_key = f"video:count:status:{VideoStatus.PUBLISHED}:cat:{category_id or 'all'}:kw:{keyword or 'none'}"
         total = redis_service.get_count_cache(count_cache_key)
         
         if total is None:
             # 缓存未命中，从数据库查询
-            count_query = db.query(Video).filter(Video.status == 2)
+            count_query = db.query(Video).filter(Video.status == VideoStatus.PUBLISHED)
             if category_id:
                 count_query = count_query.filter(Video.category_id == category_id)
             if keyword:

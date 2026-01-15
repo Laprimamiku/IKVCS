@@ -2,8 +2,9 @@
 管理员服务层
 封装管理员相关的业务逻辑
 """
+import math
 from sqlalchemy.orm import Session
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any, Optional
 from fastapi import HTTPException, status
 from datetime import datetime
 
@@ -13,10 +14,12 @@ from app.repositories.comment_repository import CommentRepository
 from app.repositories.danmaku_repository import DanmakuRepository
 from app.core.base_service import BaseService
 from app.core.error_codes import ErrorCode
+from app.core.video_constants import VideoStatus, ReviewStatus, ReportStatus
 from app.models.report import Report
 from app.models.video import Video
 from app.models.comment import Comment
 from app.models.danmaku import Danmaku
+from app.schemas.user import UserResponse
 
 
 class AdminService(BaseService[Report, ReportRepository]):
@@ -176,72 +179,161 @@ class AdminService(BaseService[Report, ReportRepository]):
             error_code=ErrorCode.RESOURCE_NOT_FOUND
         )
         
-        if action == "delete_target":
-            # 删除目标内容（软删除）
-            if report.target_type == "VIDEO":
-                video = VideoRepository.get_by_id(db, report.target_id)
-                if video:
-                    video.status = 4  # 4 表示已删除
-            elif report.target_type == "COMMENT":
-                comment = CommentRepository.get_by_id_with_relations(db, report.target_id)
-                if comment:
-                    comment.is_deleted = True
-            elif report.target_type == "DANMAKU":
-                danmaku = DanmakuRepository.get_by_id(db, report.target_id)
-                if danmaku:
-                    danmaku.is_deleted = True
-            
-            report.status = 1  # 已处理
-            report.admin_note = admin_note or "管理员删除了违规内容"
+        # 根据操作类型处理举报
+        action_handlers = {
+            "delete_target": AdminService._handle_delete_target,
+            "ignore": AdminService._handle_ignore,
+            "disable": AdminService._handle_disable,
+            "request_review": AdminService._handle_request_review
+        }
         
-        elif action == "ignore":
-            # 忽略举报
-            report.status = 2  # 已忽略
-            report.admin_note = admin_note or "管理员判定无违规"
-        
-        elif action == "disable":
-            # 下架/隐藏视频（不删除，仅改变状态）
-            if report.target_type == "VIDEO":
-                video = VideoRepository.get_by_id(db, report.target_id)
-                if video:
-                    # 如果视频是已发布状态，改为审核中（临时隐藏）
-                    if video.status == 2:
-                        video.status = 1  # 改为审核中，用户端不可见
-                    # 如果已经是其他状态，保持原状
-                report.status = 1  # 已处理
-                report.admin_note = admin_note or "管理员下架了视频"
-            else:
-                # 非视频类型不支持 disable 操作
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="disable 操作仅支持视频类型"
-                )
-        
-        elif action == "request_review":
-            # 触发复审（需要冷却/幂等，避免被刷爆）
-            # 这里可以添加冷却逻辑，比如检查最近是否已经复审过
-            if report.target_type == "VIDEO":
-                video = VideoRepository.get_by_id(db, report.target_id)
-                if video:
-                    # 将视频状态改为审核中，等待人工复审
-                    video.status = 1  # 审核中
-                    video.review_status = 0  # 重置审核状态为待审核
-                report.status = 1  # 已处理
-                report.admin_note = admin_note or "管理员请求复审该视频"
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="request_review 操作仅支持视频类型"
-                )
-        else:
+        handler = action_handlers.get(action)
+        if not handler:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"无效操作: {action}"
             )
         
+        handler(db, report, admin_note)
+        
         report.handler_id = admin_id
         report.handled_at = datetime.utcnow()
         db.commit()
+    
+    @staticmethod
+    def _handle_delete_target(db: Session, report: Report, admin_note: Optional[str]):
+        """处理删除目标内容操作"""
+        if report.target_type == "VIDEO":
+            video = VideoRepository.get_by_id(db, report.target_id)
+            if video:
+                video.status = VideoStatus.DELETED  # 已删除
+        elif report.target_type == "COMMENT":
+            comment = CommentRepository.get_by_id_with_relations(db, report.target_id)
+            if comment:
+                comment.is_deleted = True
+        elif report.target_type == "DANMAKU":
+            danmaku = DanmakuRepository.get_by_id(db, report.target_id)
+            if danmaku:
+                danmaku.is_deleted = True
+        
+        report.status = ReportStatus.PROCESSED  # 已处理
+        report.admin_note = admin_note or "管理员删除了违规内容"
+    
+    @staticmethod
+    def _handle_ignore(db: Session, report: Report, admin_note: Optional[str]):
+        """处理忽略举报操作"""
+        report.status = ReportStatus.IGNORED  # 已忽略
+        report.admin_note = admin_note or "管理员判定无违规"
+    
+    @staticmethod
+    def _handle_disable(db: Session, report: Report, admin_note: Optional[str]):
+        """处理下架/隐藏视频操作"""
+        if report.target_type != "VIDEO":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="disable 操作仅支持视频类型"
+            )
+        
+        video = VideoRepository.get_by_id(db, report.target_id)
+        if video:
+            # 如果视频是已发布状态，改为审核中（临时隐藏）
+            if video.status == VideoStatus.PUBLISHED:
+                video.status = VideoStatus.REVIEWING  # 改为审核中，用户端不可见
+            # 如果已经是其他状态，保持原状
+        
+        report.status = ReportStatus.PROCESSED  # 已处理
+        report.admin_note = admin_note or "管理员下架了视频"
+    
+    @staticmethod
+    def _handle_request_review(db: Session, report: Report, admin_note: Optional[str]):
+        """处理请求复审操作"""
+        if report.target_type != "VIDEO":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="request_review 操作仅支持视频类型"
+            )
+        
+        video = VideoRepository.get_by_id(db, report.target_id)
+        if video:
+            # 将视频状态改为审核中，等待人工复审
+            video.status = VideoStatus.REVIEWING  # 审核中
+            video.review_status = ReviewStatus.PENDING  # 重置审核状态为待审核
+        
+        report.status = ReportStatus.PROCESSED  # 已处理
+        report.admin_note = admin_note or "管理员请求复审该视频"
+    
+    @staticmethod
+    def get_reports_response(
+        db: Session,
+        report_status: int = 0,
+        page: int = 1,
+        page_size: int = 20
+    ) -> Dict[str, Any]:
+        """
+        获取举报列表响应（包含目标内容预览和跳转链接）
+        
+        Args:
+            db: 数据库会话
+            report_status: 举报状态（0=待处理,1=已处理,2=已忽略）
+            page: 页码
+            page_size: 每页数量
+            
+        Returns:
+            Dict[str, Any]: 举报列表响应（包含 items, total, page, page_size, total_pages）
+        """
+        reports, total = AdminService.get_reports(db, report_status, page, page_size)
+        
+        # 构建响应项，添加跳转链接
+        items = []
+        for report in reports:
+            # 构建管理端和公开访问链接
+            admin_target_url, public_watch_url = AdminService._build_report_urls(report)
+            
+            # 构建响应项
+            item_dict = {
+                "id": report.id,
+                "target_type": report.target_type,
+                "target_id": report.target_id,
+                "reason": report.reason,
+                "description": report.description,
+                "status": report.status,
+                "created_at": report.created_at,
+                "reporter": report.reporter,
+                "target_snapshot": getattr(report, 'target_snapshot', None),
+                "admin_target_url": admin_target_url,
+                "public_watch_url": public_watch_url
+            }
+            items.append(item_dict)
+        
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": math.ceil(total / page_size) if total > 0 else 0
+        }
+    
+    @staticmethod
+    def _build_report_urls(report: Report) -> Tuple[Optional[str], Optional[str]]:
+        """构建举报的管理端和公开访问链接"""
+        admin_target_url = None
+        public_watch_url = None
+        
+        if report.target_type == "VIDEO":
+            admin_target_url = f"/admin/videos/{report.target_id}"
+            public_watch_url = f"/videos/{report.target_id}"
+        elif report.target_type == "COMMENT":
+            snapshot = getattr(report, 'target_snapshot', None)
+            if snapshot and 'video_id' in snapshot:
+                admin_target_url = f"/admin/videos/{snapshot['video_id']}"
+                public_watch_url = f"/videos/{snapshot['video_id']}"
+        elif report.target_type == "DANMAKU":
+            snapshot = getattr(report, 'target_snapshot', None)
+            if snapshot and 'video_id' in snapshot:
+                admin_target_url = f"/admin/videos/{snapshot['video_id']}"
+                public_watch_url = f"/videos/{snapshot['video_id']}"
+        
+        return admin_target_url, public_watch_url
 
 
 

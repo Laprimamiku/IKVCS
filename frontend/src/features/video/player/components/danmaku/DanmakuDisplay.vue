@@ -2,13 +2,13 @@
   <div class="danmaku-layer" :class="{ 'is-hidden': !visible }">
     <template v-for="item in items" :key="item.key">
       <div
-        v-if="!shouldFilter(item)"
         class="danmaku-item"
         :class="{
           paused,
           'is-highlight': isHighlight(item),
           'is-top': item.type === 'top',
           'is-bottom': item.type === 'bottom',
+          'is-filtered': shouldFilter(item), // 使用 CSS class 控制显示/隐藏，不重置动画
         }"
         :style="getItemStyle(item)"
         @animationend="() => emit('finish', item.key)"
@@ -114,9 +114,11 @@ const isHighlight = (item: DanmakuDisplayItem) => {
 };
 
 // [New] 过滤逻辑
+// 注意：这里返回 true 表示应该隐藏，false 表示应该显示
+// 与弹幕显示开关的逻辑一致：使用 CSS 控制显示/隐藏，不删除 DOM 元素
 const shouldFilter = (item: DanmakuDisplayItem) => {
   if (!props.filterLowScore) return false;
-  // 如果开启过滤，且分数存在且 < 60，则隐藏
+  // 如果开启过滤，且分数存在且 < 70，则隐藏
   // 新发弹幕无分数(undefined)不应被过滤
   return item.ai_score !== undefined && item.ai_score < 70;
 };
@@ -235,6 +237,13 @@ const getItemStyle = (item: DanmakuDisplayItem) => {
     transform: translateX(-50%);
     animation: none;
     text-align: center;
+  }
+
+  // Filtered danmaku (hidden but animation continues)
+  // 使用 opacity 和 pointer-events 控制显示，不改变 display，避免重置动画
+  &.is-filtered {
+    opacity: 0;
+    pointer-events: none;
   }
 
   /* ===============================

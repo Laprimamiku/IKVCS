@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_current_active_user
 from app.core.response import success_response
+from app.core.video_constants import VideoStatus
 from app.models.user import User
 from app.schemas.user import UserResponse, UserUpdateRequest, MessageResponse
 from app.core.config import settings
@@ -150,7 +151,7 @@ def get_user_stats(
     # 只统计已发布的视频（创作者数据中心口径）
     rows = (
         db.query(Video.id, Video.view_count, Video.like_count, Video.collect_count)
-        .filter(Video.uploader_id == current_user.id, Video.status == 2)
+        .filter(Video.uploader_id == current_user.id, Video.status == VideoStatus.PUBLISHED)
         .all()
     )
     video_ids = [r.id for r in rows]

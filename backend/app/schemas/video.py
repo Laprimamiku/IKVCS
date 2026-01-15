@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, field_serializer
 from typing import Optional
 from datetime import datetime
 from app.utils.timezone_utils import isoformat_in_app_tz
+from app.core.app_constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 
 # ==================== 请求模型 ====================
@@ -27,7 +28,7 @@ class VideoListRequest(BaseModel):
     - keyword: 搜索关键词（可选）
     """
     page: int = Field(default=1, ge=1, description="页码")
-    page_size: int = Field(default=20, ge=1, le=100, description="每页数量")
+    page_size: int = Field(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE, description="每页数量")
     category_id: Optional[int] = Field(default=None, description="分类ID")
     keyword: Optional[str] = Field(default=None, max_length=100, description="搜索关键词")
 
@@ -87,7 +88,7 @@ class VideoListItemResponse(BaseModel):
     video_url: Optional[str] = None  # 视频 URL（m3u8 格式）
     subtitle_url: Optional[str] = None  # 字幕文件 URL
     duration: int
-    status: Optional[int] = None  # 视频状态：0=转码中, 1=审核中, 2=已发布, 3=已拒绝, 4=已删除
+    status: Optional[int] = None  # 视频状态：参考 VideoStatus 枚举（0=转码中, 1=审核中, 2=已发布, 3=已拒绝, 4=已删除）
     view_count: int
     like_count: int
     collect_count: int
@@ -111,9 +112,9 @@ class AdminVideoListItemResponse(VideoListItemResponse):
     
     包含审核相关字段，用于管理员后台
     """
-    status: Optional[int] = None  # 视频状态：0=转码中, 1=审核中, 2=已发布, 3=已拒绝, 4=已删除
+    status: Optional[int] = None  # 视频状态：参考 VideoStatus 枚举（0=转码中, 1=审核中, 2=已发布, 3=已拒绝, 4=已删除）
     review_score: Optional[int] = None  # 综合审核评分（0-100）
-    review_status: Optional[int] = None  # 审核状态：0=待审核，1=通过，2=拒绝
+    review_status: Optional[int] = None  # 审核状态：参考 ReviewStatus 枚举（0=待审核，1=通过，2=拒绝）
     review_report: Optional[dict] = None  # 审核报告详情（JSON格式）
     # 举报相关派生字段
     is_reported: bool = False  # 是否有待处理的举报

@@ -206,7 +206,13 @@ export interface DanmakuDisplayItem {
   color: string;
   lane: number;
   // [New]: 记录这条弹幕已经展示了多久（毫秒），用于回退时计算位置
-  initialOffset?: number; 
+  initialOffset?: number;
+  // [New]: 保存弹幕的原始视频时间（秒），用于精选开关切换时重新计算位置
+  videoTime?: number;
+  // AI 相关字段
+  ai_score?: number;
+  is_highlight?: boolean;
+  id?: number;
 }
 
 // [新增] 评论接口

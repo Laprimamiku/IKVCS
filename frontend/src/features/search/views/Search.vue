@@ -194,6 +194,10 @@ const sortType = ref<string>("default");
 const currentCategory = ref<number | null>(null);
 const categories = ref<Category[]>([]);
 
+const { handleError, handleApiError } = useErrorHandler({
+  messagePrefix: '搜索'
+});
+
 // 视频数据
 const videos = ref<Video[]>([]);
 const loading = ref<boolean>(false);

@@ -17,6 +17,7 @@ from app.models.user import User
 from app.models.interaction import UserCollection
 from app.schemas.interaction import CollectionCreate, ReportCreate
 from app.utils.timezone_utils import isoformat_in_app_tz, utc_now
+from app.utils.json_utils import parse_review_report, safe_json_dumps
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +130,7 @@ class InteractionService(BaseService[Video, VideoRepository]):
         """
         创建举报记录
         
-        如果举报的是视频，会将视频状态设置为审核中（status=1），并触发重新审核
+        如果举报的是视频，会将视频状态设置为审核中（VideoStatus.REVIEWING），并触发重新审核
         
         Args:
             db: 数据库会话
@@ -163,12 +164,7 @@ class InteractionService(BaseService[Video, VideoRepository]):
             if video:
                 # 视频被举报后，保持原有状态（不改变 status），只在 review_report 中记录举报信息
                 # 管理员可以在举报界面看到，并通过审核按钮处理
-                existing_report = {}
-                if video.review_report:
-                    try:
-                        existing_report = json.loads(video.review_report) if isinstance(video.review_report, str) else video.review_report
-                    except:
-                        existing_report = {}
+                existing_report = parse_review_report(video.review_report, default={})
                 
                 # 添加举报信息到审核报告
                 if "reports" not in existing_report:
@@ -183,7 +179,8 @@ class InteractionService(BaseService[Video, VideoRepository]):
                 existing_report["has_report"] = True
                 existing_report["last_report_time"] = isoformat_in_app_tz(utc_now())
                 
-                video.review_report = json.dumps(existing_report, ensure_ascii=False)
+                from app.utils.json_utils import dump_json_field
+                video.review_report = dump_json_field(existing_report)
                 db.commit()
                 logger.info(f"视频被举报，已记录举报信息（保持原状态）: video_id={video.id}, reporter_id={user_id}, current_status={video.status}")
                 

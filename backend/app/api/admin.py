@@ -21,6 +21,10 @@ from datetime import datetime, timedelta
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_admin
+from app.core.video_constants import VideoStatus, ReportStatus
+from app.core.app_constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from app.core.error_handler import handle_api_errors
+from app.utils.json_utils import parse_json_field
 from app.models.video import Video, Category
 from app.models.user import User
 from app.models.report import Report
@@ -166,11 +170,11 @@ async def delete_category(
 @router.get("/videos/pending", response_model=VideoListResponse, summary="获取待审核视频列表")
 async def get_pending_videos(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
-    query = db.query(Video).filter(Video.status == 1)
+    query = db.query(Video).filter(Video.status == VideoStatus.REVIEWING)
     total = query.count()
     offset = (page - 1) * page_size
 
@@ -233,7 +237,7 @@ async def reject_video(
 @router.get("/videos/manage", response_model=AdminVideoListResponse, summary="视频管理列表")
 async def manage_videos(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1),
+    page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1),
     status: Optional[int] = Query(None),
     keyword: Optional[str] = Query(None),
     db: Session = Depends(get_db),
@@ -278,14 +282,8 @@ async def manage_videos(
         view_count_map = {}
     for video in videos:
         # 解析 review_report JSON 字符串
-        review_report_dict = None
-        if video.review_report:
-            try:
-                if isinstance(video.review_report, str):
-                    review_report_dict = json.loads(video.review_report)
-                else:
-                    review_report_dict = video.review_report
-            except (json.JSONDecodeError, TypeError):
+        review_report_dict = parse_json_field(video.review_report) if video.review_report else None
+        if review_report_dict:
                 review_report_dict = None
         
         items.append(AdminVideoListItemResponse(
@@ -657,7 +655,7 @@ async def get_subtitle_content(
 @router.get("/users", response_model=UserListResponse, summary="获取用户列表")
 async def get_users(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1),
+    page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1),
     keyword: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
@@ -724,7 +722,7 @@ async def unban_user(
 async def get_reports(
     status: int = Query(0, description="0=待处理,1=已处理,2=已忽略"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1),
+    page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1),
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
@@ -773,9 +771,9 @@ async def stats_overview(
     return {
         "total_users": db.query(User).count(),
         "new_users_today": db.query(User).filter(User.created_at >= today).count(),
-        "total_videos": db.query(Video).filter(Video.status == 2).count(),
-        "new_videos_today": db.query(Video).filter(Video.status == 2, Video.created_at >= today).count(),
-        "total_reports_pending": db.query(Report).filter(Report.status == 0).count()
+        "total_videos": db.query(Video).filter(Video.status == VideoStatus.PUBLISHED).count(),
+        "new_videos_today": db.query(Video).filter(Video.status == VideoStatus.PUBLISHED, Video.created_at >= today).count(),
+        "total_reports_pending": db.query(Report).filter(Report.status == ReportStatus.PENDING).count()
     }
 
 
@@ -824,7 +822,7 @@ async def category_stats(
     results = (
         db.query(Category.name, func.count(Video.id))
         .join(Video, Video.category_id == Category.id)
-        .filter(Video.status == 2)
+        .filter(Video.status == VideoStatus.PUBLISHED)
         .group_by(Category.id)
         .all()
     )
@@ -925,7 +923,7 @@ async def submit_correction(
 @router.get("/ai/corrections", summary="获取修正记录列表")
 async def get_corrections(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     content_type: Optional[str] = Query(None, description="内容类型过滤"),
     db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_admin)
@@ -961,24 +959,20 @@ async def get_corrections(
 
 
 @router.post("/ai/self-correction/analyze", summary="触发自我纠错分析")
+@handle_api_errors(default_message="自我纠错分析失败")
 async def trigger_self_correction_analysis(
     request: ErrorAnalysisRequest,
     current_admin: User = Depends(get_current_admin)
 ):
     """触发AI自我纠错分析"""
-    try:
-        logger.info(f"管理员 {current_admin.username} 触发自我纠错分析")
-        
-        result = await self_correction_service.analyze_errors(
-            days=request.days,
-            content_type=request.content_type
-        )
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"自我纠错分析失败: {e}")
-        raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
+    logger.info(f"管理员 {current_admin.username} 触发自我纠错分析")
+    
+    result = await self_correction_service.analyze_errors(
+        days=request.days,
+        content_type=request.content_type
+    )
+    
+    return result HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
 
 
 @router.post("/ai/self-correction/update-prompt", response_model=MessageResponse, summary="更新System Prompt")

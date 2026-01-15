@@ -215,6 +215,11 @@ import {
   ArrowDown,
 } from "@element-plus/icons-vue";
 import { adminApi, type ReportItem } from "../api/admin.api";
+import { useErrorHandler } from "@/shared/composables/useErrorHandler";
+
+const { handleError, handleApiError } = useErrorHandler({
+  messagePrefix: '举报管理'
+});
 
 const currentStatus = ref<number | string>(0);
 const reports = ref<ReportItem[]>([]);
@@ -254,8 +259,7 @@ const loadData = async () => {
       total.value = 0;
     }
   } catch (e) {
-    console.error('加载举报列表失败:', e);
-    ElMessage.error('加载举报列表失败');
+    handleError(e, '加载举报列表失败');
     reports.value = [];
     total.value = 0;
   } finally {
@@ -291,8 +295,7 @@ const handleReport = async (id: number, action: "delete_target" | "ignore" | "di
     loadData(); // 刷新列表
   } catch (e: any) {
     if (e !== "cancel") {
-      console.error("操作失败:", e);
-      ElMessage.error("操作失败");
+      handleError(e, "操作失败");
     }
   } finally {
     loading.value = false;

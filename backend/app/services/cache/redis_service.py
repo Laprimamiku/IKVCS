@@ -74,6 +74,34 @@ class RedisService:
         except Exception as e:
             logger.error(f"Redis 获取播放量失败：{e}")
             return None
+    
+    def get_view_counts_batch(self, video_ids: List[int]) -> dict[int, int]:
+        """
+        批量获取视频播放量（从 Redis）
+        
+        Args:
+            video_ids: 视频ID列表
+            
+        Returns:
+            dict[int, int]: 视频ID到播放量的映射
+        """
+        view_count_map = {}
+        if not video_ids:
+            return view_count_map
+        
+        try:
+            keys = [f"video:view_count:{vid}" for vid in video_ids]
+            values = self.redis.mget(keys)
+            for vid, raw in zip(video_ids, values):
+                if raw is not None and raw != "":
+                    try:
+                        view_count_map[int(vid)] = int(raw)
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.error(f"Redis 批量获取播放量失败：{e}")
+        
+        return view_count_map
 
     def sync_view_count_to_db(self, video_id: int, db_session) -> bool:
         from app.models.video import Video

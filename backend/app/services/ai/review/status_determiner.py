@@ -4,6 +4,7 @@
 职责：根据帧审核和字幕审核结果，决定视频最终状态
 """
 from typing import Dict, Any, Optional
+from app.core.video_constants import VideoStatus
 
 
 def determine_status(
@@ -15,14 +16,13 @@ def determine_status(
     
     返回:
         tuple: (status, score)
-            - status: 1=审核中, 2=已发布, 3=拒绝
+            - status: VideoStatus 枚举值
             - score: 综合评分（0-100）
     """
     # 帧审核结果
     frame_violation_ratio = frame_review.get("violation_ratio", 0)  # 违规帧比例（百分比）
     frame_suspicious_ratio = frame_review.get("suspicious_ratio", 0)  # 疑似帧比例（百分比）
     frame_avg_score = frame_review.get("avg_score", 100)  # 平均评分
-    frame_has_violation = frame_review.get("has_violation", False)
     
     # 字幕审核结果
     subtitle_has_violation = False
@@ -40,16 +40,16 @@ def determine_status(
     # 判断状态（优先使用违规比例）
     # 1. 如果违规帧比例 > 10%，直接拒绝
     if frame_violation_ratio > 10 or subtitle_has_violation:
-        return (3, final_score)  # 拒绝
+        return (VideoStatus.REJECTED, final_score)
     
     # 2. 如果违规帧比例 5-10%，或疑似帧比例 > 20%，需要人工审核
     if (5 <= frame_violation_ratio <= 10) or frame_suspicious_ratio > 20 or subtitle_has_suspicious:
-        return (1, final_score)  # 审核中
+        return (VideoStatus.REVIEWING, final_score)
     
     # 3. 如果综合评分过低（<60），需要人工审核
     if final_score < 60:
-        return (1, final_score)  # 审核中
+        return (VideoStatus.REVIEWING, final_score)
     
     # 4. 其他情况，正常发布
-    return (2, final_score)  # 已发布
+    return (VideoStatus.PUBLISHED, final_score)
 

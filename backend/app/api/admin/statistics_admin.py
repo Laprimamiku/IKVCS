@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_admin
+from app.core.video_constants import VideoStatus, ReportStatus, ReviewStatus
 from app.models.user import User
 from app.models.video import Video, Category
 from app.models.report import Report
@@ -51,10 +52,10 @@ async def stats_overview(
     # 基础统计
     total_users = db.query(User).count()
     new_users_today = db.query(User).filter(User.created_at >= today).count()
-    total_videos = db.query(Video).filter(Video.status == 2).count()
-    new_videos_today = db.query(Video).filter(Video.status == 2, Video.created_at >= today).count()
-    total_reports_pending = db.query(Report).filter(Report.status == 0).count()
-    videos_pending_review = db.query(Video).filter(Video.status == 1).count()
+    total_videos = db.query(Video).filter(Video.status == VideoStatus.PUBLISHED).count()
+    new_videos_today = db.query(Video).filter(Video.status == VideoStatus.PUBLISHED, Video.created_at >= today).count()
+    total_reports_pending = db.query(Report).filter(Report.status == ReportStatus.PENDING).count()
+    videos_pending_review = db.query(Video).filter(Video.status == VideoStatus.REVIEWING).count()
     
     # 今日活跃用户（有观看/点赞/收藏行为）
     from app.models.watch_history import WatchHistory
@@ -123,7 +124,7 @@ async def stats_trends(
     # 视频发布趋势（仅已发布）
     videos = db.query(Video.created_at, Video.view_count, Video.like_count, Video.collect_count).filter(
         Video.created_at >= start,
-        Video.status == 2
+        Video.status == VideoStatus.PUBLISHED
     ).all()
     for v in videos:
         d = v.created_at.strftime("%Y-%m-%d")
@@ -155,7 +156,7 @@ async def category_stats(
     results = (
         db.query(Category.name, func.count(Video.id))
         .join(Video, Video.category_id == Category.id)
-        .filter(Video.status == 2)
+        .filter(Video.status == VideoStatus.PUBLISHED)
         .group_by(Category.id)
         .all()
     )
@@ -179,7 +180,7 @@ async def review_efficiency(
     today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     
     # 待审核数量
-    pending_count = db.query(Video).filter(Video.status == 1).count()
+    pending_count = db.query(Video).filter(Video.status == VideoStatus.REVIEWING).count()
     
     # 今日审核统计（从 review_report 中解析）
     today_videos = db.query(Video).filter(
@@ -194,15 +195,15 @@ async def review_efficiency(
     for video in today_videos:
         if video.review_report:
             try:
-                report = video.review_report if isinstance(video.review_report, dict) else json.loads(video.review_report)
+                report = parse_json_field(video.review_report) or {}
                 timestamp_str = report.get("timestamp")
                 if timestamp_str:
                     from dateutil import parser
                     review_time = parser.isoparse(timestamp_str)
                     if review_time >= today:
-                        if video.review_status == 1:
+                        if video.review_status == ReviewStatus.APPROVED:
                             today_approved += 1
-                        elif video.review_status == 2:
+                        elif video.review_status == ReviewStatus.REJECTED:
                             today_rejected += 1
                         # 计算审核时长（从创建到审核）
                         if video.created_at:

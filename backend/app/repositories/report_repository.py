@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc
 
 from app.core.repository import BaseRepository
+from app.core.video_constants import ReportStatus
 from app.models.report import Report
 from app.schemas.interaction import ReportCreate
 
@@ -59,7 +60,7 @@ class ReportRepository(BaseRepository):
             Report.reporter_id == reporter_id,
             Report.target_type == target_type,
             Report.target_id == target_id,
-            Report.status == 0
+            Report.status == ReportStatus.PENDING
         ).first() is not None
 
     # =========================
@@ -204,10 +205,12 @@ class ReportRepository(BaseRepository):
         """
         获取举报统计信息
         """
+        from app.core.video_constants import ReportStatus
+        
         total = db.query(Report).count()
-        pending = db.query(Report).filter(Report.status == 0).count()
-        handled = db.query(Report).filter(Report.status == 1).count()
-        ignored = db.query(Report).filter(Report.status == 2).count()
+        pending = db.query(Report).filter(Report.status == ReportStatus.PENDING).count()
+        handled = db.query(Report).filter(Report.status == ReportStatus.PROCESSED).count()
+        ignored = db.query(Report).filter(Report.status == ReportStatus.IGNORED).count()
 
         return {
             "total": total,

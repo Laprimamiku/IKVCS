@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_admin
+from app.core.app_constants import DEFAULT_PAGE_SIZE
 from app.models.user import User
 from app.schemas.user import UserResponse, MessageResponse
 from app.services.admin.admin_service import AdminService
@@ -86,57 +87,23 @@ class ReportListResponse(BaseModel):
 async def get_reports(
     status: int = Query(0, description="0=待处理,1=已处理,2=已忽略"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1),
+    page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1),
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
     """获取举报列表（包含目标内容预览）"""
-    reports, total = AdminService.get_reports(db, status, page, page_size)
+    response_data = AdminService.get_reports_response(db, status, page, page_size)
     
-    # 构建响应项，添加跳转链接
-    items = []
-    for report in reports:
-        # 构建管理端和公开访问链接
-        admin_target_url = None
-        public_watch_url = None
-        
-        if report.target_type == "VIDEO":
-            admin_target_url = f"/admin/videos/{report.target_id}"
-            public_watch_url = f"/videos/{report.target_id}"
-        elif report.target_type == "COMMENT":
-            snapshot = getattr(report, 'target_snapshot', None)
-            if snapshot and 'video_id' in snapshot:
-                admin_target_url = f"/admin/videos/{snapshot['video_id']}"
-                public_watch_url = f"/videos/{snapshot['video_id']}"
-        elif report.target_type == "DANMAKU":
-            snapshot = getattr(report, 'target_snapshot', None)
-            if snapshot and 'video_id' in snapshot:
-                admin_target_url = f"/admin/videos/{snapshot['video_id']}"
-                public_watch_url = f"/videos/{snapshot['video_id']}"
-        
-        # 构建响应项
-        item_dict = {
-            "id": report.id,
-            "target_type": report.target_type,
-            "target_id": report.target_id,
-            "reason": report.reason,
-            "description": report.description,
-            "status": report.status,
-            "created_at": report.created_at,
-            "reporter": report.reporter,
-            "target_snapshot": getattr(report, 'target_snapshot', None),
-            "admin_target_url": admin_target_url,
-            "public_watch_url": public_watch_url
-        }
-        items.append(ReportItemResponse(**item_dict))
+    # 转换为 Pydantic 模型
+    items = [ReportItemResponse(**item) for item in response_data["items"]]
     
-    return {
-        "items": items,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": math.ceil(total / page_size)
-    }
+    return ReportListResponse(
+        items=items,
+        total=response_data["total"],
+        page=response_data["page"],
+        page_size=response_data["page_size"],
+        total_pages=response_data["total_pages"]
+    )
 
 
 @router.post("/{report_id}/handle", response_model=MessageResponse, summary="处理举报")

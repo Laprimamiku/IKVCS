@@ -70,15 +70,7 @@ class VideoResponseBuilder:
                     items = data.get("items") or []
                     video_ids = [it.get("id") for it in items if isinstance(it, dict) and it.get("id") is not None]
                     if video_ids:
-                        keys = [f"video:view_count:{vid}" for vid in video_ids]
-                        values = redis_service.redis.mget(keys)
-                        view_map = {}
-                        for vid, raw in zip(video_ids, values):
-                            if raw is not None and raw != "":
-                                try:
-                                    view_map[int(vid)] = int(raw)
-                                except Exception:
-                                    pass
+                        view_map = redis_service.get_view_counts_batch(video_ids)
                         if view_map:
                             for it in items:
                                 if isinstance(it, dict) and it.get("id") in view_map:
@@ -377,20 +369,8 @@ class VideoResponseBuilder:
         items = []
 
         # 批量读取 Redis 中的播放量，避免列表页逐条访问 Redis（N+1）
-        view_count_map: dict[int, int] = {}
-        try:
-            video_ids = [v.id for v in videos]
-            if video_ids:
-                keys = [f"video:view_count:{vid}" for vid in video_ids]
-                values = redis_service.redis.mget(keys)
-                for vid, raw in zip(video_ids, values):
-                    if raw is not None and raw != "":
-                        try:
-                            view_count_map[int(vid)] = int(raw)
-                        except Exception:
-                            pass
-        except Exception:
-            view_count_map = {}
+        video_ids = [v.id for v in videos]
+        view_count_map = redis_service.get_view_counts_batch(video_ids)
 
         # 批量统计评论/弹幕数量（创作中心/互动管理需要展示）
         comment_count_map: dict[int, int] = {}
@@ -538,18 +518,8 @@ class VideoResponseBuilder:
 
         video_ids = [v.id for v in videos]
 
-        view_count_map: dict[int, int] = {}
-        try:
-            keys = [f"video:view_count:{vid}" for vid in video_ids]
-            values = redis_service.redis.mget(keys)
-            for vid, raw in zip(video_ids, values):
-                if raw is not None and raw != "":
-                    try:
-                        view_count_map[vid] = int(raw)
-                    except Exception:
-                        pass
-        except Exception:
-            view_count_map = {}
+        # 批量获取播放量（从 Redis）
+        view_count_map = redis_service.get_view_counts_batch(video_ids)
 
         is_liked_list: list[bool] = [False] * len(video_ids)
         if current_user_id:
