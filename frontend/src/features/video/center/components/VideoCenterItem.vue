@@ -36,9 +36,14 @@
         </span>
       </div>
       <div class="video-actions">
-        <el-button size="small" @click.stop="$emit('view', video.id)">
-          <el-icon><View /></el-icon>
-          查看
+        <el-button
+          size="small"
+          type="success"
+          @click.stop="$emit('transcode-high-bitrate', video.id)"
+          :loading="transcoding"
+        >
+          <el-icon><VideoPlay /></el-icon>
+          高码率
         </el-button>
         <el-button
           size="small"
@@ -71,7 +76,6 @@
 
 <script setup lang="ts">
 import {
-  View,
   Star,
   Collection,
   VideoPlay,
@@ -82,12 +86,13 @@ import {
 import type { Video } from "@/shared/types/entity";
 import { formatDuration, formatNumber } from "@/shared/utils/formatters";
 
-defineProps<{
+const props = defineProps<{
   video: Video;
+  transcoding?: boolean;
 }>();
 
 defineEmits<{
-  view: [id: number];
+  transcode-high-bitrate: [id: number];
   edit: [video: Video];
   delete: [video: Video];
 }>();

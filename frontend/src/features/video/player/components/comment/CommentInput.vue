@@ -2,11 +2,9 @@
   <div class="bili-comment-input" :class="{ 'is-reply': isReply, 'is-focused': isFocused }">
     <!-- Avatar (only for root comments) -->
     <div class="avatar-wrap" v-if="!isReply">
-      <img
-        :src="userAvatar || '/default-avatar.png'"
-        alt="avatar"
-        class="user-avatar"
-      />
+      <el-avatar :src="userStore.avatar" :size="48" class="user-avatar">
+        {{ userStore.userInfo?.nickname?.charAt(0).toUpperCase() || 'U' }}
+      </el-avatar>
     </div>
 
     <!-- Input Area -->
@@ -69,7 +67,8 @@
 import { ref, nextTick } from "vue";
 import { Sunny, Picture } from "@element-plus/icons-vue";
 import { useUserStore } from "@/shared/stores/user";
-import { storeToRefs } from "pinia";
+
+const userStore = useUserStore();
 
 const props = withDefaults(defineProps<{
   isReply?: boolean;
@@ -84,8 +83,6 @@ const emit = defineEmits<{
 }>();
 
 const userStore = useUserStore();
-const { userInfo } = storeToRefs(userStore);
-const userAvatar = userInfo.value?.avatar;
 
 const content = ref("");
 const isFocused = ref(false);

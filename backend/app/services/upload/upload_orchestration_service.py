@@ -343,4 +343,125 @@ class UploadOrchestrationService:
                 uploaded_chunks = []
         
         return session, uploaded_chunks
+    
+    @staticmethod
+    def finish_reupload(
+        db: Session,
+        user_id: int,
+        video_id: int,
+        file_hash: str
+    ) -> Video:
+        """
+        完成重新上传（替换现有视频文件）
+        
+        Args:
+            db: 数据库会话
+            user_id: 用户ID
+            video_id: 视频ID
+            file_hash: 文件哈希
+            
+        Returns:
+            Video: 更新后的视频对象
+        """
+        import os
+        import shutil
+        from app.core.config import settings
+        
+        # 1. 验证视频存在且用户有权限
+        video = VideoRepository.get_by_id(db, video_id)
+        if not video:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"视频 {video_id} 不存在"
+            )
+        
+        if video.uploader_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="只有视频上传者可以重新上传"
+            )
+        
+        # 2. 验证上传会话
+        session = SessionService.get_session_by_hash(db, file_hash)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"上传会话 {file_hash} 不存在"
+            )
+        
+        if session.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="无权操作此上传会话"
+            )
+        
+        # 3. 验证所有分片已上传
+        uploaded_chunks = ChunkService.get_uploaded_chunks(
+            file_hash,
+            session.total_chunks
+        )
+        
+        # 如果 Redis 读取不到，尝试使用数据库中的 uploaded_chunks 兜底
+        if not uploaded_chunks and session.uploaded_chunks:
+            try:
+                uploaded_chunks = [
+                    int(x) for x in session.uploaded_chunks.split(",") if x.strip()
+                ]
+            except Exception as e:
+                logger.error(f"解析数据库分片列表失败：{e}")
+                uploaded_chunks = []
+        
+        # 4. 验证分片完整性
+        ChunkService.validate_all_chunks_uploaded(uploaded_chunks, session.total_chunks)
+        
+        # 5. 验证分片目录存在
+        if not FileStorageService.check_chunk_dir_exists(file_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="分片临时目录不存在，请重新上传"
+            )
+        
+        # 6. 删除旧的视频文件和转码文件
+        try:
+            # 删除旧的原始视频文件
+            old_upload_session = UploadSessionRepository.get_by_video_id(db, video_id)
+            if old_upload_session:
+                old_file_path = os.path.join(
+                    settings.VIDEO_ORIGINAL_DIR,
+                    f"{old_upload_session.file_hash}_{old_upload_session.file_name}"
+                )
+                if os.path.exists(old_file_path):
+                    os.remove(old_file_path)
+                    logger.info(f"已删除旧的原始视频文件：{old_file_path}")
+            
+            # 删除旧的转码文件（HLS目录）
+            hls_dir = os.path.join(settings.VIDEO_HLS_DIR, str(video_id))
+            if os.path.exists(hls_dir):
+                shutil.rmtree(hls_dir)
+                logger.info(f"已删除旧的转码文件目录：{hls_dir}")
+        except Exception as e:
+            logger.warning(f"删除旧文件时出错（继续执行）：{e}")
+        
+        # 7. 合并分片文件
+        final_file_path = FileStorageService.merge_chunks(
+            file_hash,
+            session.file_name,
+            session.total_chunks
+        )
+        
+        # 8. 更新视频记录（重置video_url和status）
+        video.video_url = None  # 转码后更新
+        video.status = 0  # 0=转码中
+        video.duration = 0  # 转码后更新
+        db.commit()
+        db.refresh(video)
+        
+        # 9. 标记上传会话为已完成（关联到现有视频）
+        SessionService.mark_session_completed(db, session.file_hash, video_id)
+        
+        # 10. 清理 Redis
+        ChunkService.cleanup_redis(file_hash)
+        
+        logger.info(f"重新上传完成：{file_hash} -> video_id={video_id}")
+        return video
 

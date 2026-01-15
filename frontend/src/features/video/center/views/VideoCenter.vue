@@ -179,9 +179,14 @@
                     <el-icon><Edit /></el-icon>
                     编辑
                   </el-button>
-                  <el-button size="small" @click="handleView(video.id)">
-                    <el-icon><View /></el-icon>
-                    查看
+                  <el-button 
+                    size="small" 
+                    type="success"
+                    @click="handleTranscodeHighBitrate(video.id)"
+                    :loading="transcodingVideos.has(video.id)"
+                  >
+                    <el-icon><VideoPlay /></el-icon>
+                    高码率
                   </el-button>
                   <el-dropdown @command="(command) => handleAction(command, video)">
                     <el-button size="small">
@@ -697,6 +702,30 @@ const uploadAnother = () => {
 
 const handleView = (videoId: number) => {
   viewVideo(videoId);
+};
+
+// 高码率转码相关
+const transcodingVideos = ref<Set<number>>(new Set());
+
+const handleTranscodeHighBitrate = async (videoId: number) => {
+  if (transcodingVideos.value.has(videoId)) {
+    return;
+  }
+  
+  try {
+    transcodingVideos.value.add(videoId);
+    const { request } = await import("@/shared/utils/request");
+    const response = await request.post(`/api/videos/management/${videoId}/transcode-high-bitrate`);
+    ElMessage.success(response.message || "高码率转码任务已启动");
+  } catch (error: any) {
+    console.error("触发高码率转码失败:", error);
+    ElMessage.error(error.response?.data?.detail || "触发高码率转码失败");
+  } finally {
+    // 3秒后移除loading状态
+    setTimeout(() => {
+      transcodingVideos.value.delete(videoId);
+    }, 3000);
+  }
 };
 
 const handleAnalyze = (video: Video) => {

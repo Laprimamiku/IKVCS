@@ -34,13 +34,13 @@ def _parse_resolutions() -> list:
             parts = item.strip().split(':')
             if len(parts) == 4:
                 resolutions.append((parts[0], parts[1], parts[2], parts[3]))
-    # 默认配置（暂时只支持360p和480p，720p和1080p后期改善）
+    # 默认配置（支持360p、480p、720p、1080p）
     if not resolutions:
         resolutions = [
             ("360p", "640x360", "500k", "96k"),
             ("480p", "854x480", "800k", "128k"),
-            # ("720p", "1280x720", "2000k", "128k"),  # 暂时注释，后期改善
-            # ("1080p", "1920x1080", "4000k", "192k"),  # 暂时注释，后期改善
+            ("720p", "1280x720", "2000k", "128k"),
+            ("1080p", "1920x1080", "4000k", "192k"),
         ]
     return resolutions
 
@@ -172,7 +172,7 @@ class TranscodeService:
                     )
                 
                 # 第二阶段：后台转码其他清晰度（渐进增强，不阻塞用户观看）
-                if strategy == 'progressive' and other_list:
+                if strategy == 'progressive' and other_list and settings.HIGH_BITRATE_TRANSCODE_ENABLED:
                     logger.info(f"第二阶段：后台转码其他清晰度 {[r[0] for r in other_list]}")
                     # 使用线程转码其他清晰度，不阻塞当前流程
                     thread = threading.Thread(
@@ -182,6 +182,8 @@ class TranscodeService:
                     )
                     thread.start()
                     logger.info(f"后台转码线程已启动：video_id={video_id}")
+                elif not settings.HIGH_BITRATE_TRANSCODE_ENABLED:
+                    logger.info(f"高码率转码已禁用，跳过720p/1080p转码：video_id={video_id}")
                 elif strategy == 'all':
                     # 一次性转码所有清晰度（传统方式）
                     logger.info("策略为 all，继续转码所有清晰度")
@@ -329,42 +331,46 @@ class TranscodeService:
         db.commit()
         logger.info(f"视频转码完成，进入审核流程：video_id={video_id}")
         
-        # 异步触发审核（使用后台线程，不阻塞转码流程）
-        def trigger_review_async():
-            """在后台线程中触发审核"""
-            try:
-                import asyncio
-                from app.services.ai.video_review_service import video_review_service
-                
-                # 获取字幕路径
-                subtitle_path = video.subtitle_url if video.subtitle_url else None
-                if subtitle_path and not os.path.isabs(subtitle_path):
-                    # 处理相对路径
-                    from app.core.config import settings
-                    subtitle_path = os.path.join(settings.STORAGE_ROOT, subtitle_path.lstrip("/"))
-                
-                # 创建新的事件循环（在后台线程中）
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+        # 检查自动审核开关
+        if settings.AUTO_REVIEW_ENABLED:
+            # 异步触发审核（使用后台线程，不阻塞转码流程）
+            def trigger_review_async():
+                """在后台线程中触发审核"""
                 try:
-                    loop.run_until_complete(
-                        video_review_service.review_video(
-                            video_id=video_id,
-                            video_path=input_path,
-                            subtitle_path=subtitle_path
-                        )
-                    )
-                finally:
-                    loop.close()
+                    import asyncio
+                    from app.services.ai.video_review_service import video_review_service
                     
-            except Exception as e:
-                logger.error(f"触发视频审核失败: {e}", exc_info=True)
-                # 审核失败，保持审核中状态，等待人工处理
-        
-        # 启动后台线程执行审核
-        review_thread = threading.Thread(target=trigger_review_async, daemon=True)
-        review_thread.start()
-        logger.info(f"视频审核任务已启动（后台线程）: video_id={video_id}")
+                    # 获取字幕路径
+                    subtitle_path = video.subtitle_url if video.subtitle_url else None
+                    if subtitle_path and not os.path.isabs(subtitle_path):
+                        # 处理相对路径
+                        from app.core.config import settings
+                        subtitle_path = os.path.join(settings.STORAGE_ROOT, subtitle_path.lstrip("/"))
+                    
+                    # 创建新的事件循环（在后台线程中）
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(
+                            video_review_service.review_video(
+                                video_id=video_id,
+                                video_path=input_path,
+                                subtitle_path=subtitle_path
+                            )
+                        )
+                    finally:
+                        loop.close()
+                        
+                except Exception as e:
+                    logger.error(f"触发视频审核失败: {e}", exc_info=True)
+                    # 审核失败，保持审核中状态，等待人工处理
+            
+            # 启动后台线程执行审核
+            review_thread = threading.Thread(target=trigger_review_async, daemon=True)
+            review_thread.start()
+            logger.info(f"视频审核任务已启动（后台线程）: video_id={video_id}")
+        else:
+            logger.info(f"自动审核已禁用，跳过审核流程：video_id={video_id}")
     
     @staticmethod
     def _transcode_other_resolutions_sync(
@@ -426,8 +432,7 @@ class TranscodeService:
                     unique_resolutions[res[0]] = res
                 all_resolutions = list(unique_resolutions.values())
                 # 按清晰度排序（从低到高）
-                resolution_order = {"360p": 1, "480p": 2}  # 暂时只支持360p和480p
-                # resolution_order = {"360p": 1, "480p": 2, "720p": 3, "1080p": 4}  # 后期改善时恢复
+                resolution_order = {"360p": 1, "480p": 2, "720p": 3, "1080p": 4}
                 all_resolutions.sort(key=lambda x: resolution_order.get(x[0], 99))
                 
                 # 更新播放列表

@@ -260,6 +260,7 @@
       title="人工审核"
       width="90%"
       :close-on-click-modal="false"
+      @close="handleManualReviewClose"
     >
       <div v-if="loadingManualReview" class="loading-container">
         <el-skeleton :rows="5" animated />
@@ -337,6 +338,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
+import type { ComponentPublicInstance } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Refresh, View, Warning } from "@element-plus/icons-vue";
 import { adminApi, type AuditVideoItem } from "../api/admin.api";
@@ -365,6 +367,7 @@ const { handleError, handleApiError } = useErrorHandler({
 });
 
 const loadingManualReview = ref(false); // 加载人工审核数据中
+const originalVideoPlayer = ref<ComponentPublicInstance | null>(null); // 视频播放器引用
 
 const statusOptions = [
   { label: '全部', value: null },
@@ -570,6 +573,21 @@ const handleManualReview = async (videoId: number) => {
   } finally {
     loadingManualReview.value = false;
   }
+};
+
+const handleManualReviewClose = () => {
+  // 停止视频播放
+  if (originalVideoPlayer.value) {
+    const videoElement = originalVideoPlayer.value.$el as HTMLVideoElement;
+    if (videoElement && videoElement.pause) {
+      videoElement.pause();
+      videoElement.currentTime = 0;
+    }
+  }
+  // 清空数据
+  originalVideoUrl.value = "";
+  subtitleContent.value = null;
+  currentManualReviewVideo.value = null;
 };
 
 const handleReReview = async (videoId: number) => {

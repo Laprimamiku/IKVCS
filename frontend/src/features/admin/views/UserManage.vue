@@ -31,12 +31,9 @@
             <td>{{ user.id }}</td>
             <td>
               <div class="user-cell">
-                <img
-                  :src="user.avatar || defaultAvatar"
-                  class="avatar"
-                  alt="avatar"
-                  @error="handleImgError"
-                />
+                <el-avatar :src="user.avatar" :size="40" class="avatar">
+                  {{ user.nickname?.charAt(0).toUpperCase() || 'U' }}
+                </el-avatar>
                 <div class="info">
                   <div class="nickname">{{ user.nickname }}</div>
                   <div class="username">@{{ user.username }}</div>
@@ -144,11 +141,7 @@ const formatDate = (dateStr: string) => {
   });
 };
 
-// 头像加载失败处理
-const handleImgError = (e: Event) => {
-  const target = e.target as HTMLImageElement;
-  target.src = defaultAvatar;
-};
+// 头像加载失败处理（已移除，使用 el-avatar 自动处理）
 
 // 加载数据
 const fetchData = async () => {

@@ -43,8 +43,8 @@
         >
           <div class="comment-header">
             <div class="user-info">
-              <el-avatar :size="32" :src="comment.user?.avatar || '/default-avatar.png'">
-                <el-icon><User /></el-icon>
+              <el-avatar :size="32" :src="comment.user?.avatar">
+                {{ comment.user?.nickname?.charAt(0).toUpperCase() || 'U' }}
               </el-avatar>
               <div class="user-details">
                 <span class="username">{{ comment.user?.nickname || "匿名用户" }}</span>

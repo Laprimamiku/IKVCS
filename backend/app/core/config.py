@@ -193,16 +193,22 @@ class Settings(BaseSettings):
     # 注意：如果遇到 GPU OOM 错误，请降低并发数
     
     # 转码配置
-    TRANSCODE_MAX_CONCURRENT: int = 1  # 最大并发转码任务数
+    TRANSCODE_MAX_CONCURRENT: int = 1  # 最大并发转码任务数（RTX 3050 4GB建议保持1，避免GPU显存不足）
     # 转码清晰度配置（格式：name:resolution:video_bitrate:audio_bitrate）
     # 第一阶段（立即转码，快速可用）：360p、480p
-    # 第二阶段（后台转码，渐进增强）：720p、1080p（暂时注释，后期改善）
-    # TRANSCODE_RESOLUTIONS: str = "360p:640x360:500k:96k,480p:854x480:800k:128k,720p:1280x720:2000k:128k,1080p:1920x1080:4000k:192k"
-    TRANSCODE_RESOLUTIONS: str = "360p:640x360:500k:96k,480p:854x480:800k:128k"  # 暂时只转码360p和480p
+    # 第二阶段（后台转码，渐进增强）：720p、1080p
+    TRANSCODE_RESOLUTIONS: str = "360p:640x360:500k:96k,480p:854x480:800k:128k,720p:1280x720:2000k:128k,1080p:1920x1080:4000k:192k"
     # 转码策略：progressive（渐进式，先转低清晰度）或 all（一次性转所有清晰度）
     TRANSCODE_STRATEGY: str = "progressive"  # progressive 或 all
     # 第一阶段转码清晰度（快速转码，让用户能立即观看）
     TRANSCODE_PRIORITY_RESOLUTIONS: str = "360p,480p"  # 逗号分隔
+    # GPU硬件加速配置（RTX 3050支持NVENC）
+    TRANSCODE_USE_GPU: bool = False  # 是否使用GPU硬件加速（默认禁用，避免AV1等格式兼容性问题）
+    TRANSCODE_GPU_DEVICE: int = 0  # GPU设备编号（多GPU时使用）
+    
+    # 全局功能开关
+    AUTO_REVIEW_ENABLED: bool = True  # 是否启用自动审核（视频上传后自动审核）
+    HIGH_BITRATE_TRANSCODE_ENABLED: bool = True  # 是否启用高码率转码（720p/1080p）
     
     # CORS 配置（多个源用逗号分隔）
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"  # 默认值，可通过环境变量 CORS_ORIGINS 覆盖

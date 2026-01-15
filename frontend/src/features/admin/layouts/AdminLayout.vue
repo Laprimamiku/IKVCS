@@ -60,7 +60,9 @@
 
       <div class="sidebar-footer">
         <div class="admin-avatar">
-          <img :src="userStore.avatar || '/default-avatar.png'" alt="avatar" />
+          <el-avatar :src="userStore.avatar" :size="40">
+            {{ userStore.userInfo?.nickname?.charAt(0).toUpperCase() || 'A' }}
+          </el-avatar>
         </div>
         <transition name="fade">
           <div v-if="!sidebarCollapsed" class="admin-info">

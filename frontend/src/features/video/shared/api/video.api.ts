@@ -195,6 +195,17 @@ export function generateVideoSummary(videoId: number) {
 }
 
 /**
+ * 完成视频重新上传
+ */
+export function finishReupload(videoId: number, fileHash: string) {
+  const formData = new FormData();
+  formData.append('file_hash', fileHash);
+  return uploadRequest.post(`/videos/${videoId}/reupload/finish`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+}
+
+/**
  * 获取核心知识点
  */
 export async function getVideoKnowledge(videoId: number) {

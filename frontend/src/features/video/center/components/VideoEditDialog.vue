@@ -105,6 +105,44 @@
           </el-upload>
         </div>
       </el-form-item>
+
+      <!-- 视频重新上传 -->
+      <el-form-item label="视频">
+        <div class="video-reupload-section">
+          <div v-if="reuploading" class="reupload-progress">
+            <el-progress
+              :percentage="reuploadProgress"
+              :status="reuploadStatus"
+              :format="() => reuploadStatusText"
+            />
+            <el-button
+              v-if="reuploadStatus === 'success'"
+              type="primary"
+              size="small"
+              @click="handleReuploadComplete"
+            >
+              完成
+            </el-button>
+          </div>
+          <el-upload
+            v-else
+            :auto-upload="false"
+            :show-file-list="false"
+            accept="video/*"
+            :on-change="handleVideoChange"
+          >
+            <el-button type="warning" plain>
+              <el-icon><VideoCamera /></el-icon>
+              重新上传视频
+            </el-button>
+            <template #tip>
+              <div class="el-upload__tip">
+                如果视频无法播放，可以重新上传视频文件（将替换现有视频）
+              </div>
+            </template>
+          </el-upload>
+        </div>
+      </el-form-item>
     </el-form>
 
     <template #footer>
@@ -118,11 +156,14 @@
 
 <script setup lang="ts">
 import { ref, reactive, watch } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import type { FormInstance, FormRules, UploadFile } from "element-plus";
-import { Picture, Document, Close } from "@element-plus/icons-vue";
+import { Picture, Document, Close, VideoCamera } from "@element-plus/icons-vue";
 import type { Video, Category } from "@/shared/types/entity";
 import { resolveFileUrl } from "@/shared/utils/urlHelpers";
+import { initUpload, uploadChunk } from "@/features/video/upload/api/upload.api";
+import { finishReupload } from "@/features/video/shared/api/video.api";
+import { useFileHash } from "@/features/video/upload/composables/useFileHash";
 
 // 定义保存数据的类型
 interface SaveData {
@@ -172,6 +213,16 @@ const form = reactive<{
   subtitle_file: null,
 });
 
+// 重新上传相关状态
+const reuploading = ref(false);
+const reuploadProgress = ref(0);
+const reuploadStatus = ref<"success" | "exception" | "warning" | undefined>(undefined);
+const reuploadStatusText = ref("准备上传...");
+const reuploadVideoFile = ref<File | null>(null);
+const reuploadFileHash = ref<string>("");
+const { calculateFileHash } = useFileHash();
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+
 const rules: FormRules = {
   title: [
     { required: true, message: "请输入视频标题", trigger: "blur" },
@@ -204,6 +255,14 @@ watch(
       form.cover_file = null;
       form.subtitle_url = props.video.subtitle_url || "";
       form.subtitle_file = null;
+      
+      // 重置重新上传状态
+      reuploading.value = false;
+      reuploadProgress.value = 0;
+      reuploadStatus.value = undefined;
+      reuploadStatusText.value = "准备上传...";
+      reuploadVideoFile.value = null;
+      reuploadFileHash.value = "";
     }
   }
 );
@@ -253,6 +312,128 @@ const handleSubtitleChange = (file: UploadFile) => {
 const removeSubtitle = () => {
   form.subtitle_file = null;
   form.subtitle_url = "";
+};
+
+const handleVideoChange = async (file: UploadFile) => {
+  if (!file.raw || !form.id) return;
+  
+  const validTypes = ["video/mp4", "video/quicktime", "video/x-msvideo", "video/webm"];
+  if (!validTypes.includes(file.raw.type)) {
+    ElMessage.warning("视频格式不支持，仅支持 MP4、MOV、AVI、WEBM");
+    return;
+  }
+  
+  try {
+    await ElMessageBox.confirm(
+      "重新上传视频将替换现有视频文件，此操作不可撤销。是否继续？",
+      "确认重新上传",
+      {
+        confirmButtonText: "确认",
+        cancelButtonText: "取消",
+        type: "warning",
+      }
+    );
+    
+    reuploadVideoFile.value = file.raw;
+    reuploading.value = true;
+    reuploadProgress.value = 0;
+    reuploadStatus.value = undefined;
+    reuploadStatusText.value = "正在计算文件哈希...";
+    
+    // 计算文件哈希
+    const hash = await calculateFileHash(file.raw);
+    reuploadFileHash.value = hash;
+    
+    // 开始上传
+    await startReupload(file.raw, hash);
+  } catch (error: any) {
+    if (error !== "cancel") {
+      console.error("选择视频文件失败:", error);
+      ElMessage.error("选择视频文件失败，请重试");
+    }
+    reuploadVideoFile.value = null;
+    reuploading.value = false;
+  }
+};
+
+const startReupload = async (file: File, hash: string) => {
+  try {
+    // 1. 初始化上传
+    reuploadStatusText.value = "初始化上传...";
+    const chunks = Math.ceil(file.size / CHUNK_SIZE);
+    const initResponse = await initUpload({
+      file_hash: hash,
+      file_name: file.name,
+      total_chunks: chunks,
+      file_size: file.size,
+    });
+    
+    const initData = (initResponse as any)?.data || initResponse;
+    
+    // 检查是否秒传
+    if (initData.is_completed && initData.video_id) {
+      reuploadStatusText.value = "秒传成功！";
+      reuploadProgress.value = 100;
+      reuploadStatus.value = "success";
+      ElMessage.success("视频秒传成功！");
+      return;
+    }
+    
+    // 2. 上传分片
+    const totalChunks = initData.total_chunks || chunks;
+    const uploadedChunks = initData.uploaded_chunks || [];
+    
+    reuploadStatusText.value = `开始上传分片 (${uploadedChunks.length}/${totalChunks})...`;
+    
+    for (let i = 0; i < totalChunks; i++) {
+      // 跳过已上传的分片
+      if (uploadedChunks.includes(i)) {
+        continue;
+      }
+      
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const chunk = file.slice(start, end);
+      
+      reuploadStatusText.value = `正在上传分片 ${i + 1}/${totalChunks}...`;
+      
+      await uploadChunk(hash, i, chunk);
+      
+      const progress = Math.floor(((i + 1) / totalChunks) * 100);
+      reuploadProgress.value = progress;
+    }
+    
+    // 3. 完成上传
+    reuploadStatusText.value = "正在完成上传...";
+    await finishReupload(form.id!, hash);
+    
+    reuploadProgress.value = 100;
+    reuploadStatus.value = "success";
+    reuploadStatusText.value = "重新上传成功！视频正在转码中...";
+    ElMessage.success("视频重新上传成功，正在转码中");
+  } catch (error: any) {
+    console.error("重新上传失败:", error);
+    reuploadStatus.value = "exception";
+    reuploadStatusText.value = `上传失败: ${error?.response?.data?.detail || error?.message || "未知错误"}`;
+    ElMessage.error("重新上传失败，请重试");
+  }
+};
+
+const handleReuploadComplete = () => {
+  reuploading.value = false;
+  reuploadProgress.value = 0;
+  reuploadStatus.value = undefined;
+  reuploadStatusText.value = "准备上传...";
+  reuploadVideoFile.value = null;
+  reuploadFileHash.value = "";
+  emit("save", {
+    id: form.id!,
+    title: form.title,
+    description: form.description,
+    category_id: form.category_id,
+    cover_file: form.cover_file,
+    subtitle_file: form.subtitle_file,
+  });
 };
 
 const handleCancel = () => {
@@ -316,5 +497,16 @@ const handleSave = async () => {
   padding: var(--spacing-sm);
   background: var(--bg-light);
   border-radius: var(--radius-base);
+}
+
+.video-reupload-section {
+  width: 100%;
+}
+
+.reupload-progress {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
 }
 </style>

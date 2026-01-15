@@ -2,11 +2,9 @@
   <div class="bili-comment-item">
     <!-- User Avatar -->
     <div class="avatar-col">
-      <img
-        :src="comment.user.avatar || '/default-avatar.png'"
-        alt="avatar"
-        class="user-avatar"
-      />
+      <el-avatar :src="comment.user.avatar" :size="48" class="user-avatar">
+        {{ comment.user.nickname?.charAt(0).toUpperCase() || 'U' }}
+      </el-avatar>
     </div>
 
     <!-- Content Column -->
@@ -362,10 +360,6 @@ const handleReport = async () => {
 }
 
 .user-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-circle);
-  object-fit: cover;
   cursor: pointer;
   transition: transform var(--transition-base);
 
