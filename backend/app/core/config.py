@@ -2,9 +2,22 @@
 应用配置管理
 从环境变量读取配置
 """
+import os
 from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings
+
+def _resolve_env_files() -> list[str]:
+    base_dir = Path(__file__).resolve().parents[2]  # backend/
+    env = os.getenv("APP_ENV", "development").strip() or "development"
+    candidates = [
+        base_dir / ".env",
+        base_dir / f".env.{env}",
+        base_dir / ".env.local",
+        base_dir / f".env.{env}.local",
+    ]
+    return [str(path) for path in candidates if path.exists()]
+
 
 class Settings(BaseSettings):
     """应用配置"""
@@ -57,6 +70,12 @@ class Settings(BaseSettings):
     LLM_VISION_API_KEY: str = ""  # 图像识别API密钥，可选（与LLM_API_KEY相同）
     LLM_VISION_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4"  # 智谱GLM视觉模型API地址
     LLM_VISION_MODEL: str = "glm-4v-plus"  # 视觉模型：免费用户并发限制5次
+
+    # ASR (speech-to-text) model config
+    ASR_API_KEY: str = ""  # optional; fallback to LLM_API_KEY when empty
+    ASR_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4"
+    ASR_MODEL: str = "GLM-ASR-2512"
+
     
     # ==================== CLIProxyAPI配置（已注释，保留备用） ====================
     # 之前的CLI API配置（通过CLIProxyAPI访问反重力模型）
@@ -231,8 +250,8 @@ class Settings(BaseSettings):
     APP_TIMEZONE: str = "Asia/Shanghai"
     
     class Config:
-        # 固定从 backend/.env 加载，避免从不同启动目录执行时读不到 .env（导致 LLM_MODE 等切换失效）
-        env_file = str(Path(__file__).resolve().parents[2] / ".env")
+        # Load backend env files with simple layered overrides.
+        env_file = _resolve_env_files()
         case_sensitive = True
         extra = "ignore"
 
