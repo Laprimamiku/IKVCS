@@ -12,6 +12,8 @@ import {
   deleteVideo, 
   uploadVideoCover, 
   uploadVideoSubtitle,
+  uploadVideoSubtitleAudio,
+  selectVideoSubtitle,
   generateVideoOutline
 } from "@/features/video/shared/api/video.api"
 import { getCategories } from "@/features/video/shared/api/category.api"
@@ -111,14 +113,25 @@ export function useVideoManagement() {
     data: VideoUpdateData & {
       cover_file?: File | null
       subtitle_file?: File | null
+      subtitle_audio_file?: File | null
+      subtitle_selected_url?: string | null
     }
   ) => {
+    const normalizeSubtitleUrl = (value: string) => {
+      if (!value) return ''
+      if (value.startsWith('/')) return value
+      try {
+        return new URL(value).pathname || value
+      } catch {
+        return value
+      }
+    }
     try {
       // 1. 先更新基本信息
       await updateVideo(videoId, {
         title: data.title,
         description: data.description,
-        category_id: data.category_id || 0, // 0表示设置为临时分类
+        category_id: data.category_id ?? undefined,
       })
 
       // 2. 上传封面（如果有新封面）
@@ -127,8 +140,18 @@ export function useVideoManagement() {
       }
 
       // 3. 上传字幕（如果有新字幕）
-      if (data.subtitle_file) {
-        await uploadVideoSubtitle(videoId, data.subtitle_file)
+      let selectedSubtitleUrl = normalizeSubtitleUrl(data.subtitle_selected_url || '')
+      if (data.subtitle_audio_file) {
+        const response = await uploadVideoSubtitleAudio(videoId, data.subtitle_audio_file)
+        selectedSubtitleUrl = (response as any)?.data?.subtitle_url || selectedSubtitleUrl
+      } else if (data.subtitle_file) {
+        const response = await uploadVideoSubtitle(videoId, data.subtitle_file)
+        selectedSubtitleUrl = (response as any)?.data?.subtitle_url || selectedSubtitleUrl
+      }
+
+      // 4. 切换字幕展示（如果明确选择）
+      if (selectedSubtitleUrl) {
+        await selectVideoSubtitle(videoId, selectedSubtitleUrl)
       }
 
       ElMessage.success('更新成功')

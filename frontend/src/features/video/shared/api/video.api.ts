@@ -2,6 +2,15 @@ import { request, uploadRequest } from "@/shared/utils/request";
 import type { Video, PageResult, VideoQueryParams } from "@/shared/types/entity";
 import { processVideoUrls, processVideoList } from "@/shared/utils/apiHelpers";
 
+export interface VideoSubtitleItem {
+  url: string;
+  filename: string;
+  source: string;
+  is_active: boolean;
+  created_at?: string;
+  exists?: boolean;
+}
+
 /**
  * 获取视频列表
  */
@@ -17,11 +26,20 @@ export async function getVideoList(params: VideoQueryParams) {
  * 获取视频详情
  */
 export async function getVideoDetail(videoId: number) {
-  const response = await request.get<Video>(`/videos/${videoId}`);
-  if (response.success && response.data) {
-    response.data = processVideoUrls(response.data);
+  try {
+    const response = await request.get<Video>(`/videos/${videoId}`);
+    if (response.success && response.data) {
+      response.data = processVideoUrls(response.data);
+    }
+    return response;
+  } catch (error: any) {
+    // 如果请求失败，返回错误响应
+    return {
+      success: false,
+      data: null,
+      message: error?.response?.data?.detail || error?.message || '获取视频详情失败'
+    };
   }
-  return response;
 }
 
 /**
@@ -54,10 +72,69 @@ export function uploadVideoSubtitle(videoId: number, file: File) {
 }
 
 /**
+ * 音频转字幕（云端ASR）
+ */
+export function uploadVideoSubtitleAudio(videoId: number, file: File) {
+  const formData = new FormData();
+  formData.append('audio', file);
+  return uploadRequest.post(`/videos/${videoId}/subtitle/audio`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+}
+
+/**
+ * 获取视频字幕列表
+ */
+export function getVideoSubtitles(videoId: number) {
+  return request.get<{ items: VideoSubtitleItem[]; active_url?: string }>(`/videos/${videoId}/subtitles`);
+}
+
+/**
+ * 选择视频展示字幕
+ */
+export function selectVideoSubtitle(videoId: number, subtitleUrl: string) {
+  return request.post(`/videos/${videoId}/subtitle/select`, { subtitle_url: subtitleUrl });
+}
+
+/**
  * 获取我的视频列表 (后台管理用)
  */
 export async function getMyVideos(params: { page: number; page_size: number; status?: number }) {
   const response = await request.get<PageResult<Video>>('/videos/my', { params });
+  if (response.success && response.data) {
+    response.data.items = processVideoList(response.data.items);
+  }
+  return response;
+}
+
+/**
+ * 获取指定用户的视频列表（公开）
+ */
+export async function getUserVideos(userId: number, params: { page?: number; page_size?: number; status?: number }) {
+  const response = await request.get<PageResult<Video>>('/search/videos', { 
+    params: { 
+      uploader_id: userId,
+      status: params.status || 2, // 仅已发布
+      page: params.page || 1,
+      page_size: params.page_size || 20
+    } 
+  });
+  if (response.success && response.data) {
+    response.data.items = processVideoList(response.data.items);
+  }
+  return response;
+}
+
+/**
+ * 获取指定用户的收藏列表（公开）
+ */
+export async function getUserCollections(userId: number, params: { page?: number; page_size?: number }) {
+  const response = await request.get<PageResult<Video>>(`/users/${userId}/collections`, { 
+    params: {
+      page: params.page || 1,
+      page_size: params.page_size || 20
+    } 
+  });
   if (response.success && response.data) {
     response.data.items = processVideoList(response.data.items);
   }
@@ -146,6 +223,20 @@ export function getAnalysisProgress(videoId: number) {
 }
 
 /**
+ * 更新内容高亮状态
+ */
+export function updateHighlightStatus(
+  videoId: number,
+  itemType: "danmaku" | "comment",
+  itemId: number,
+  isHighlight: boolean
+) {
+  return request.put<any>(`/videos/${videoId}/ai-analysis/highlight/${itemType}/${itemId}`, {
+    is_highlight: isHighlight
+  });
+}
+
+/**
  * 管理端：获取 AI 配置概览
  */
 export function getAiConfigOverview() {
@@ -192,10 +283,23 @@ export async function getVideoSummary(videoId: number) {
 }
 
 /**
- * 生成视频摘要
+ * 生成视频摘要（异步，需要轮询）
  */
 export function generateVideoSummary(videoId: number) {
   return request.post(`/videos/${videoId}/summary`);
+}
+
+/**
+ * 实时生成结构化视频摘要（不保存到数据库）
+ * 返回：问题背景、研究方法、主要发现、最终结论
+ */
+export function generateStructuredVideoSummary(videoId: number) {
+  return request.post<{
+    problem_background: string;
+    research_methods: string;
+    main_findings: string;
+    conclusions: string;
+  }>(`/videos/${videoId}/summary/realtime`);
 }
 
 /**
@@ -213,7 +317,41 @@ export function finishReupload(videoId: number, fileHash: string) {
  * 获取核心知识点
  */
 export async function getVideoKnowledge(videoId: number) {
-  return request.get<{ knowledge_points: any }>(`/videos/${videoId}/knowledge`);
+  return request.get(`/videos/${videoId}/knowledge`);
+}
+
+/**
+ * 标签管理 API
+ */
+export interface VideoTag {
+  id: number;
+  name: string;
+  usage_count?: number;
+}
+
+/**
+ * 添加视频标签
+ */
+export function addVideoTag(videoId: number, tagName: string) {
+  const formData = new FormData();
+  formData.append('tag_name', tagName);
+  return request.post<{ tag_id: number; tag_name: string }>(`/videos/${videoId}/tags`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+}
+
+/**
+ * 删除视频标签
+ */
+export function removeVideoTag(videoId: number, tagId: number) {
+  return request.delete(`/videos/${videoId}/tags/${tagId}`);
+}
+
+/**
+ * 获取视频标签列表
+ */
+export function getVideoTags(videoId: number) {
+  return request.get<{ tags: VideoTag[] }>(`/videos/${videoId}/tags`);
 }
 
 // ==========================================
@@ -225,6 +363,9 @@ export const videoApi = {
   incrementViewCount,
   uploadVideoCover,
   uploadVideoSubtitle,
+  uploadVideoSubtitleAudio,
+  getVideoSubtitles,
+  selectVideoSubtitle,
   getMyVideos,
   updateVideo,
   deleteVideo,
@@ -235,7 +376,8 @@ export const videoApi = {
   getAnalysisItems,
   triggerAnalysisRecompute,
   triggerJuryReview,
-  getAnalysisProgress, // 包含新增的分析接口
+  getAnalysisProgress,
+  updateHighlightStatus, // 更新高亮状态
   getAiConfigOverview,
   getAiMetrics
 };

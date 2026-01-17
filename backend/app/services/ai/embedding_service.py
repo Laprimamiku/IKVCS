@@ -65,11 +65,15 @@ class EmbeddingService:
                 return None
 
             if resp.status_code != 200:
+                error_detail = resp.text[:500] if resp.text else "无响应内容"
                 logger.error(
                     "EmbeddingService: 请求失败 status=%s, body=%s",
                     resp.status_code,
-                    resp.text,
+                    error_detail,
                 )
+                # 如果是404，可能是模型名称错误，提供更详细的错误信息
+                if resp.status_code == 404:
+                    logger.error(f"EmbeddingService: 模型 '{self.model}' 可能不存在，请检查Ollama中的模型名称。可用命令: ollama list")
                 # 对 5xx 进行快速重试，其它错误直接返回
                 if attempt < self.max_retries and resp.status_code >= 500:
                     await asyncio.sleep(self.retry_backoff * attempt)

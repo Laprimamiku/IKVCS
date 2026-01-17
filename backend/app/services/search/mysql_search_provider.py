@@ -148,6 +148,12 @@ class MySQLSearchProvider(SearchProvider):
         if filters.get("uploader_id"):
             query = query.filter(Video.uploader_id == filters["uploader_id"])
         
+        # 视频ID列表筛选（用于标签过滤）
+        if filters.get("video_ids"):
+            video_ids = filters["video_ids"]
+            if isinstance(video_ids, list) and len(video_ids) > 0:
+                query = query.filter(Video.id.in_(video_ids))
+        
         return query
     
     def _apply_sort(self, query, sort: Dict[str, str]):

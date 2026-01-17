@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_current_user_optional
 from app.core.video_constants import VideoStatus
 from app.core.app_constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from app.core.exceptions import ResourceNotFoundException, ForbiddenException
@@ -107,7 +107,7 @@ async def get_my_videos(
 async def get_video_detail(
     video_id: int,
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """
     获取视频详情并增加播放量
@@ -142,8 +142,8 @@ async def get_video_detail(
         except Exception as e:
             logger.warning(f"记录观看历史失败: {e}")
     
-    # 获取视频详情响应（包含所有数据组装逻辑）
-    video_detail = VideoResponseBuilder.get_video_detail_response(db, video_id)
+    # 获取视频详情响应（包含所有数据组装逻辑，传递 current_user 以检查关注状态）
+    video_detail = VideoResponseBuilder.get_video_detail_response(db, video_id, current_user)
     if not video_detail:
         raise ResourceNotFoundException(resource="视频", resource_id=video_id)
     

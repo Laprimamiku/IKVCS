@@ -9,7 +9,7 @@
 相当于 Java 的 DTO 类
 """
 from pydantic import BaseModel, Field, field_serializer
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from app.utils.timezone_utils import isoformat_in_app_tz
 from app.core.app_constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
@@ -61,6 +61,7 @@ class UploaderBriefResponse(BaseModel):
     username: str
     nickname: str
     avatar: Optional[str]
+    is_following: Optional[bool] = None  # 当前用户是否关注了该UP主（仅在有登录用户时返回）
     
     class Config:
         from_attributes = True
@@ -201,6 +202,7 @@ class VideoDetailResponse(BaseModel):
     uploader: UploaderBriefResponse
     category: CategoryBriefResponse
     created_at: datetime
+    tags: Optional[list[dict[str, Any]]] = []  # 视频标签列表
     
     @field_serializer('created_at')
     def serialize_created_at(self, value: datetime) -> str:
@@ -228,6 +230,27 @@ class SubtitleUploadResponse(BaseModel):
                 "video_id": 1
             }
         }
+
+
+class SubtitleListItem(BaseModel):
+    """字幕列表条目"""
+    url: str
+    filename: str
+    source: str  # manual / ai / legacy
+    is_active: bool = False
+    created_at: Optional[str] = None
+    exists: bool = True
+
+
+class SubtitleListResponse(BaseModel):
+    """字幕列表响应"""
+    items: list[SubtitleListItem]
+    active_url: Optional[str] = None
+
+
+class SubtitleSelectRequest(BaseModel):
+    """字幕选择请求"""
+    subtitle_url: str
 
 
 class CoverUploadResponse(BaseModel):

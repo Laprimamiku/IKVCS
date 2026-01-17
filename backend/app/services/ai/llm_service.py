@@ -41,7 +41,11 @@ from app.models.comment import Comment
 from app.models.ai_prompt_version import AiPromptVersion
 from app.services.ai.prompts import (
     DANMAKU_SYSTEM_PROMPT,
-    COMMENT_SYSTEM_PROMPT
+    COMMENT_SYSTEM_PROMPT,
+    DANMAKU_SYSTEM_PROMPT_LOCAL,
+    COMMENT_SYSTEM_PROMPT_LOCAL,
+    DANMAKU_SYSTEM_PROMPT_CLOUD,
+    COMMENT_SYSTEM_PROMPT_CLOUD
 )
 from app.services.cache.redis_service import redis_service
 from app.utils.timezone_utils import isoformat_in_app_tz, utc_now
@@ -422,46 +426,62 @@ class LLMService:
         self.cost_tracker[video_id]["calls"] += 1
         self.cost_tracker[video_id]["chars"] += input_chars
 
-    def _get_active_prompt(self, content_type: str) -> tuple[str, Optional[int]]:
-        """获取激活的 Prompt 版本"""
-        db = SessionLocal()
-        try:
-            # 映射内容类型到 Prompt 类型
-            prompt_type_map = {
-                "danmaku": "DANMAKU",
-                "comment": "COMMENT"
-            }
-            prompt_type = prompt_type_map.get(content_type)
-            
-            if prompt_type:
-                # 查询激活版本
-                active_version = db.query(AiPromptVersion).filter(
-                    AiPromptVersion.prompt_type == prompt_type,
-                    AiPromptVersion.is_active == True
-                ).first()
-                
-                if active_version:
-                    logger.debug(f"使用数据库 Prompt 版本 {active_version.id}: {prompt_type}")
-                    return active_version.prompt_content, active_version.id
-            
-            # 回退到硬编码 Prompt
-            fallback_prompt = (
-                DANMAKU_SYSTEM_PROMPT if content_type == "danmaku" 
-                else COMMENT_SYSTEM_PROMPT
-            )
-            logger.debug(f"使用硬编码 Prompt: {content_type}")
-            return fallback_prompt, None
-            
-        except Exception as e:
-            logger.warning(f"获取 Prompt 版本失败: {e}")
-            # 回退到硬编码 Prompt
-            fallback_prompt = (
-                DANMAKU_SYSTEM_PROMPT if content_type == "danmaku" 
-                else COMMENT_SYSTEM_PROMPT
-            )
-            return fallback_prompt, None
-        finally:
-            db.close()
+    # ==================== Prompt 版本管理（已注释，不再使用） ====================
+    # def _get_active_prompt(self, content_type: str) -> tuple[str, Optional[int]]:
+    #     """获取激活的 Prompt 版本"""
+    #     db = SessionLocal()
+    #     try:
+    #         # 映射内容类型到 Prompt 类型
+    #         prompt_type_map = {
+    #             "danmaku": "DANMAKU",
+    #             "comment": "COMMENT"
+    #         }
+    #         prompt_type = prompt_type_map.get(content_type)
+    #         
+    #         if prompt_type:
+    #             # 查询激活版本
+    #             active_version = db.query(AiPromptVersion).filter(
+    #                 AiPromptVersion.prompt_type == prompt_type,
+    #                 AiPromptVersion.is_active == True
+    #             ).first()
+    #             
+    #             if active_version:
+    #                 logger.debug(f"使用数据库 Prompt 版本 {active_version.id}: {prompt_type}")
+    #                 return active_version.prompt_content, active_version.id
+    #         
+    #         # 回退到硬编码 Prompt
+    #         fallback_prompt = (
+    #             DANMAKU_SYSTEM_PROMPT if content_type == "danmaku" 
+    #             else COMMENT_SYSTEM_PROMPT
+    #         )
+    #         logger.debug(f"使用硬编码 Prompt: {content_type}")
+    #         return fallback_prompt, None
+    #         
+    #     except Exception as e:
+    #         logger.warning(f"获取 Prompt 版本失败: {e}")
+    #         # 回退到硬编码 Prompt
+    #         fallback_prompt = (
+    #             DANMAKU_SYSTEM_PROMPT if content_type == "danmaku" 
+    #             else COMMENT_SYSTEM_PROMPT
+    #         )
+    #         return fallback_prompt, None
+    #     finally:
+    #         db.close()
+    
+    def _get_prompt_for_model(self, content_type: str, model_type: str) -> str:
+        """根据模型类型获取对应的提示词"""
+        if model_type == "local_text":
+            # 本地模型使用简化提示词
+            if content_type == "danmaku":
+                return DANMAKU_SYSTEM_PROMPT_LOCAL
+            else:
+                return COMMENT_SYSTEM_PROMPT_LOCAL
+        else:
+            # 云端模型使用完整提示词
+            if content_type == "danmaku":
+                return DANMAKU_SYSTEM_PROMPT_CLOUD
+            else:
+                return COMMENT_SYSTEM_PROMPT_CLOUD
 
     # ==================== 核心分析流程 ====================
 
@@ -488,36 +508,15 @@ class LLMService:
         # 优化内容以减少Token消耗
         optimized_content = token_optimizer.optimize_content_for_llm(content, content_type)
         
-        # 获取激活的 Prompt 版本
-        system_prompt, prompt_version_id = self._get_active_prompt(content_type)
-        
-        # 检查是否使用压缩版Prompt模板
-        use_compressed = getattr(settings, "TOKEN_SAVE_USE_COMPRESSED_PROMPTS", False)
-        if use_compressed and prompt_version_id is None:  # 仅在没有数据库版本时使用压缩版
-            try:
-                from app.services.ai.prompts_compressed import (
-                    DANMAKU_SYSTEM_PROMPT_COMPRESSED,
-                    COMMENT_SYSTEM_PROMPT_COMPRESSED
-                )
-                if content_type == "danmaku":
-                    system_prompt = DANMAKU_SYSTEM_PROMPT_COMPRESSED
-                elif content_type == "comment":
-                    system_prompt = COMMENT_SYSTEM_PROMPT_COMPRESSED
-                logger.debug(f"使用压缩版Prompt模板: {content_type}")
-            except ImportError:
-                logger.warning("压缩版Prompt模板不可用，使用标准版本")
-        
-        # 优化Prompt以减少Token消耗（注意：这里先不区分模型类型，后续在调用时区分）
-        # 云端模型会使用压缩版Prompt，本地模型会使用详细版Prompt
-        optimized_prompt = system_prompt  # 先保持原样，在调用时根据模型类型优化
+        # 不再使用Prompt版本管理，prompt_version_id固定为None
+        prompt_version_id = None
         
         trace = [
             {
                 "step": "start", 
                 "mode": self.mode, 
-                "prompt_version_id": prompt_version_id,
+                "prompt_version_id": None,
                 "content_optimized": len(optimized_content) < len(content),
-                "prompt_optimized": len(optimized_prompt) < len(system_prompt),
                 "timestamp": isoformat_in_app_tz(utc_now()),
             }
         ]
@@ -544,7 +543,8 @@ class LLMService:
                 result["prompt_version_id"] = prompt_version_id
                 result["decision_trace"] = trace + [{"step": "cache_exact"}]
                 await self._mark_metric("exact_hit")
-                return await self._maybe_use_jury(optimized_content, content_type, result, force_jury)
+                # 多智能体陪审团已注释，直接返回结果
+                return result
         except Exception as e:
             logger.warning(f"Exact cache read failed: {e}")
 
@@ -560,11 +560,14 @@ class LLMService:
             if embedding:
                 sem_key_prefix = f"ai:semcache:{content_type}"
                 
-                # 分层缓存策略：先尝试高阈值，再尝试低阈值
+                # 强化语义缓存：分层缓存策略，降低阈值以识别更多含义高度相似的语句
+                # 基础阈值已从0.95降低到0.88，这里进一步降低以增强相似语句识别
+                base_threshold = self._semantic_threshold_for(optimized_content)
                 thresholds = [
-                    self._semantic_threshold_for(optimized_content),  # 基础阈值
-                    self._semantic_threshold_for(optimized_content) - 0.03,  # 降低3%作为第二层
-                    self._semantic_threshold_for(optimized_content) - 0.05,  # 降低5%作为第三层
+                    base_threshold,  # 基础阈值（0.88或0.85）
+                    base_threshold - 0.05,  # 降低5%作为第二层
+                    base_threshold - 0.08,  # 降低8%作为第三层
+                    base_threshold - 0.10,  # 降低10%作为第四层（更宽松，识别更多相似语句）
                 ]
                 
                 for threshold in thresholds:
@@ -580,7 +583,8 @@ class LLMService:
                         sem_result["decision_trace"] = trace + [{"step": "cache_semantic", "threshold": threshold}]
                         await self._mark_metric("semantic_hit")
                         logger.info(f"语义缓存命中 (阈值={threshold:.2f}): {optimized_content[:20]}...")
-                        return await self._maybe_use_jury(optimized_content, content_type, sem_result, force_jury)
+                        # 多智能体陪审团已注释，直接返回结果
+                        return sem_result
         except Exception as e:
             logger.warning(f"Semantic cache failed: {e}")
 
@@ -602,26 +606,27 @@ class LLMService:
                 continue
             
             try:
-                # 检查预算限制（仅云端模型）
-                if model_type.startswith("cloud"):
-                    input_chars = len(optimized_content) + len(optimized_prompt)
-                    if not self._check_budget(video_id, input_chars):
-                        logger.warning(f"预算限制，跳过云端模型 {model_type}")
-                        result = self.default_response.copy()
-                        result["prompt_version_id"] = prompt_version_id
-                        result["decision_trace"] = trace + [{"step": "budget_exceeded"}]
-                        result["reason"] = "预算不足，需人工复核"
-                        return result
+                # 预算检查已注释，不再检查预算限制
+                # if model_type.startswith("cloud"):
+                #     input_chars = len(optimized_content) + len(optimized_prompt)
+                #     if not self._check_budget(video_id, input_chars):
+                #         logger.warning(f"预算限制，跳过云端模型 {model_type}")
+                #         result = self.default_response.copy()
+                #         result["prompt_version_id"] = prompt_version_id
+                #         result["decision_trace"] = trace + [{"step": "budget_exceeded"}]
+                #         result["reason"] = "预算不足，需人工复核"
+                #         return result
                 
                 # 调用模型
                 if model_type == "cloud_text":
                     # 云端调用：可选采样/预算控制（本地推理仍可跑，云端只处理“不确定/高风险”）
                     # 注意：采样策略仅用于 hybrid（本地优先 + 云端兜底）以降本增效；
                     # cloud_only 模式下若采样跳过，会导致没有任何模型推理，影响“强制云端”的预期。
-                    if self.mode == "hybrid":
-                        if not await token_optimizer.should_process_content(content, content_type, priority):
-                            await self._mark_metric("cloud_skip_optimizer")
-                            continue
+                    # 采样策略已注释，不再跳过云端模型调用
+                    # if self.mode == "hybrid":
+                    #     if not await token_optimizer.should_process_content(content, content_type, priority):
+                    #         await self._mark_metric("cloud_skip_optimizer")
+                    #         continue
                     logger.info(
                         "[AIText] cloud_try type=%s model=%s chars=%s",
                         content_type,
@@ -629,12 +634,15 @@ class LLMService:
                         len(optimized_content),
                     )
                     await self._mark_metric("cloud_attempt")
-                    result = await self._call_cloud_model(optimized_content, optimized_prompt, model_config)
+                    # 获取云端模型专用提示词
+                    cloud_prompt = self._get_prompt_for_model(content_type, "cloud_text")
+                    result = await self._call_cloud_model(optimized_content, cloud_prompt, model_config)
                     if result:
-                        self._update_budget(video_id, input_chars)
+                        # 预算更新已注释
+                        # self._update_budget(video_id, input_chars)
                         await self._mark_metric("cloud_call")
                         # 记录Token使用
-                        await token_optimizer.record_token_usage(input_chars // 4)  # 粗略估算token数
+                        # await token_optimizer.record_token_usage(input_chars // 4)  # 粗略估算token数
                 elif model_type == "local_text":
                     logger.info(
                         "[AIText] local_try type=%s model=%s chars=%s",
@@ -642,29 +650,36 @@ class LLMService:
                         getattr(model_config, "name", "unknown"),
                         len(optimized_content),
                     )
-                    result = await self._call_local_model(optimized_content, content_type, model_config)
+                    # 获取本地模型专用提示词
+                    local_prompt = self._get_prompt_for_model(content_type, "local_text")
+                    result = await self._call_local_model(
+                        optimized_content,
+                        content_type,
+                        local_prompt,
+                        model_config
+                    )
                     if result:
                         await self._mark_metric("local_call")
-                        # 检查是否需要升级到云端
-                        confidence = result.get("confidence", 0.5)
-                        min_chars = int(getattr(settings, "LOCAL_LLM_ESCALATE_MIN_CHARS", 0) or 0)
-                        if (len(optimized_content) >= min_chars and
-                            model_registry.should_escalate_to_cloud(confidence) and
-                            model_registry.is_available("cloud_text")):
-                            logger.info(f"本地模型置信度低 ({confidence:.2f})，升级到云端模型")
-                            cloud_config = model_registry.get_model("cloud_text")
-                            if cloud_config and self._check_budget(video_id, input_chars):
-                                # 升级云端：不走采样，属于“难内容补审”路径
-                                cloud_result = await self._call_cloud_model(optimized_content, optimized_prompt, cloud_config)
-                                if cloud_result:
-                                    self._update_budget(video_id, input_chars)
-                                    await self._mark_metric("cloud_call")
-                                    await token_optimizer.record_token_usage(input_chars // 4)
-                                    result = cloud_result
-                                    result["decision_trace"] = trace + [
-                                        {"step": "local_llm", "confidence": confidence},
-                                        {"step": "escalate_to_cloud"}
-                                    ]
+                        # 升级逻辑已注释，不再检查是否需要升级到云端
+                        # confidence = result.get("confidence", 0.5)
+                        # min_chars = int(getattr(settings, "LOCAL_LLM_ESCALATE_MIN_CHARS", 0) or 0)
+                        # if (len(optimized_content) >= min_chars and
+                        #     model_registry.should_escalate_to_cloud(confidence) and
+                        #     model_registry.is_available("cloud_text")):
+                        #     logger.info(f"本地模型置信度低 ({confidence:.2f})，升级到云端模型")
+                        #     cloud_config = model_registry.get_model("cloud_text")
+                        #     if cloud_config and self._check_budget(video_id, input_chars):
+                        #         # 升级云端：不走采样，属于"难内容补审"路径
+                        #         cloud_result = await self._call_cloud_model(optimized_content, optimized_prompt, cloud_config)
+                        #         if cloud_result:
+                        #             self._update_budget(video_id, input_chars)
+                        #             await self._mark_metric("cloud_call")
+                        #             await token_optimizer.record_token_usage(input_chars // 4)
+                        #             result = cloud_result
+                        #             result["decision_trace"] = trace + [
+                        #                 {"step": "local_llm", "confidence": confidence},
+                        #                 {"step": "escalate_to_cloud"}
+                        #             ]
                 
                 if result:
                     logger.info(
@@ -684,7 +699,8 @@ class LLMService:
                     # 保存缓存
                     await self._save_cache(optimized_content, content_type, result, embedding, prompt_version_id)
                     
-                    return await self._maybe_use_jury(optimized_content, content_type, result, force_jury)
+                    # 多智能体陪审团已注释，直接返回结果
+                    return result
                     
             except Exception as e:
                 logger.error(f"模型 {model_type} 调用失败: {e}")
@@ -725,28 +741,30 @@ class LLMService:
             logger.warning("云端模型 API_KEY 为空，跳过调用")
             return None
         
-        # 云端模型：使用压缩版Prompt
-        try:
-            from app.services.ai.prompt_compressor import prompt_compressor
-            budget_status = token_optimizer.get_budget_status()
-            daily_usage = budget_status.get("daily", {}).get("usage_rate", 0.0)
-            
-            if daily_usage > 0.8:
-                strategy = "aggressive"
-            elif daily_usage > 0.5:
-                strategy = "moderate"
-            else:
-                strategy = "conservative"
-            
-            original_len = len(system_prompt)
-            compressed_prompt = prompt_compressor.compress_prompt(system_prompt, strategy, model_type="cloud")
-            compressed_len = len(compressed_prompt)
-            savings = (original_len - compressed_len) / original_len * 100 if original_len > 0 else 0
-            
-            logger.info(f"[CloudPrompt] 📝 Prompt压缩: 策略={strategy}, 原始={original_len}字符, 压缩后={compressed_len}字符, 节省={savings:.1f}%")
-        except Exception as e:
-            logger.warning(f"[CloudPrompt] ⚠️  Prompt压缩失败，使用原始Prompt: {e}")
-            compressed_prompt = system_prompt
+        # 云端模型：直接使用传入的提示词（已在调用处根据模型类型选择）
+        # Prompt压缩已注释，不再使用
+        # try:
+        #     from app.services.ai.prompt_compressor import prompt_compressor
+        #     budget_status = token_optimizer.get_budget_status()
+        #     daily_usage = budget_status.get("daily", {}).get("usage_rate", 0.0)
+        #     
+        #     if daily_usage > 0.8:
+        #         strategy = "aggressive"
+        #     elif daily_usage > 0.5:
+        #         strategy = "moderate"
+        #     else:
+        #         strategy = "conservative"
+        #     
+        #     original_len = len(system_prompt)
+        #     compressed_prompt = prompt_compressor.compress_prompt(system_prompt, strategy, model_type="cloud")
+        #     compressed_len = len(compressed_prompt)
+        #     savings = (original_len - compressed_len) / original_len * 100 if original_len > 0 else 0
+        #     
+        #     logger.info(f"[CloudPrompt] 📝 Prompt压缩: 策略={strategy}, 原始={original_len}字符, 压缩后={compressed_len}字符, 节省={savings:.1f}%")
+        # except Exception as e:
+        #     logger.warning(f"[CloudPrompt] ⚠️  Prompt压缩失败，使用原始Prompt: {e}")
+        #     compressed_prompt = system_prompt
+        compressed_prompt = system_prompt
         
         headers = {
             "Authorization": f"Bearer {model_config.api_key}",
@@ -803,11 +821,21 @@ class LLMService:
             await self._mark_metric("cloud_exception")
             return None
 
-    async def _call_local_model(self, content: str, content_type: str, model_config) -> Optional[AIContentAnalysisResult]:
+    async def _call_local_model(
+        self,
+        content: str,
+        content_type: str,
+        system_prompt: str,
+        model_config
+    ) -> Optional[AIContentAnalysisResult]:
         """调用本地模型"""
         try:
             logger.info(f"[LLM] 调用本地文本模型: {model_config.name} @ {model_config.base_url}")
-            local_result = await local_model_service.predict(content, content_type)
+            local_result = await local_model_service.predict(
+                content,
+                content_type,
+                system_prompt=system_prompt
+            )
             if local_result:
                 logger.info(f"[LocalLLM] score={local_result.get('score')}")
 
@@ -830,6 +858,41 @@ class LLMService:
         except Exception as e:
             logger.error(f"Local model call failed: {e}")
             return None
+
+    async def evaluate_with_prompt(
+        self,
+        content: str,
+        content_type: str,
+        system_prompt: str,
+        model_source: str = "auto"
+    ) -> Optional[AIContentAnalysisResult]:
+        """Run a one-off evaluation with a custom prompt, without caching."""
+        source = (model_source or "auto").lower()
+        if source == "local":
+            model_config = model_registry.get_model("local_text")
+            if not model_config:
+                return None
+            return await self._call_local_model(content, content_type, system_prompt, model_config)
+        if source == "cloud":
+            model_config = model_registry.get_model("cloud_text")
+            if not model_config:
+                return None
+            return await self._call_cloud_model(content, system_prompt, model_config)
+
+        for model_type in model_registry.get_text_model_priority():
+            if model_type == "local_text":
+                model_config = model_registry.get_model("local_text")
+                if not model_config:
+                    continue
+                result = await self._call_local_model(content, content_type, system_prompt, model_config)
+            else:
+                model_config = model_registry.get_model("cloud_text")
+                if not model_config:
+                    continue
+                result = await self._call_cloud_model(content, system_prompt, model_config)
+            if result:
+                return result
+        return None
 
     # ==================== 缓存辅助 ====================
 
@@ -875,32 +938,33 @@ class LLMService:
         except Exception as e:
             logger.warning(f"Cache save failed: {e}")
 
-    async def _maybe_use_jury(self, content: str, content_type: str, result: AIContentAnalysisResult, force_jury: bool = False) -> AIContentAnalysisResult:
-        """
-        根据配置和置信度决定是否触发多智能体陪审团。
-        """
-        if not force_jury:
-            return result
-        if not settings.MULTI_AGENT_ENABLED:
-            return result
-        service = _get_multi_agent_service()
-        if not service:
-            return result
-        try:
-            jury_result = await service.analyze_with_jury(content, content_type)
-            if jury_result:
-                # 保留原结果以便追踪
-                jury_result.setdefault("source", "multi_agent")
-                jury_result.setdefault("confidence", result.get("confidence", 0.5))
-                jury_result.setdefault("model_name", result.get("model_name"))
-                trace = result.get("decision_trace", [])
-                jury_trace = jury_result.pop("decision_trace", [])
-                jury_result["decision_trace"] = trace + [{"step": "multi_agent"}] + jury_trace
-                await self._mark_metric("jury_call")
-                return jury_result
-        except Exception as e:
-            logger.warning(f"Multi-agent analyze failed: {e}")
-        return result
+    # ==================== 多智能体陪审团（已注释，暂时不考虑） ====================
+    # async def _maybe_use_jury(self, content: str, content_type: str, result: AIContentAnalysisResult, force_jury: bool = False) -> AIContentAnalysisResult:
+    #     """
+    #     根据配置和置信度决定是否触发多智能体陪审团。
+    #     """
+    #     if not force_jury:
+    #         return result
+    #     if not settings.MULTI_AGENT_ENABLED:
+    #         return result
+    #     service = _get_multi_agent_service()
+    #     if not service:
+    #         return result
+    #     try:
+    #         jury_result = await service.analyze_with_jury(content, content_type)
+    #         if jury_result:
+    #             # 保留原结果以便追踪
+    #             jury_result.setdefault("source", "multi_agent")
+    #             jury_result.setdefault("confidence", result.get("confidence", 0.5))
+    #             jury_result.setdefault("model_name", result.get("model_name"))
+    #             trace = result.get("decision_trace", [])
+    #             jury_trace = jury_result.pop("decision_trace", [])
+    #             jury_result["decision_trace"] = trace + [{"step": "multi_agent"}] + jury_trace
+    #             await self._mark_metric("jury_call")
+    #             return jury_result
+    #     except Exception as e:
+    #         logger.warning(f"Multi-agent analyze failed: {e}")
+    #     return result
 
     # ==================== 规则过滤 ====================
 

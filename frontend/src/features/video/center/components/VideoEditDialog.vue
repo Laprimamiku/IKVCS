@@ -77,7 +77,7 @@
       </el-form-item>
 
       <!-- 字幕上传 -->
-      <el-form-item label="字幕">
+      <el-form-item label="人工字幕">
         <div class="subtitle-upload-section">
           <div v-if="form.subtitle_file" class="subtitle-preview">
             <el-icon><Document /></el-icon>
@@ -95,7 +95,7 @@
           >
             <el-button type="primary" plain>
               <el-icon><Document /></el-icon>
-              {{ form.subtitle_url ? "更换字幕" : "上传字幕" }}
+              {{ form.subtitle_url ? "更换人工字幕" : "上传人工字幕" }}
             </el-button>
             <template #tip>
               <div class="el-upload__tip">
@@ -103,6 +103,92 @@
               </div>
             </template>
           </el-upload>
+        </div>
+      </el-form-item>
+
+      <!-- 音频转字幕 -->
+      <el-form-item label="AI字幕">
+        <div class="subtitle-upload-section">
+          <div v-if="form.subtitle_audio_file" class="subtitle-preview">
+            <el-icon><Document /></el-icon>
+            <span>{{ form.subtitle_audio_file.name }}</span>
+            <el-button type="danger" size="small" text @click="removeSubtitleAudio">
+              移除
+            </el-button>
+          </div>
+          <el-upload
+            v-else
+            :auto-upload="false"
+            :show-file-list="false"
+            accept=".mp3,.wav,.m4a,.aac,.flac,.ogg,.opus,.webm,.mp4"
+            :on-change="handleSubtitleAudioChange"
+            :disabled="subtitleAudioUploading"
+          >
+            <el-button type="primary" plain :loading="subtitleAudioUploading">
+              <el-icon><Document /></el-icon>
+              {{ form.subtitle_url ? "替换AI字幕（音频/视频转写）" : "AI字幕（音频/视频转写）" }}
+            </el-button>
+            <template #tip>
+              <div class="el-upload__tip">
+                支持 MP3、WAV、M4A、AAC、FLAC、OGG、OPUS、WEBM、MP4（生成 AI 字幕）
+              </div>
+            </template>
+          </el-upload>
+        </div>
+      </el-form-item>
+
+      <el-form-item label="字幕来源">
+        <div class="subtitle-select-section">
+          <el-select
+            v-model="form.subtitle_selected_url"
+            placeholder="选择展示字幕"
+            style="width: 100%"
+            :loading="subtitleLoading"
+          >
+            <el-option
+              v-for="item in subtitleItems"
+              :key="item.url"
+              :label="formatSubtitleLabel(item)"
+              :value="item.url"
+            />
+          </el-select>
+          <div class="subtitle-select-meta">
+            <span v-if="!subtitleItems.length">暂无字幕</span>
+            <el-button size="small" text @click="fetchSubtitleList">刷新</el-button>
+          </div>
+        </div>
+      </el-form-item>
+
+      <!-- 标签管理 -->
+      <el-form-item label="标签">
+        <div class="tag-management-section">
+          <div class="tag-input-row">
+            <el-input
+              v-model="newTagName"
+              placeholder="输入标签名称，按回车添加"
+              maxlength="50"
+              @keyup.enter="handleAddTag"
+              @blur="handleAddTag"
+            >
+              <template #append>
+                <el-button @click="handleAddTag" :loading="tagAdding">添加</el-button>
+              </template>
+            </el-input>
+          </div>
+          <div class="tag-list" v-if="displayTags.length > 0">
+            <el-tag
+              v-for="tag in displayTags"
+              :key="tag.id"
+              :closable="true"
+              @close="handleRemoveTag(tag.id!)"
+              class="tag-item"
+            >
+              {{ tag.name }}
+            </el-tag>
+          </div>
+          <div v-else class="tag-empty">
+            <span class="empty-text">暂无标签，添加标签可以帮助其他用户发现您的视频</span>
+          </div>
         </div>
       </el-form-item>
 
@@ -160,14 +246,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from "vue";
+import { ref, reactive, watch, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import type { FormInstance, FormRules, UploadFile } from "element-plus";
 import { Picture, Document, Close, VideoCamera } from "@element-plus/icons-vue";
 import type { Video, Category } from "@/shared/types/entity";
+import type { VideoSubtitleItem } from "@/features/video/shared/api/video.api";
 import { resolveFileUrl } from "@/shared/utils/urlHelpers";
 import { initUpload, uploadChunk } from "@/features/video/upload/api/upload.api";
-import { finishReupload } from "@/features/video/shared/api/video.api";
+import { finishReupload, getVideoSubtitles, uploadVideoSubtitleAudio, addVideoTag, removeVideoTag, getVideoTags, type VideoTag } from "@/features/video/shared/api/video.api";
 import { useFileHash } from "@/features/video/upload/composables/useFileHash";
 
 // 定义保存数据的类型
@@ -178,6 +265,8 @@ interface SaveData {
   category_id: number | null;
   cover_file: File | null;
   subtitle_file: File | null;
+  subtitle_audio_file: File | null;
+  subtitle_selected_url: string | null;
 }
 
 const props = defineProps<{
@@ -206,7 +295,9 @@ const form = reactive<{
   cover_preview: string;
   cover_file: File | null;
   subtitle_url: string;
+  subtitle_selected_url: string;
   subtitle_file: File | null;
+  subtitle_audio_file: File | null;
 }>({
   id: null,
   title: "",
@@ -216,8 +307,47 @@ const form = reactive<{
   cover_preview: "",
   cover_file: null,
   subtitle_url: "",
+  subtitle_selected_url: "",
   subtitle_file: null,
+  subtitle_audio_file: null,
 });
+
+const subtitleItems = ref<VideoSubtitleItem[]>([]);
+const subtitleLoading = ref(false);
+const subtitleAudioUploading = ref(false);
+
+// 标签管理
+const videoTags = ref<VideoTag[]>([]);
+const newTagName = ref("");
+const tagAdding = ref(false);
+
+// 显示标签（不包含分类标签）
+const displayTags = computed(() => {
+  // 只显示用户添加的标签，不包含分类
+  return videoTags.value;
+});
+
+const normalizeSubtitleUrl = (value: string) => {
+  if (!value) return "";
+  if (value.startsWith("/")) return value;
+  try {
+    const parsed = new URL(value);
+    return parsed.pathname || value;
+  } catch (error) {
+    return value;
+  }
+};
+
+const formatSubtitleLabel = (item: VideoSubtitleItem) => {
+  const sourceMap: Record<string, string> = {
+    manual: "人工字幕",
+    ai: "AI字幕",
+    legacy: "历史字幕"
+  };
+  const sourceLabel = sourceMap[item.source] || item.source;
+  const suffix = item.exists === false ? " (missing)" : "";
+  return `${sourceLabel} - ${item.filename}${suffix}`;
+};
 
 // 重新上传相关状态
 const reuploading = ref(false);
@@ -245,6 +375,35 @@ const rules: FormRules = {
   ],
 };
 
+const fetchSubtitleList = async () => {
+  if (!form.id) return;
+  subtitleLoading.value = true;
+  try {
+    const res = await getVideoSubtitles(form.id);
+    if (res.success) {
+      subtitleItems.value = res.data.items || [];
+      const activeUrl =
+        res.data.active_url ||
+        subtitleItems.value.find((item) => item.is_active)?.url ||
+        "";
+      const normalizedSelected = normalizeSubtitleUrl(form.subtitle_selected_url || "");
+      if (!normalizedSelected) {
+        form.subtitle_selected_url = activeUrl || normalizeSubtitleUrl(form.subtitle_url || "");
+      } else if (
+        activeUrl &&
+        normalizedSelected !== activeUrl &&
+        !subtitleItems.value.some((item) => item.url === normalizedSelected)
+      ) {
+        form.subtitle_selected_url = activeUrl;
+      }
+    }
+  } catch (error) {
+    console.error("加载字幕列表失败:", error);
+  } finally {
+    subtitleLoading.value = false;
+  }
+};
+
 watch(
   () => props.modelValue,
   (val) => {
@@ -253,14 +412,22 @@ watch(
       form.id = props.video.id;
       form.title = props.video.title;
       form.description = props.video.description || "";
-      form.category_id = props.video.category_id || null;
+      form.category_id = props.video.category_id || props.video.category?.id || null;
+      // 分类改变时，标签列表会自动更新（通过displayTags计算属性）
       form.cover_url = props.video.cover_url || "";
       form.cover_preview = props.video.cover_url
         ? resolveFileUrl(props.video.cover_url)
         : "";
       form.cover_file = null;
-      form.subtitle_url = props.video.subtitle_url || "";
+      form.subtitle_url = normalizeSubtitleUrl(props.video.subtitle_url || "");
+      form.subtitle_selected_url = normalizeSubtitleUrl(props.video.subtitle_url || "");
       form.subtitle_file = null;
+      form.subtitle_audio_file = null;
+      subtitleItems.value = [];
+      fetchSubtitleList();
+      
+      // 加载视频标签
+      loadVideoTags();
       
       // 重置重新上传状态
       reuploading.value = false;
@@ -269,6 +436,10 @@ watch(
       reuploadStatusText.value = "准备上传...";
       reuploadVideoFile.value = null;
       reuploadFileHash.value = "";
+      
+      // 重置标签输入
+      newTagName.value = "";
+      videoTags.value = [];
     }
   }
 );
@@ -313,11 +484,70 @@ const handleSubtitleChange = (file: UploadFile) => {
     return;
   }
   form.subtitle_file = file.raw;
+  form.subtitle_audio_file = null;
+  form.subtitle_selected_url = "";
 };
 
 const removeSubtitle = () => {
   form.subtitle_file = null;
-  form.subtitle_url = "";
+  if (!form.subtitle_selected_url) {
+    form.subtitle_selected_url = form.subtitle_url || "";
+  }
+};
+
+const handleSubtitleAudioChange = (file: UploadFile) => {
+  if (!file.raw) return;
+  const validExts = [".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".webm", ".mp4"];
+  const ext = "." + file.name.split(".").pop()?.toLowerCase();
+  if (!ext || !validExts.includes(ext)) {
+    ElMessage.warning("格式不支持，仅支持MP3、WAV、M4A、AAC、FLAC、OGG、OPUS、WEBM、MP4");
+    return;
+  }
+  const startUpload = async () => {
+    if (!form.id) return;
+    subtitleAudioUploading.value = true;
+    try {
+      const response = await uploadVideoSubtitleAudio(form.id, file.raw!);
+      const subtitleUrl = (response as any)?.data?.subtitle_url;
+      if (subtitleUrl) {
+        form.subtitle_url = subtitleUrl;
+        form.subtitle_selected_url = subtitleUrl;
+        form.subtitle_audio_file = null;
+        await fetchSubtitleList();
+        ElMessage.success("AI字幕生成成功");
+      } else {
+        ElMessage.error("AI字幕生成失败，请重试");
+      }
+    } catch (error: any) {
+      console.error("AI字幕生成失败:", error);
+      const errorMsg = error?.response?.data?.detail || error?.message || "AI字幕生成失败";
+      ElMessage.error(errorMsg);
+      form.subtitle_audio_file = null;
+    } finally {
+      subtitleAudioUploading.value = false;
+    }
+  };
+
+  const hasExistingSubtitles = Boolean(form.subtitle_url) || subtitleItems.value.length > 0;
+  if (hasExistingSubtitles) {
+    ElMessageBox.confirm(
+      "检测到已有字幕，继续将生成新的 AI 字幕并替换当前展示字幕，是否继续？",
+      "AI字幕提示",
+      { confirmButtonText: "继续", cancelButtonText: "取消", type: "warning" }
+    )
+      .then(startUpload)
+      .catch(() => undefined);
+    return;
+  }
+
+  startUpload();
+};
+
+const removeSubtitleAudio = () => {
+  form.subtitle_audio_file = null;
+  if (!form.subtitle_selected_url) {
+    form.subtitle_selected_url = form.subtitle_url || "";
+  }
 };
 
 const handleVideoChange = async (file: UploadFile) => {
@@ -439,6 +669,8 @@ const handleReuploadComplete = () => {
     category_id: form.category_id,
     cover_file: form.cover_file,
     subtitle_file: form.subtitle_file,
+    subtitle_audio_file: form.subtitle_audio_file,
+    subtitle_selected_url: form.subtitle_selected_url || null,
   });
 };
 
@@ -465,6 +697,71 @@ const handleDelete = async () => {
   }
 };
 
+// 加载视频标签
+const loadVideoTags = async () => {
+  if (!form.id) return;
+  try {
+    const res = await getVideoTags(form.id);
+    if (res.success && res.data) {
+      videoTags.value = res.data.tags || [];
+    }
+  } catch (error) {
+    console.error("加载视频标签失败:", error);
+  }
+};
+
+// 添加标签
+const handleAddTag = async () => {
+  if (!form.id || !newTagName.value.trim()) return;
+  
+  const tagName = newTagName.value.trim();
+  if (tagName.length === 0 || tagName.length > 50) {
+    ElMessage.warning("标签名称长度应在1-50个字符之间");
+    return;
+  }
+  
+  // 检查是否已存在
+  if (videoTags.value.some(t => t.name === tagName)) {
+    ElMessage.warning("该标签已存在");
+    newTagName.value = "";
+    return;
+  }
+  
+  tagAdding.value = true;
+  try {
+    const res = await addVideoTag(form.id, tagName);
+    if (res.success && res.data) {
+      videoTags.value.push({
+        id: res.data.tag_id,
+        name: res.data.tag_name
+      });
+      newTagName.value = "";
+      ElMessage.success("标签添加成功");
+    }
+  } catch (error: any) {
+    console.error("添加标签失败:", error);
+    ElMessage.error(error?.response?.data?.detail || "添加标签失败");
+  } finally {
+    tagAdding.value = false;
+  }
+};
+
+// 删除标签
+const handleRemoveTag = async (tagId: number) => {
+  if (!form.id) return;
+  
+  try {
+    const res = await removeVideoTag(form.id, tagId);
+    if (res.success) {
+      videoTags.value = videoTags.value.filter(t => t.id !== tagId);
+      ElMessage.success("标签删除成功");
+    }
+  } catch (error: any) {
+    console.error("删除标签失败:", error);
+    ElMessage.error(error?.response?.data?.detail || "删除标签失败");
+  }
+};
+
 const handleSave = async () => {
   if (!formRef.value || !form.id) return;
 
@@ -480,6 +777,8 @@ const handleSave = async () => {
         category_id: form.category_id,
         cover_file: form.cover_file,
         subtitle_file: form.subtitle_file,
+        subtitle_audio_file: form.subtitle_audio_file,
+        subtitle_selected_url: form.subtitle_selected_url || null,
       });
     } finally {
       saving.value = false;
@@ -492,6 +791,21 @@ const handleSave = async () => {
 .cover-upload-section,
 .subtitle-upload-section {
   width: 100%;
+}
+
+.subtitle-select-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.subtitle-select-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .cover-preview {
@@ -522,6 +836,33 @@ const handleSave = async () => {
   padding: var(--spacing-sm);
   background: var(--bg-light);
   border-radius: var(--radius-base);
+}
+
+.tag-management-section {
+  width: 100%;
+}
+
+.tag-input-row {
+  margin-bottom: var(--spacing-sm);
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.tag-item {
+  margin: 0;
+}
+
+.tag-empty {
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 12px;
 }
 
 .video-reupload-section {

@@ -2,14 +2,17 @@
 用户信息管理 API
 需求：2.1, 2.2, 2.3
 """
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Body, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, get_current_active_user
+from app.core.dependencies import get_current_user, get_current_active_user, get_current_user_optional
 from app.core.response import success_response
 from app.core.video_constants import VideoStatus
 from app.models.user import User
+from app.models.video import Video
+from app.models.video_tag import VideoTag, video_tag_association
 from app.schemas.user import UserResponse, UserUpdateRequest, MessageResponse
 from app.core.config import settings
 from app.services.user.user_service import UserService
@@ -101,10 +104,87 @@ async def upload_avatar(
     )
 
 
-@router.get("/{user_id}", response_model=UserResponse)
+@router.get("/{user_id}/collections", response_model=dict)
+def get_user_collections(
+    user_id: int,
+    db: Session = Depends(get_db),
+    page: int = 1,
+    page_size: int = 20
+):
+    """
+    获取指定用户的收藏列表（公开）
+    
+    参数：
+    - user_id: 用户ID
+    - page: 页码
+    - page_size: 每页数量
+    
+    返回：
+    - 收藏的视频列表（分页）
+    """
+    from app.models.interaction import UserCollection
+    from app.services.video import VideoResponseBuilder
+    from sqlalchemy.orm import joinedload
+    
+    # 检查用户是否存在
+    user = UserService.get_user_by_id(db, user_id)
+    
+    # 检查主页是否公开（profile_visible 字段，默认为 True/1）
+    # 注意：如果数据库表中没有该字段，默认为公开
+    profile_visible = True
+    try:
+        if hasattr(user, 'profile_visible'):
+            profile_visible = getattr(user, 'profile_visible', True)
+            if profile_visible is None:
+                profile_visible = True
+    except Exception:
+        profile_visible = True
+    
+    if not profile_visible:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="该用户已设置主页为隐藏状态"
+        )
+    
+    # 计算分页
+    skip = (page - 1) * page_size
+    
+    # 查询收藏记录（关联视频、上传者、分类）
+    from app.models.video import Video
+    collections = db.query(UserCollection).filter(
+        UserCollection.user_id == user_id
+    ).options(
+        joinedload(UserCollection.video).joinedload(Video.uploader),
+        joinedload(UserCollection.video).joinedload(Video.category)
+    ).order_by(
+        UserCollection.created_at.desc()
+    ).offset(skip).limit(page_size).all()
+    
+    # 查询总数
+    total = db.query(UserCollection).filter(
+        UserCollection.user_id == user_id
+    ).count()
+    
+    # 转换为响应格式
+    videos = [c.video for c in collections if c.video]
+    items = VideoResponseBuilder.build_list_items(videos, None)  # 不传递 current_user，因为这是公开接口
+    
+    return success_response(
+        data={
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size
+        },
+        message="获取收藏列表成功"
+    )
+
+
+@router.get("/{user_id}", response_model=dict)
 def get_user_by_id(
     user_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """
     获取指定用户信息（他人主页）
@@ -114,19 +194,82 @@ def get_user_by_id(
     流程：
     1. 根据用户 ID 查询用户
     2. 返回用户公开信息
+    3. 如果已登录，返回是否已关注该用户
     
     参数：
     - user_id: 用户 ID
     
     返回：
     - 用户公开信息
+    - is_following: 是否已关注（仅登录用户）
     
     注意：
     - 不需要登录即可访问
     - 返回的信息不包含敏感数据（密码哈希等）
     """
+    from app.models.user_follow import UserFollow
+    from sqlalchemy import func
+    
     # 调用 Service 层获取用户信息
-    return UserService.get_user_by_id(db, user_id)
+    user = UserService.get_user_by_id(db, user_id)
+    
+    # 获取用户统计数据
+    following_count = db.query(func.count(UserFollow.id)).filter(
+        UserFollow.user_id == user_id
+    ).scalar() or 0
+    followers_count = db.query(func.count(UserFollow.id)).filter(
+        UserFollow.target_user_id == user_id
+    ).scalar() or 0
+    
+    # 检查是否已关注（仅登录用户，且不是自己）
+    is_following = False
+    if current_user and current_user.id != user_id:
+        follow_relation = db.query(UserFollow).filter(
+            UserFollow.user_id == current_user.id,
+            UserFollow.target_user_id == user_id
+        ).first()
+        is_following = follow_relation is not None
+    
+    # 检查主页是否公开（profile_visible 字段，默认为 True/1）
+    # 注意：如果数据库表中没有该字段，默认为公开
+    profile_visible = True
+    try:
+        if hasattr(user, 'profile_visible'):
+            profile_visible = getattr(user, 'profile_visible', True)
+            if profile_visible is None:
+                profile_visible = True
+    except Exception:
+        profile_visible = True
+    
+    # 使用 UserResponse schema 序列化用户对象，避免直接返回 ORM 对象
+    user_response = UserResponse.model_validate(user)
+    
+    # 获取用户最常用的4个标签（用于兴趣卡片）
+    from sqlalchemy import func
+    top_tags = (
+        db.query(VideoTag.id, VideoTag.name, func.count(video_tag_association.c.video_id).label('count'))
+        .join(video_tag_association, VideoTag.id == video_tag_association.c.tag_id)
+        .join(Video, Video.id == video_tag_association.c.video_id)
+        .filter(Video.uploader_id == user_id, Video.status == VideoStatus.PUBLISHED)
+        .group_by(VideoTag.id, VideoTag.name)
+        .order_by(func.count(video_tag_association.c.video_id).desc())
+        .limit(4)
+        .all()
+    )
+    
+    top_tags_list = [{"id": tag.id, "name": tag.name, "count": tag.count} for tag in top_tags]
+    
+    return success_response(
+        data={
+            "user": user_response.model_dump(),
+            "following_count": int(following_count),
+            "followers_count": int(followers_count),
+            "is_following": is_following,
+            "profile_visible": bool(profile_visible),
+            "top_tags": top_tags_list  # 最常用的4个标签
+        },
+        message="获取用户信息成功"
+    )
 
 
 @router.get("/me/stats", response_model=dict)
@@ -193,10 +336,19 @@ def get_user_stats(
             or 0
         )
     
+    # 统计关注和粉丝数
+    from app.models.user_follow import UserFollow
+    following_count = db.query(func.count(UserFollow.id)).filter(
+        UserFollow.user_id == current_user.id
+    ).scalar() or 0
+    followers_count = db.query(func.count(UserFollow.id)).filter(
+        UserFollow.target_user_id == current_user.id
+    ).scalar() or 0
+    
     return success_response(
         data={
-            "following_count": 0,  # 暂时为0，后续实现关注功能
-            "followers_count": 0,  # 暂时为0，后续实现粉丝功能
+            "following_count": int(following_count),
+            "followers_count": int(followers_count),
             "total_likes": int(total_likes),
             "total_views": int(total_views),
             "total_collections": int(total_collections),
@@ -776,4 +928,209 @@ def delete_collection_folder(
     
     return success_response(
         message="删除文件夹成功"
+    )
+
+
+# ============================================
+# 关注相关 API
+# ============================================
+
+@router.get("/me/followers", response_model=dict)
+def get_followers(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    获取当前用户的关注和粉丝列表
+    
+    返回：
+    - following: 我关注的用户列表
+    - followers: 关注我的用户列表
+    """
+    from app.models.user_follow import UserFollow
+    from sqlalchemy.orm import joinedload
+    
+    # 查询我关注的用户（following）
+    following_relations = db.query(UserFollow).filter(
+        UserFollow.user_id == current_user.id
+    ).options(
+        joinedload(UserFollow.target_user)
+    ).order_by(UserFollow.created_at.desc()).all()
+    
+    following_list = []
+    for relation in following_relations:
+        if relation.target_user:
+            following_list.append({
+                "id": relation.target_user.id,
+                "nickname": relation.target_user.nickname,
+                "username": relation.target_user.username,
+                "avatar": relation.target_user.avatar,
+                "followed_at": isoformat_in_app_tz(relation.created_at),
+            })
+    
+    # 查询关注我的用户（followers）
+    follower_relations = db.query(UserFollow).filter(
+        UserFollow.target_user_id == current_user.id
+    ).options(
+        joinedload(UserFollow.user)
+    ).order_by(UserFollow.created_at.desc()).all()
+    
+    followers_list = []
+    for relation in follower_relations:
+        if relation.user:
+            followers_list.append({
+                "id": relation.user.id,
+                "nickname": relation.user.nickname,
+                "username": relation.user.username,
+                "avatar": relation.user.avatar,
+                "followed_at": isoformat_in_app_tz(relation.created_at),
+            })
+    
+    return success_response(
+        data={
+            "following": following_list,
+            "followers": followers_list,
+        },
+        message="获取关注列表成功"
+    )
+
+
+@router.post("/{user_id}/follow", response_model=dict)
+def follow_user(
+    user_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    关注用户
+    
+    参数：
+    - user_id: 要关注的用户ID
+    
+    返回：
+    - 关注成功消息
+    
+    注意：
+    - 不能关注自己
+    - 不能重复关注
+    """
+    from app.models.user_follow import UserFollow
+    
+    # 不能关注自己
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不能关注自己"
+        )
+    
+    # 检查目标用户是否存在
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在"
+        )
+    
+    # 检查是否已经关注
+    existing = db.query(UserFollow).filter(
+        UserFollow.user_id == current_user.id,
+        UserFollow.target_user_id == user_id
+    ).first()
+    
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="已经关注过该用户"
+        )
+    
+    # 创建关注关系
+    follow_relation = UserFollow(
+        user_id=current_user.id,
+        target_user_id=user_id
+    )
+    db.add(follow_relation)
+    db.commit()
+    
+    return success_response(
+        message="关注成功"
+    )
+
+
+@router.delete("/{user_id}/follow", response_model=dict)
+def unfollow_user(
+    user_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    取消关注用户
+    
+    参数：
+    - user_id: 要取消关注的用户ID
+    
+    返回：
+    - 取消关注成功消息
+    """
+    from app.models.user_follow import UserFollow
+    
+    # 查询关注关系
+    follow_relation = db.query(UserFollow).filter(
+        UserFollow.user_id == current_user.id,
+        UserFollow.target_user_id == user_id
+    ).first()
+    
+    if not follow_relation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未关注该用户"
+        )
+    
+    # 删除关注关系
+    db.delete(follow_relation)
+    db.commit()
+    
+    return success_response(
+        message="取消关注成功"
+    )
+
+
+@router.delete("/{user_id}/follower", response_model=dict)
+def remove_follower(
+    user_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    移除粉丝（被关注者取消对方的关注）
+    
+    参数：
+    - user_id: 要移除的粉丝用户ID
+    
+    返回：
+    - 移除成功消息
+    
+    注意：
+    - 只有被关注者可以移除粉丝
+    - 这是对双方都生效的操作（会删除关注关系）
+    """
+    from app.models.user_follow import UserFollow
+    
+    # 查询关注关系（user_id 关注了 current_user）
+    follow_relation = db.query(UserFollow).filter(
+        UserFollow.user_id == user_id,
+        UserFollow.target_user_id == current_user.id
+    ).first()
+    
+    if not follow_relation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="该用户未关注你"
+        )
+    
+    # 删除关注关系（对双方都生效）
+    db.delete(follow_relation)
+    db.commit()
+    
+    return success_response(
+        message="移除粉丝成功"
     )

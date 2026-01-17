@@ -42,10 +42,16 @@
             <span class="nav-text">分类管理</span>
           </router-link>
           
-          <router-link to="/admin/ai" class="nav-item" active-class="active">
+          <router-link to="/admin/settings" class="nav-item" active-class="active">
             <el-icon class="nav-icon"><Setting /></el-icon>
-            <span class="nav-text">AI 智能治理</span>
+            <span class="nav-text">系统设置</span>
           </router-link>
+          
+          <!-- 暂时移除智能治理 -->
+          <!-- <router-link to="/admin/ai" class="nav-item" active-class="active">
+            <el-icon class="nav-icon"><Setting /></el-icon>
+            <span class="nav-text">智能治理</span>
+          </router-link> -->
         </div>
 
         <div class="nav-divider"></div>

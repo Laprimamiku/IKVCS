@@ -35,9 +35,9 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/center/analysis/:videoId?', // 可选参数视频ID
-    name: 'SmartAnalysis',
-    component: () => import('@/features/video/center/views/SmartAnalysis.vue'),
-    meta: { title: '智能分析', requiresAuth: true }
+    name: 'DataAnalysis',
+    component: () => import('@/features/video/center/views/DataAnalysis.vue'),
+    meta: { title: '数据分析', requiresAuth: true }
   },
   {
     path: "/search",
@@ -51,6 +51,14 @@ const routes: RouteRecordRaw[] = [
     component: () => import("@/features/video/player/views/VideoPlayer.vue"),
     meta: {
       title: "视频播放",
+    },
+  },
+  {
+    path: "/users/:id",
+    name: "UserProfile",
+    component: () => import("@/features/user/views/UserProfile.vue"),
+    meta: {
+      title: "用户主页",
     },
   },
   // 管理员路由 - 必须在创建router之前添加
@@ -94,11 +102,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '分类管理' }
       },
       {
-        path: 'ai',
-        name: 'AIGovernance',
-        component: () => import('@/features/admin/views/AIGovernance.vue'),
-        meta: { title: 'AI 进化控制台', requiresAuth: true, requiresAdmin: true }
+        path: 'settings',
+        name: 'SystemSettings',
+        component: () => import('@/features/admin/views/SystemSettings.vue'),
+        meta: { title: '系统设置', requiresAuth: true, requiresAdmin: true }
       },
+      // 暂时移除智能治理
+      // {
+      //   path: 'ai',
+      //   name: 'AIGovernance',
+      //   component: () => import('@/features/admin/views/AIGovernance.vue'),
+      //   meta: { title: '智能治理', requiresAuth: true, requiresAdmin: true }
+      // },
     ]
   },
 ];

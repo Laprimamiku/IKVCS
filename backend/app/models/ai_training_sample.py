@@ -15,7 +15,7 @@ class AiTrainingSample(Base):
     ai_category = Column(String(50), comment="模型分类")
     ai_label = Column(String(50), comment="模型标签")
     
-    # 区分来源：'glm-4-flash' (云端) 或 'qwen2.5:0.5b-instruct' (本地)
+    # 区分来源：'glm-4-flash' (云端) 或 'qwen2.5:3b-instruct' (本地)
     source_model = Column(String(50), index=True, comment="来源模型")
     
     # 本地模型特有字段

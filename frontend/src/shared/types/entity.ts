@@ -23,6 +23,7 @@ export interface UserBrief {
   nickname: string;
   avatar?: string;
   role?: string;
+  is_following?: boolean; // 是否已关注（仅搜索时返回）
 }
 
 // 用户完整信息（包含时间字段）
@@ -119,6 +120,7 @@ export interface Video {
     name: string;
   };
   created_at: string;
+  tags?: Array<{ id: number; name: string; video_id: number }> | string[]; // 视频标签（对象数组或字符串数组）
 }
 
 // 视频详情响应（当前等同于 Video，可在需要时扩展）

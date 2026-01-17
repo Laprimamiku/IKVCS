@@ -32,7 +32,7 @@
           :class="{ active: isLiked }"
           @click="$emit('like')"
         >
-          <el-icon class="like-icon" :class="{ 'is-liked': isLiked }"><CircleCheckFilled /></el-icon>
+          <ThumbsUpIcon :size="24" :is-liked="isLiked" class="like-icon" />
           <span class="text">{{
             likeCount > 0 ? formatNumber(likeCount) : "点赞"
           }}</span>
@@ -87,11 +87,11 @@ import {
   VideoPlay,
   ChatDotRound,
   Warning,
-  CircleCheckFilled,
   Star,
   Share,
   Coin,
 } from "@element-plus/icons-vue";
+import ThumbsUpIcon from "@/shared/components/icons/ThumbsUpIcon.vue";
 
 defineProps<{
   video: Video;

@@ -33,10 +33,12 @@ export default defineConfig({
         target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true
       },
-      '/videos': {
-        target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
-        changeOrigin: true
-      },
+      // 注意：不要代理 /videos，因为这是前端路由
+      // 只代理 /api/v1/videos 的 API 请求
+      // '/videos': {
+      //   target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
+      //   changeOrigin: true
+      // },
       '/uploads': {
         target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true,

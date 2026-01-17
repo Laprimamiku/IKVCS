@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     # 文本模型配置（用于字幕分点、弹幕/评论分析等）
     LLM_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4"  # 智谱GLM API地址
     LLM_MODEL: str = "glm-4-flash"  # 文本模型：免费用户并发限制200次
+    SUMMARY_MODEL: str = "glm-4-plus"  # Summary/knowledge extraction model
     
     # 云端图像识别模型配置（用于视频抽帧审核）
     LLM_VISION_API_KEY: str = ""  # 图像识别API密钥，可选（与LLM_API_KEY相同）
@@ -75,6 +76,8 @@ class Settings(BaseSettings):
     ASR_API_KEY: str = ""  # optional; fallback to LLM_API_KEY when empty
     ASR_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4"
     ASR_MODEL: str = "GLM-ASR-2512"
+    ASR_ENDPOINT: str = "/audio/transcriptions"
+    ASR_TIMEOUT: float = 120.0
 
     
     # ==================== CLIProxyAPI配置（已注释，保留备用） ====================
@@ -93,15 +96,15 @@ class Settings(BaseSettings):
     
     # 本地 LLM 配置
     LOCAL_LLM_ENABLED: bool = False  # 已废弃，请使用 LLM_MODE，仅作兼容性保留
-    LOCAL_LLM_BASE_URL: str = "http://localhost:11434/v1"  # 默认 Ollama 地址，可通过环境变量覆盖
-    LOCAL_LLM_MODEL: str = "qwen2.5:0.5b-instruct"  # 默认使用 0.5B 指令模型，可通过环境变量覆盖
+    LOCAL_LLM_BASE_URL: str = "http://127.0.0.1:11434/v1"  # 默认 Ollama 地址，可通过环境变量覆盖
+    LOCAL_LLM_MODEL: str = "qwen2.5:0.5b-instruct"  # Default local instruct model (注意：Ollama模型名使用冒号分隔，如 qwen2.5:0.5b-instruct)
     LOCAL_LLM_THRESHOLD_LOW: int = 30  # 本地模型低分置信区间下限
     LOCAL_LLM_THRESHOLD_HIGH: int = 80 # 本地模型高分置信区间上限
     LOCAL_LLM_TIMEOUT: float = 60.0  # 本地模型超时时间（秒）
     LOCAL_LLM_MAX_CONCURRENT: int = 1  # 本地模型最大并发，默认单并发保护显存
     
     # 本地模型协作配置
-    LOCAL_LLM_ESCALATE_TO_CLOUD: bool = True  # 本地模型低置信度时是否升级到云端
+    LOCAL_LLM_ESCALATE_TO_CLOUD: bool = False  # 本地模型低置信度时是否升级到云端
     LOCAL_LLM_ESCALATE_MIN_CHARS: int = 50  # 短文本不升级到云端，优先省 token/RTT
     LOCAL_LLM_ESCALATE_CONFIDENCE: float = 0.55  # 仅当本地置信度低于该值才升级到云端（降本增效）
 
@@ -116,8 +119,8 @@ class Settings(BaseSettings):
     MEMORY_USAGE_LIMIT_MB: int = 12000  # 内存使用限制（MB），16GB预留4GB给系统
     
     # Embedding API 配置
-    EMBEDDING_MODEL: str = "embedding-3-pro"  # Embedding 模型名称，默认值可通过环境变量覆盖
-    EMBEDDING_BASE_URL: str = "http://localhost:11434"  # 默认指向本地 Ollama，可通过环境变量覆盖
+    EMBEDDING_MODEL: str = "qwen3-embedding:0.6b"  # Embedding 模型名称，默认值可通过环境变量覆盖 (注意：Ollama模型名使用冒号分隔，如 qwen3-embedding:0.6b)
+    EMBEDDING_BASE_URL: str = "http://127.0.0.1:11434"  # 默认指向本地 Ollama，可通过环境变量覆盖
     
     # AI 分析配置
     AI_LOW_VALUE_KEYWORDS: str = "666,111,233,哈哈,打卡,第一,前排,来了"  # 低价值关键词列表（逗号分隔）
@@ -125,8 +128,8 @@ class Settings(BaseSettings):
     
     # AI 语义缓存配置（Layer 2）
     AI_SEMANTIC_CACHE_TTL: int = 604800  # 语义缓存过期时间（秒），默认7天
-    AI_SEMANTIC_CACHE_THRESHOLD: float = 0.95  # 语义相似度阈值（0-1），当前为预留参数
-    AI_SEMANTIC_CACHE_THRESHOLD_SHORT: float = 0.92  # 短文本语义缓存阈值（更保守，降低误命中）
+    AI_SEMANTIC_CACHE_THRESHOLD: float = 0.88  # 语义相似度阈值（0-1），降低阈值以识别更多含义高度相似的语句
+    AI_SEMANTIC_CACHE_THRESHOLD_SHORT: float = 0.85  # 短文本语义缓存阈值（更保守，降低误命中）
     AI_SEMANTIC_CACHE_MIN_LEN: int = 12  # 低于该长度不做 embedding/语义缓存，减少本地开销
     AI_VECTOR_DIMENSION: int = 64  # 用于构造缓存Key的向量维度数（取前N维）
     AI_VECTOR_QUANTIZATION_PRECISION: int = 3  # 向量量化精度（小数位数）

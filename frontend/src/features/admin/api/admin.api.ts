@@ -137,7 +137,7 @@ export const adminApi = {
   reviewSubtitleOnly: (id: number, force?: boolean) =>
     request.post(`/admin/videos/${id}/review-subtitle`, null, force ? { params: { force: true } } : undefined), // 仅审核字幕
   getOriginalVideoUrl: (id: number) => request.get(`/admin/videos/${id}/original`), // 获取原始视频文件 URL
-  getSubtitleContent: (id: number) => request.get(`/admin/videos/${id}/subtitle-content`), // 获取字幕内容
+  getSubtitleContent: (id: number) => request.get(`/admin/videos/${id}/subtitle-content`, { silent: true }), // 获取字幕内容
 
   // 3. 用户管理
   getUsers: (page = 1, keyword = '') => 
@@ -156,6 +156,10 @@ export const adminApi = {
   createCategory: (data: { name: string; description?: string }) => request.post('/admin/categories', data),
   updateCategory: (id: number, data: { name?: string; description?: string }) => request.put(`/admin/categories/${id}`, data),
   deleteCategory: (id: number) => request.delete(`/admin/categories/${id}`),
+
+  // 6. 系统设置
+  getSystemSettings: () => request.get('/admin/system/settings'),
+  updateSystemSettings: (data: any) => request.put('/admin/system/settings', data),
 };
 
 // ==========================================
@@ -169,6 +173,7 @@ export interface PromptVersion {
   update_reason: string;
   updated_by: number;
   created_at: string;
+  is_active?: boolean;
 }
 
 export interface ErrorPattern {
@@ -193,6 +198,93 @@ export interface CorrectionRecord {
   created_at: string;
 }
 
+export interface PromptWorkflowTask {
+  id: number;
+  name: string;
+  prompt_type: string;
+  goal?: string;
+  metrics?: Record<string, string>;
+  dataset_source?: string;
+  sample_min?: number;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PromptWorkflowExperiment {
+  id: number;
+  task_id?: number;
+  prompt_type: string;
+  candidate_version_id?: number;
+  active_version_id?: number;
+  model_source?: string;
+  dataset_source?: string;
+  sample_limit?: number;
+  sample_count?: number;
+  status?: string;
+  metrics?: Record<string, any>;
+  created_at?: string;
+}
+
+export interface GovernanceOverview {
+  window: { days: number; start_at: string; end_at: string };
+  overview: {
+    total_interactions: number;
+    ai_coverage_rate: number;
+    quality_score: number;
+    risk_score: number;
+    governance_score: number;
+    risk_rate: number;
+    low_quality_rate: number;
+    highlight_rate: number;
+    auto_review_saving_rate: number;
+    avg_score: number;
+  };
+  distribution: { score_buckets: Record<string, number> };
+  quality: {
+    highlight_count: number;
+    high_quality_count: number;
+    low_quality_count: number;
+    avg_score: number;
+  };
+  risk: { risk_count: number; severe_risk_count: number };
+  sources: { distribution: Record<string, number>; coverage_rate: number };
+  actions: Array<{ type: string; title: string; detail: string }>;
+  ablation: Record<string, boolean>;
+  thresholds: Record<string, number | number[]>;
+  videos: {
+    risk: GovernanceVideoItem[];
+    highlight: GovernanceVideoItem[];
+  };
+  computed_at: string;
+}
+
+export interface GovernanceVideoItem {
+  video_id: number;
+  title: string;
+  cover_url?: string;
+  created_at?: string;
+  status?: number;
+  review_status?: number;
+  uploader?: {
+    id: number;
+    username: string;
+    nickname: string;
+    avatar?: string;
+  };
+  metrics: {
+    total_interactions: number;
+    risk_count: number;
+    severe_risk_count: number;
+    highlight_count: number;
+    low_quality_count: number;
+    ai_coverage_rate: number;
+    risk_rate: number;
+    highlight_rate: number;
+    governance_score: number;
+  };
+}
+
 export const adminAiApi = {
   // 获取 Prompt 版本历史
   getPromptVersions: (params: { prompt_type?: string; limit?: number }) => {
@@ -215,12 +307,21 @@ export const adminAiApi = {
   },
 
   // 提交人工修正
-  submitCorrection: (data: { type: string; content: string; original_score: number; corrected_score: number; reason: string }) => {
+  submitCorrection: (data: {
+    content_type: string;
+    content: string;
+    original_result: AiAnalysisResult;
+    corrected_result: AiAnalysisResult;
+    correction_reason: string;
+    prompt_version_id?: number;
+    model_config_snapshot?: Record<string, any>;
+    decision_trace_snapshot?: Record<string, any>;
+  }) => {
     return request.post('/admin/ai/correct', data);
   },
 
   // 新增：Shadow测试
-  shadowTestPrompt: (data: { candidate_version_id: number; sample_limit: number }) => {
+  shadowTestPrompt: (data: { candidate_version_id: number; sample_limit: number; model_source?: string; dataset_source?: string; task_id?: number }) => {
     return request.post('/admin/ai/prompts/shadow-test', data);
   },
 
@@ -242,5 +343,50 @@ export const adminAiApi = {
   // 新增：回滚Prompt版本
   rollbackPrompt: (data: { version_id: number }) => {
     return request.post('/admin/ai/prompts/rollback', data);
+  },
+
+  // Prompt workflow tasks
+  getPromptWorkflowTasks: () => {
+    return request.get<{ items: PromptWorkflowTask[]; total: number }>('/admin/ai/prompt-workflow/tasks');
+  },
+  createPromptWorkflowTask: (data: {
+    name: string;
+    prompt_type: string;
+    goal?: string;
+    metrics?: Record<string, string>;
+    dataset_source?: string;
+    sample_min?: number;
+    is_active?: boolean;
+  }) => {
+    return request.post('/admin/ai/prompt-workflow/tasks', data);
+  },
+  updatePromptWorkflowTask: (taskId: number, data: {
+    name?: string;
+    goal?: string;
+    metrics?: Record<string, string>;
+    dataset_source?: string;
+    sample_min?: number;
+    is_active?: boolean;
+  }) => {
+    return request.put(`/admin/ai/prompt-workflow/tasks/${taskId}`, data);
+  },
+
+  runPromptWorkflowTest: (data: { candidate_version_id: number; sample_limit?: number; model_source?: string; dataset_source?: string; task_id?: number }) => {
+    return request.post('/admin/ai/prompt-workflow/test', data);
+  },
+  getPromptWorkflowExperiments: (params?: { task_id?: number; prompt_type?: string; limit?: number }) => {
+    return request.get<{ items: PromptWorkflowExperiment[]; total: number }>('/admin/ai/prompt-workflow/experiments', { params });
+  },
+  getPromptWorkflowExperiment: (experimentId: number) => {
+    return request.get<PromptWorkflowExperiment>(`/admin/ai/prompt-workflow/experiments/${experimentId}`);
+  },
+
+  createPromptDraft: (data: { prompt_type: string; draft_content: string; sample_ids?: number[]; risk_notes?: string[]; expected_impact?: string }) => {
+    return request.post('/admin/ai/prompts/create-draft', data);
+  },
+
+  // [New] AI治理总览
+  getGovernanceOverview: (params?: { days?: number; limit?: number }) => {
+    return request.get<GovernanceOverview>('/admin/ai/governance/overview', { params });
   }
 };

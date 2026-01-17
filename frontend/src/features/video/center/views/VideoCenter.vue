@@ -165,7 +165,7 @@
                   <div class="video-action-grid">
                     <el-button size="small" @click="handleAnalyze(video)">
                       <el-icon><DataAnalysis /></el-icon>
-                      智能分析
+                      数据分析
                     </el-button>
                     <el-button 
                       size="small" 
@@ -817,6 +817,8 @@ const handleSaveEdit = async (data: {
   category_id: number | null;
   cover_file: File | null;
   subtitle_file: File | null;
+  subtitle_audio_file: File | null;
+  subtitle_selected_url: string | null;
 }) => {
   const success = await updateVideoInfo(data.id, {
     title: data.title,
@@ -824,6 +826,8 @@ const handleSaveEdit = async (data: {
     category_id: data.category_id || undefined,
     cover_file: data.cover_file,
     subtitle_file: data.subtitle_file,
+    subtitle_audio_file: data.subtitle_audio_file,
+    subtitle_selected_url: data.subtitle_selected_url || undefined,
   });
   
   if (success) {

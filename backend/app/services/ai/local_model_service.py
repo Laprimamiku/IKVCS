@@ -30,7 +30,12 @@ class LocalModelService:
         self.max_concurrent = getattr(settings, "LOCAL_LLM_MAX_CONCURRENT", 1)
         self._semaphore = asyncio.Semaphore(max(1, self.max_concurrent))
 
-    async def predict(self, content: str, content_type: str) -> Optional[AIContentAnalysisResult]:
+    async def predict(
+        self,
+        content: str,
+        content_type: str,
+        system_prompt: Optional[str] = None
+    ) -> Optional[AIContentAnalysisResult]:
         """
         调用本地模型进行预测。
 
@@ -51,7 +56,7 @@ class LocalModelService:
             return None
 
         # 1. 准备提示词
-        system_prompt = self._get_system_prompt(content_type)
+        system_prompt = system_prompt or self._get_system_prompt(content_type)
         json_instruction = "\n请务必只返回 JSON 格式结果，不要包含 Markdown 标记或其他解释文本。"
 
         try:
@@ -74,10 +79,19 @@ class LocalModelService:
                     )
 
                     if response.status_code != 200:
-                        logger.warning(f"[LocalLLM] 调用失败: {response.status_code} - {response.text}")
+                        error_detail = response.text[:500] if response.text else "无响应内容"
+                        logger.warning(f"[LocalLLM] 调用失败: {response.status_code} - {error_detail}")
+                        # 如果是404，可能是模型名称错误，提供更详细的错误信息
+                        if response.status_code == 404:
+                            logger.error(f"[LocalLLM] 模型 '{self.model}' 可能不存在，请检查Ollama中的模型名称。可用命令: ollama list")
                         return None
 
-                    result_text = response.json()["choices"][0]["message"]["content"]
+                    result_json = response.json()
+                    if "choices" not in result_json or not result_json["choices"]:
+                        logger.warning(f"[LocalLLM] 响应格式异常: {result_json}")
+                        return None
+                    
+                    result_text = result_json["choices"][0]["message"]["content"]
 
                     # 2. 解析结果
                     parsed_result = self._parse_json_safely(result_text)

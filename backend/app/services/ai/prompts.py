@@ -235,3 +235,56 @@ JUDGE_AGENT_PROMPT = """你是裁决者，需要综合多个专家的意见，�
         "legal_expert": 95
     }}
 }}"""
+
+# ==================== 针对本地模型（qwen2.5:0.5b-instruct）的简化提示词 ====================
+# 本地模型能力有限，需要更简洁、直接的提示词
+
+DANMAKU_SYSTEM_PROMPT_LOCAL = """分析弹幕内容，返回JSON：
+{
+    "score": 0-100,
+    "category": "分类",
+    "reason": "理由",
+    "is_highlight": true/false,
+    "is_inappropriate": true/false
+}
+
+评分标准：
+- 90-100：知识科普、高能预警、深度分析
+- 70-89：情绪表达、简单互动
+- 60-69：低价值内容
+- 0-59：违规内容
+
+示例：
+输入："前方高能"
+输出：{"score": 95, "category": "高能预警", "reason": "经典提示", "is_highlight": true, "is_inappropriate": false}
+
+输入："666"
+输出：{"score": 70, "category": "情绪表达", "reason": "网络用语", "is_highlight": false, "is_inappropriate": false}"""
+
+COMMENT_SYSTEM_PROMPT_LOCAL = """分析评论内容，返回JSON：
+{
+    "score": 0-100,
+    "label": "标签",
+    "reason": "理由",
+    "is_inappropriate": true/false
+}
+
+评分标准：
+- 90-100：知识科普、深度分析、时间戳指路
+- 70-89：简单赞美、情绪表达
+- 60-69：低价值内容
+- 0-59：违规内容
+
+示例：
+输入："有没有人解释一下为什么"
+输出：{"score": 90, "label": "知识提问", "reason": "有价值问题", "is_inappropriate": false}
+
+输入："这也太好看了吧"
+输出：{"score": 70, "label": "情感表达", "reason": "普通反馈", "is_inappropriate": false}"""
+
+# ==================== 针对云端模型（glm-4-flash）的完整提示词 ====================
+# 云端模型能力强，可以使用更详细的提示词
+
+DANMAKU_SYSTEM_PROMPT_CLOUD = DANMAKU_SYSTEM_PROMPT  # 使用完整版本
+
+COMMENT_SYSTEM_PROMPT_CLOUD = COMMENT_SYSTEM_PROMPT  # 使用完整版本

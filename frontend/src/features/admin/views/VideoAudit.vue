@@ -343,6 +343,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { Refresh, View, Warning } from "@element-plus/icons-vue";
 import { adminApi, type AuditVideoItem } from "../api/admin.api";
 import { formatDuration } from "@/shared/utils/formatters";
+import { resolveFileUrl } from "@/shared/utils/urlHelpers";
 import { getPublicCategories } from "@/features/video/shared/api/category.api";
 import type { Category } from "@/shared/types/entity";
 import { useErrorHandler } from "@/shared/composables/useErrorHandler";
@@ -602,26 +603,27 @@ const handleManualReview = async (videoId: number) => {
     const videoRes = await adminApi.getOriginalVideoUrl(videoId);
     // API 返回格式可能是 {success: true, data: {...}}，需要提取 data
     const videoData = (videoRes as any).data || videoRes;
-    originalVideoUrl.value = videoData.stream_url || videoData.file_url || "";
+    const rawVideoUrl = videoData.file_url || videoData.stream_url || video.video_url || "";
+    originalVideoUrl.value = resolveFileUrl(rawVideoUrl);
     originalVideoInfo.value = videoData; // 保存视频信息
     console.log("原始视频信息:", videoData);
-    
-    // 获取字幕内容（根据视频ID查找，不依赖 subtitle_url）
-    try {
-      const subtitleRes = await adminApi.getSubtitleContent(videoId);
-      // API 返回格式可能是 {success: true, data: {...}}，需要提取 data
-      const subtitleData = (subtitleRes as any).data || subtitleRes;
-      subtitleContent.value = subtitleData;
-      console.log("字幕内容:", subtitleData);
-    } catch (e: any) {
-      console.warn("获取字幕内容失败:", e);
-      // 字幕获取失败不影响视频查看
-      subtitleContent.value = null;
-    }
   } catch (e: any) {
-    console.error("获取审核数据失败:", e);
-      handleError(e, e.response?.data?.message || "获取审核数据失败");
-    manualReviewVisible.value = false;
+    console.warn("获取原始视频失败，尝试使用播放地址:", e);
+    const fallbackUrl = video.video_url || "";
+    originalVideoUrl.value = resolveFileUrl(fallbackUrl);
+  }
+
+  try {
+    // 获取字幕内容（根据视频ID查找，不依赖 subtitle_url）
+    const subtitleRes = await adminApi.getSubtitleContent(videoId);
+    // API 返回格式可能是 {success: true, data: {...}}，需要提取 data
+    const subtitleData = (subtitleRes as any).data || subtitleRes;
+    subtitleContent.value = subtitleData;
+    console.log("字幕内容:", subtitleData);
+  } catch (e: any) {
+    console.warn("获取字幕内容失败:", e);
+    // 字幕获取失败不影响视频查看
+    subtitleContent.value = null;
   } finally {
     loadingManualReview.value = false;
   }

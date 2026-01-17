@@ -6,10 +6,15 @@
 2. 删除视频（仅上传者）
 3. 上传封面（仅上传者）
 4. 上传字幕（仅上传者）
+5. 标签管理（添加、删除、获取视频标签）
 """
 import os
 import uuid
+import json
 import logging
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, UploadFile, File, Form, BackgroundTasks
@@ -24,19 +29,54 @@ from app.core.transaction import transaction
 from app.core.config import settings
 from app.models.user import User
 from app.models.video import Video
+from app.models.video_tag import VideoTag, video_tag_association
 from app.schemas.video import (
     VideoDetailResponse,
     VideoUpdateRequest,
     SubtitleUploadResponse,
+    SubtitleListResponse,
+    SubtitleSelectRequest,
     CoverUploadResponse,
 )
 from app.services.video import (
     VideoManagementService,
     VideoResponseBuilder,
 )
+from app.services.ai.asr_service import asr_service
+from app.utils.timezone_utils import isoformat_in_app_tz, utc_now
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _resolve_subtitle_path(subtitle_url: str, subtitle_dir: str) -> str:
+    if os.path.isabs(subtitle_url):
+        return subtitle_url
+    if subtitle_url.startswith("/"):
+        return os.path.join(settings.STORAGE_ROOT, subtitle_url.lstrip("/"))
+    return os.path.join(subtitle_dir, subtitle_url)
+
+
+def _cleanup_subtitle_files(
+    video_id: int,
+    subtitle_dir: str,
+    keep_filename: str,
+    source: str,
+) -> None:
+    if not os.path.exists(subtitle_dir):
+        return
+    for path in Path(subtitle_dir).glob(f"{video_id}_subtitle*"):
+        if path.name == keep_filename:
+            continue
+        is_ai = "_subtitle_ai_" in path.name
+        if source == "ai" and not is_ai:
+            continue
+        if source == "manual" and is_ai:
+            continue
+        try:
+            path.unlink()
+        except Exception as exc:
+            logger.warning(f"清理旧字幕失败: {path} error={exc}")
 
 
 @router.put("/{video_id}", response_model=VideoDetailResponse)
@@ -197,8 +237,216 @@ async def upload_video_subtitle(
         logger.error(f"字幕上传失败，已删除文件: {e}")
         raise
 
+    _cleanup_subtitle_files(
+        video_id=video_id,
+        subtitle_dir=subtitle_dir,
+        keep_filename=unique_filename,
+        source="manual",
+    )
+
     logger.info(f"视频 {video_id} 字幕上传成功：{subtitle_url}")
     return SubtitleUploadResponse(message="字幕上传成功", subtitle_url=subtitle_url, video_id=video_id)
+
+
+@router.post("/{video_id}/subtitle/audio", response_model=SubtitleUploadResponse)
+async def upload_audio_subtitle(
+    video_id: int,
+    audio: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """音频转字幕（云端ASR），仅上传者可操作。"""
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    if video.uploader_id != current_user.id:
+        raise ForbiddenException("只有视频上传者可以上传音频字幕")
+
+    ext = os.path.splitext(audio.filename or "")[1].lower()
+    if ext not in [".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".webm", ".mp4"]:
+        raise ValidationException(message="格式不支持，仅支持 MP3/WAV/M4A/AAC/FLAC/OGG/OPUS/WEBM/MP4")
+
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+    tmp_path = tmp_file.name
+    tmp_file.close()
+    try:
+        with open(tmp_path, "wb") as f:
+            while True:
+                chunk = await audio.read(1024 * 1024)
+                if not chunk:
+                    break
+                f.write(chunk)
+        if os.path.getsize(tmp_path) == 0:
+            raise ValidationException(message="音频文件为空，无法转字幕")
+
+        asr_result, asr_errors = await asr_service.transcribe_media_file(
+            Path(tmp_path),
+            chunk_seconds=30,
+            max_concurrent=5,
+        )
+    finally:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+
+    if asr_errors:
+        logger.warning("ASR部分片段失败: video_id=%s, errors=%s", video_id, asr_errors[:3])
+
+    if not asr_result:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="音频转字幕失败，请稍后重试",
+        )
+
+    subtitles, full_text = asr_service.extract_segments(asr_result)
+    if not subtitles:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="音频转字幕无有效结果，请检查音频内容",
+        )
+
+    subtitle_payload = {
+        "subtitles": subtitles,
+        "source": "ai_asr",
+        "model": settings.ASR_MODEL,
+        "generated_at": isoformat_in_app_tz(utc_now()),
+    }
+    if full_text:
+        subtitle_payload["text"] = full_text
+
+    subtitle_dir = settings.UPLOAD_SUBTITLE_DIR
+    unique_filename = f"{video_id}_subtitle_ai_{uuid.uuid4().hex[:8]}.json"
+    file_path = os.path.join(subtitle_dir, unique_filename)
+    os.makedirs(subtitle_dir, exist_ok=True)
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(subtitle_payload, f, ensure_ascii=False)
+
+    subtitle_url = f"/uploads/subtitles/{unique_filename}"
+    try:
+        with transaction(db):
+            video.subtitle_url = subtitle_url
+    except Exception as e:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        logger.error(f"音频字幕保存失败，已删除文件: {e}")
+        raise
+
+    _cleanup_subtitle_files(
+        video_id=video_id,
+        subtitle_dir=subtitle_dir,
+        keep_filename=unique_filename,
+        source="ai",
+    )
+
+    logger.info(f"视频 {video_id} 音频字幕生成成功：{subtitle_url}")
+    return SubtitleUploadResponse(message="音频字幕生成成功", subtitle_url=subtitle_url, video_id=video_id)
+
+
+@router.get("/{video_id}/subtitles", response_model=SubtitleListResponse)
+async def get_video_subtitles(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取视频可用字幕列表（含手动与AI字幕）"""
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    if video.uploader_id != current_user.id:
+        raise ForbiddenException("只有视频上传者可以查看字幕列表")
+
+    subtitle_dir = settings.UPLOAD_SUBTITLE_DIR
+    latest_manual = None
+    latest_ai = None
+    if os.path.exists(subtitle_dir):
+        subtitle_files = sorted(
+            Path(subtitle_dir).glob(f"{video_id}_subtitle*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for path in subtitle_files:
+            filename = path.name
+            source = "ai" if "_subtitle_ai_" in filename else "manual"
+            if source == "ai" and latest_ai:
+                continue
+            if source == "manual" and latest_manual:
+                continue
+            url = f"/uploads/subtitles/{filename}"
+            created_at = isoformat_in_app_tz(
+                datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+            )
+            item = {
+                "url": url,
+                "filename": filename,
+                "source": source,
+                "is_active": url == video.subtitle_url,
+                "created_at": created_at,
+                "exists": True,
+            }
+            if source == "ai":
+                latest_ai = item
+            else:
+                latest_manual = item
+            if latest_manual and latest_ai:
+                break
+
+    items = [item for item in (latest_manual, latest_ai) if item]
+
+    if not items and video.subtitle_url:
+        resolved_path = _resolve_subtitle_path(video.subtitle_url, subtitle_dir)
+        items.append(
+            {
+                "url": video.subtitle_url,
+                "filename": os.path.basename(video.subtitle_url),
+                "source": "legacy",
+                "is_active": True,
+                "created_at": None,
+                "exists": os.path.exists(resolved_path),
+            }
+        )
+
+    active_items = [item for item in items if item["is_active"]]
+    rest_items = [item for item in items if not item["is_active"]]
+    return SubtitleListResponse(items=active_items + rest_items, active_url=video.subtitle_url)
+
+
+@router.post("/{video_id}/subtitle/select", response_model=SubtitleUploadResponse)
+async def select_video_subtitle(
+    video_id: int,
+    request: SubtitleSelectRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """选择视频展示的字幕文件"""
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    if video.uploader_id != current_user.id:
+        raise ForbiddenException("只有视频上传者可以选择字幕")
+
+    subtitle_url = (request.subtitle_url or "").strip()
+    if not subtitle_url:
+        raise ValidationException(message="字幕地址不能为空")
+    if subtitle_url == (video.subtitle_url or ""):
+        return SubtitleUploadResponse(message="字幕切换成功", subtitle_url=subtitle_url, video_id=video_id)
+    if not subtitle_url.startswith("/uploads/subtitles/"):
+        raise ValidationException(message="字幕地址不合法")
+
+    filename = os.path.basename(subtitle_url)
+    if not filename.startswith(f"{video_id}_"):
+        raise ValidationException(message="字幕文件不属于该视频")
+
+    subtitle_dir = settings.UPLOAD_SUBTITLE_DIR
+    file_path = os.path.join(subtitle_dir, filename)
+    if not os.path.exists(file_path):
+        raise ResourceNotFoundException(resource="字幕文件", resource_id=filename)
+
+    with transaction(db):
+        video.subtitle_url = subtitle_url
+
+    logger.info(f"视频 {video_id} 切换字幕：{subtitle_url}")
+    return SubtitleUploadResponse(message="字幕切换成功", subtitle_url=subtitle_url, video_id=video_id)
 
 
 @router.post("/{video_id}/reupload/finish")
@@ -491,4 +739,139 @@ async def transcode_high_bitrate(
             "resolutions": [r[0] for r in invalid_resolutions],
             "force": force,
         }
+    )
+
+
+# ==================== 标签管理 API ====================
+
+@router.post("/{video_id}/tags", summary="添加视频标签")
+async def add_video_tag(
+    video_id: int,
+    tag_name: str = Form(..., min_length=1, max_length=50, description="标签名称"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """添加视频标签（仅上传者可操作）"""
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    if video.uploader_id != current_user.id:
+        raise ForbiddenException("只有视频上传者可以添加标签")
+    
+    # 清理标签名称（去除首尾空格，转换为小写）
+    tag_name = tag_name.strip()
+    if not tag_name:
+        raise ValidationException(message="标签名称不能为空")
+    
+    # 查找或创建标签
+    tag = db.query(VideoTag).filter(VideoTag.name == tag_name).first()
+    if not tag:
+        tag = VideoTag(name=tag_name, usage_count=0)
+        db.add(tag)
+        db.flush()  # 获取tag.id
+    
+    # 检查视频是否已有该标签
+    existing_association = db.execute(
+        video_tag_association.select().where(
+            video_tag_association.c.video_id == video_id,
+            video_tag_association.c.tag_id == tag.id
+        )
+    ).first()
+    
+    if existing_association:
+        return success_response(
+            message="标签已存在",
+            data={"tag_id": tag.id, "tag_name": tag.name}
+        )
+    
+    # 添加关联
+    db.execute(
+        video_tag_association.insert().values(
+            video_id=video_id,
+            tag_id=tag.id
+        )
+    )
+    
+    # 更新使用次数
+    tag.usage_count += 1
+    
+    db.commit()
+    
+    logger.info(f"视频 {video_id} 添加标签：{tag_name}")
+    return success_response(
+        message="标签添加成功",
+        data={"tag_id": tag.id, "tag_name": tag.name}
+    )
+
+
+@router.delete("/{video_id}/tags/{tag_id}", summary="删除视频标签")
+async def remove_video_tag(
+    video_id: int,
+    tag_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """删除视频标签（仅上传者可操作）"""
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    if video.uploader_id != current_user.id:
+        raise ForbiddenException("只有视频上传者可以删除标签")
+    
+    tag = db.query(VideoTag).filter(VideoTag.id == tag_id).first()
+    if not tag:
+        raise ResourceNotFoundException(resource="标签", resource_id=tag_id)
+    
+    # 检查关联是否存在
+    existing_association = db.execute(
+        video_tag_association.select().where(
+            video_tag_association.c.video_id == video_id,
+            video_tag_association.c.tag_id == tag_id
+        )
+    ).first()
+    
+    if not existing_association:
+        raise ResourceNotFoundException(resource="视频标签关联", resource_id=f"{video_id}-{tag_id}")
+    
+    # 删除关联
+    db.execute(
+        video_tag_association.delete().where(
+            video_tag_association.c.video_id == video_id,
+            video_tag_association.c.tag_id == tag_id
+        )
+    )
+    
+    # 更新使用次数
+    if tag.usage_count > 0:
+        tag.usage_count -= 1
+    
+    db.commit()
+    
+    logger.info(f"视频 {video_id} 删除标签：{tag.name}")
+    return success_response(message="标签删除成功")
+
+
+@router.get("/{video_id}/tags", summary="获取视频标签列表")
+async def get_video_tags(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user),
+):
+    """获取视频标签列表（公开接口，但需要视频存在）"""
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    
+    # 获取视频的所有标签
+    tags = db.query(VideoTag).join(
+        video_tag_association
+    ).filter(
+        video_tag_association.c.video_id == video_id
+    ).all()
+    
+    tag_list = [{"id": tag.id, "name": tag.name, "usage_count": tag.usage_count} for tag in tags]
+    
+    return success_response(
+        data={"tags": tag_list},
+        message="获取标签列表成功"
     )

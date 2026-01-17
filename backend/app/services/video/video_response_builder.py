@@ -219,7 +219,8 @@ class VideoResponseBuilder:
     @staticmethod
     def get_video_detail_response(
         db: Session,
-        video_id: int
+        video_id: int,
+        current_user: Optional["User"] = None
     ) -> Optional["VideoDetailResponse"]:
         """
         获取视频详情响应（包含完整的数据组装，带缓存）
@@ -227,6 +228,7 @@ class VideoResponseBuilder:
         Args:
             db: 数据库会话
             video_id: 视频ID
+            current_user: 当前登录用户（可选，用于检查关注状态）
             
         Returns:
             Optional[VideoDetailResponse]: 视频详情响应对象，不存在返回 None
@@ -254,6 +256,24 @@ class VideoResponseBuilder:
                         data["view_count"] = int(redis_count)
                 except Exception:
                     pass
+                
+                # 关注状态是用户相关的，需要实时查询，不能使用缓存
+                # 检查当前用户是否关注了UP主
+                is_following = False
+                if current_user and hasattr(current_user, 'id'):
+                    uploader_id = data.get("uploader", {}).get("id")
+                    if uploader_id and uploader_id != current_user.id:
+                        from app.models.user_follow import UserFollow
+                        follow_relation = db.query(UserFollow).filter(
+                            UserFollow.user_id == current_user.id,
+                            UserFollow.target_user_id == uploader_id
+                        ).first()
+                        is_following = follow_relation is not None
+                
+                # 更新 uploader 中的 is_following 字段
+                if "uploader" in data:
+                    data["uploader"]["is_following"] = is_following if current_user else None
+                
                 return VideoDetailResponse(**data)
             except Exception as e:
                 logger.warning(f"解析视频详情缓存失败：{e}")
@@ -286,6 +306,25 @@ class VideoResponseBuilder:
         except Exception:
             pass
         
+        # 检查当前用户是否关注了UP主
+        is_following = False
+        if current_user and hasattr(current_user, 'id') and current_user.id != video.uploader_id:
+            from app.models.user_follow import UserFollow
+            follow_relation = db.query(UserFollow).filter(
+                UserFollow.user_id == current_user.id,
+                UserFollow.target_user_id == video.uploader_id
+            ).first()
+            is_following = follow_relation is not None
+        
+        # 获取视频标签（使用video.tags关系，因为Video模型已经定义了lazy="joined"的关系）
+        video_tags = []
+        try:
+            # 由于使用了joinedload，video.tags已经预加载
+            if hasattr(video, 'tags') and video.tags:
+                video_tags = [{"id": tag.id, "name": tag.name, "usage_count": getattr(tag, 'usage_count', 0)} for tag in video.tags]
+        except Exception as e:
+            logger.warning(f"获取视频标签失败: {e}")
+        
         # 由于使用了 joinedload，video.uploader 和 video.category 已经预加载
         response = VideoDetailResponse(
             id=video.id,
@@ -307,17 +346,23 @@ class VideoResponseBuilder:
                 username=video.uploader.username,
                 nickname=video.uploader.nickname,
                 avatar=video.uploader.avatar,
+                is_following=is_following if current_user else None,
             ),
             category=CategoryBriefResponse(
                 id=video.category.id,
                 name=video.category.name
             ),
             created_at=video.created_at,
+            tags=video_tags,  # 添加标签
         )
         
         # 缓存响应数据（TTL: 10分钟，详情页缓存时间更长）
+        # 注意：缓存时不包含 is_following，因为这是用户相关的字段
         try:
             response_dict = response.model_dump()
+            # 移除 is_following 后再缓存（因为这是用户相关的）
+            if "uploader" in response_dict and "is_following" in response_dict["uploader"]:
+                response_dict["uploader"]["is_following"] = None
             redis_service.set_query_cache(cache_key, json.dumps(response_dict, default=str), ttl=600)
             logger.debug(f"视频详情缓存已保存：{cache_key}")
         except Exception as e:

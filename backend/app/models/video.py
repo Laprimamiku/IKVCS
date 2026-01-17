@@ -113,6 +113,12 @@ class Video(Base):
     # 关系映射
     uploader = relationship("User", foreign_keys=[uploader_id], lazy="joined")
     category = relationship("Category", foreign_keys=[category_id], lazy="joined")
+    tags = relationship(
+        "VideoTag",
+        secondary="video_tag_associations",
+        back_populates="videos",
+        lazy="joined"
+    )
     # danmakus = relationship("Danmaku", back_populates="video")
     # comments = relationship("Comment", back_populates="video")
     

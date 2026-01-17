@@ -12,9 +12,11 @@
 """
 import json
 import logging
+import re
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from sqlalchemy.orm import Session
+import httpx
 
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -22,7 +24,6 @@ from app.models.video import Video
 from app.models.danmaku import Danmaku
 from app.models.comment import Comment
 from app.services.video.subtitle_parser import SubtitleParser
-from app.services.ai.local_model_service import local_model_service
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +154,136 @@ class SummaryService:
             logger.warning(f"收集评论失败: {e}")
         
         return content_data
+
+    def _get_cloud_summary_config(self) -> Optional[Dict[str, str]]:
+        api_key = getattr(settings, "SUMMARY_API_KEY", "") or settings.LLM_API_KEY
+        base_url = (getattr(settings, "SUMMARY_BASE_URL", "") or settings.LLM_BASE_URL).rstrip("/")
+        model = getattr(settings, "SUMMARY_MODEL", "") or settings.LLM_MODEL
+        if not api_key or not base_url or not model:
+            return None
+        return {"api_key": api_key, "base_url": base_url, "model": model}
+
+    def _get_local_summary_config(self) -> Optional[Dict[str, str]]:
+        base_url = (settings.LOCAL_LLM_BASE_URL or "").rstrip("/")
+        model = settings.LOCAL_LLM_MODEL
+        if not base_url or not model:
+            return None
+        return {"base_url": base_url, "model": model}
+
+    async def _call_cloud_llm(self, prompt: str, max_tokens: int) -> Optional[str]:
+        cfg = self._get_cloud_summary_config()
+        if not cfg:
+            return None
+        headers = {
+            "Authorization": f"Bearer {cfg['api_key']}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": cfg["model"],
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.2,
+            "max_tokens": max_tokens,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
+                    f"{cfg['base_url']}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                )
+            if resp.status_code != 200:
+                logger.warning("Summary cloud call failed: %s - %s", resp.status_code, resp.text)
+                return None
+            return resp.json()["choices"][0]["message"]["content"]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Summary cloud call error: %s", exc)
+            return None
+
+    async def _call_local_llm(self, prompt: str, max_tokens: int) -> Optional[str]:
+        cfg = self._get_local_summary_config()
+        if not cfg:
+            return None
+        payload = {
+            "model": cfg["model"],
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.2,
+            "max_tokens": max_tokens,
+            "stream": False,
+        }
+        timeout = max(float(getattr(settings, "LOCAL_LLM_TIMEOUT", 60.0) or 60.0), 60.0)
+        try:
+            async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
+                resp = await client.post(
+                    f"{cfg['base_url']}/chat/completions",
+                    json=payload,
+                )
+            if resp.status_code != 200:
+                logger.warning("Summary local call failed: %s - %s", resp.status_code, resp.text)
+                return None
+            return resp.json()["choices"][0]["message"]["content"]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Summary local call error: %s", exc)
+            return None
+
+    async def _call_llm_text(self, prompt: str, max_tokens: int, prefer_cloud: bool = True) -> Optional[str]:
+        llm_mode = getattr(settings, "LLM_MODE", "hybrid").lower()
+        use_cloud = llm_mode in ("cloud_only", "hybrid")
+        use_local = llm_mode in ("local_only", "hybrid")
+        if llm_mode == "off":
+            return None
+
+        if prefer_cloud:
+            if use_cloud:
+                result = await self._call_cloud_llm(prompt, max_tokens)
+                if result:
+                    return result
+            if use_local:
+                return await self._call_local_llm(prompt, max_tokens)
+        else:
+            if use_local:
+                result = await self._call_local_llm(prompt, max_tokens)
+                if result:
+                    return result
+            if use_cloud:
+                return await self._call_cloud_llm(prompt, max_tokens)
+        return None
+
+    def _clean_text(self, text: Optional[str]) -> str:
+        if not text:
+            return ""
+        clean = text.strip()
+        clean = re.sub(r"^```[a-zA-Z]*\s*", "", clean)
+        clean = re.sub(r"\s*```$", "", clean)
+        return clean.strip().strip('"')
+
+    def _extract_json_from_text(self, text: Optional[str]) -> Optional[Dict[str, Any]]:
+        if not text:
+            return None
+        clean = text.strip()
+        # Try fenced blocks first
+        for match in re.finditer(r"```(?:json)?\s*([\s\S]*?)\s*```", clean, flags=re.IGNORECASE):
+            candidate = (match.group(1) or "").strip()
+            if not candidate:
+                continue
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+
+        clean = re.sub(r"```json\s*|\s*```", "", clean, flags=re.IGNORECASE).strip()
+        try:
+            return json.loads(clean)
+        except json.JSONDecodeError:
+            pass
+
+        start = clean.find("{")
+        end = clean.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(clean[start : end + 1])
+            except json.JSONDecodeError:
+                return None
+        return None
     
     async def _generate_summary_text(self, content_data: Dict[str, Any]) -> Dict[str, str]:
         """生成摘要文本（简短和详细）"""
@@ -190,32 +321,24 @@ class SummaryService:
 请只返回摘要文本，不要包含其他说明："""
         
         try:
-            # 并行生成简短和详细摘要
-            short_result = await local_model_service.predict(short_prompt, "comment")
-            detailed_result = await local_model_service.predict(detailed_prompt, "comment")
-            
-            short_summary = ""
-            if short_result:
-                short_summary = short_result.get("reason", "") or short_result.get("label", "") or ""
-                # 清理可能的格式标记
-                short_summary = short_summary.replace("```", "").strip()
-                # 限制长度
-                if len(short_summary) > 150:
-                    short_summary = short_summary[:150] + "..."
-            
-            detailed_summary = ""
-            if detailed_result:
-                detailed_summary = detailed_result.get("reason", "") or detailed_result.get("label", "") or ""
-                # 清理可能的格式标记
-                detailed_summary = detailed_summary.replace("```", "").strip()
-                # 限制长度
-                if len(detailed_summary) > 400:
-                    detailed_summary = detailed_summary[:400] + "..."
-            
-            return {
-                "short": short_summary,
-                "detailed": detailed_summary
-            }
+            # Local-first to save cost, cloud fallback for weak/empty outputs.
+            short_text = await self._call_llm_text(short_prompt, max_tokens=256, prefer_cloud=False)
+            if not short_text or len(self._clean_text(short_text)) < 20:
+                short_text = await self._call_llm_text(short_prompt, max_tokens=256, prefer_cloud=True)
+
+            detailed_text = await self._call_llm_text(detailed_prompt, max_tokens=512, prefer_cloud=False)
+            if not detailed_text or len(self._clean_text(detailed_text)) < 40:
+                detailed_text = await self._call_llm_text(detailed_prompt, max_tokens=512, prefer_cloud=True)
+
+            short_summary = self._clean_text(short_text)
+            if len(short_summary) > 150:
+                short_summary = short_summary[:150] + "..."
+
+            detailed_summary = self._clean_text(detailed_text)
+            if len(detailed_summary) > 400:
+                detailed_summary = detailed_summary[:400] + "..."
+
+            return {"short": short_summary, "detailed": detailed_summary}
             
         except Exception as e:
             logger.error(f"生成摘要文本失败: {e}")
@@ -276,34 +399,18 @@ class SummaryService:
 如果某个类别没有相关内容，请返回空数组 []。"""
         
         try:
-            result = await local_model_service.predict(knowledge_prompt, "comment")
-            if not result:
+            response_text = await self._call_llm_text(knowledge_prompt, max_tokens=512, prefer_cloud=False)
+            knowledge_points = self._extract_json_from_text(response_text)
+            if not knowledge_points:
+                response_text = await self._call_llm_text(knowledge_prompt, max_tokens=512, prefer_cloud=True)
+                knowledge_points = self._extract_json_from_text(response_text)
+            if isinstance(knowledge_points, dict):
                 return {
-                    "concepts": [],
-                    "steps": [],
-                    "data": [],
-                    "opinions": []
+                    "concepts": knowledge_points.get("concepts", [])[:5],
+                    "steps": knowledge_points.get("steps", [])[:5],
+                    "data": knowledge_points.get("data", [])[:5],
+                    "opinions": knowledge_points.get("opinions", [])[:5]
                 }
-            
-            # 尝试从reason中提取JSON
-            reason_text = result.get("reason", "")
-            if reason_text:
-                try:
-                    # 清理可能的格式标记
-                    clean_text = reason_text.replace("```json", "").replace("```", "").strip()
-                    knowledge_points = json.loads(clean_text)
-                    # 验证结构
-                    if isinstance(knowledge_points, dict):
-                        return {
-                            "concepts": knowledge_points.get("concepts", [])[:5],
-                            "steps": knowledge_points.get("steps", [])[:5],
-                            "data": knowledge_points.get("data", [])[:5],
-                            "opinions": knowledge_points.get("opinions", [])[:5]
-                        }
-                except json.JSONDecodeError:
-                    pass
-            
-            # 如果无法解析JSON，返回空结构
             return {
                 "concepts": [],
                 "steps": [],
@@ -340,8 +447,103 @@ class SummaryService:
         except Exception as e:
             logger.error(f"保存视频摘要失败: {e}")
             db.rollback()
+    
+    async def _generate_structured_summary(self, content_data: Dict[str, Any]) -> Dict[str, str]:
+        """
+        生成结构化摘要（问题背景、研究方法、主要发现、最终结论）
+        
+        不保存到数据库，仅用于实时显示
+        """
+        weighted_content = self._build_weighted_content(content_data)
+        
+        if not weighted_content.strip():
+            return {
+                "problem_background": "",
+                "research_methods": "",
+                "main_findings": "",
+                "conclusions": ""
+            }
+        
+        prompt = f"""请基于以下视频内容，生成结构化摘要，包含以下四个部分：
+
+1. **问题背景**：视频要解决的核心问题或讨论的背景
+2. **研究方法**：视频中采用的研究方法、分析思路或技术手段
+3. **主要发现**：视频中发现的重要信息、数据或观点
+4. **最终结论**：视频得出的结论或总结
+
+请以JSON格式返回，格式如下：
+{{
+    "problem_background": "问题背景内容",
+    "research_methods": "研究方法内容",
+    "main_findings": "主要发现内容",
+    "conclusions": "最终结论内容"
+}}
+
+**重要：只返回JSON对象，不要包含任何Markdown标记或其他说明文字。**
+
+视频内容：
+{weighted_content}
+"""
+        
+        try:
+            response_text = await self._call_llm_text(prompt, max_tokens=1024, prefer_cloud=False)
+            if not response_text or len(self._clean_text(response_text)) < 50:
+                response_text = await self._call_llm_text(prompt, max_tokens=1024, prefer_cloud=True)
+            
+            # 尝试解析JSON
+            cleaned_text = self._clean_text(response_text)
+            try:
+                # 移除可能的Markdown代码块标记
+                if "```json" in cleaned_text:
+                    cleaned_text = cleaned_text.split("```json")[1].split("```")[0].strip()
+                elif "```" in cleaned_text:
+                    cleaned_text = cleaned_text.split("```")[1].split("```")[0].strip()
+                
+                parsed = json.loads(cleaned_text)
+                return {
+                    "problem_background": parsed.get("problem_background", "").strip(),
+                    "research_methods": parsed.get("research_methods", "").strip(),
+                    "main_findings": parsed.get("main_findings", "").strip(),
+                    "conclusions": parsed.get("conclusions", "").strip()
+                }
+            except json.JSONDecodeError:
+                # 如果JSON解析失败，尝试从文本中提取
+                return self._extract_structured_from_text(cleaned_text)
+        except Exception as e:
+            logger.error(f"生成结构化摘要失败: {e}")
+            return {
+                "problem_background": "",
+                "research_methods": "",
+                "main_findings": "",
+                "conclusions": ""
+            }
+    
+    def _extract_structured_from_text(self, text: str) -> Dict[str, str]:
+        """从文本中提取结构化信息"""
+        result = {
+            "problem_background": "",
+            "research_methods": "",
+            "main_findings": "",
+            "conclusions": ""
+        }
+        
+        # 尝试匹配各个部分
+        patterns = {
+            "problem_background": [r"问题背景[：:]\s*(.+?)(?=\n|研究方法|主要发现|最终结论|$)", r"背景[：:]\s*(.+?)(?=\n|方法|发现|结论|$)"],
+            "research_methods": [r"研究方法[：:]\s*(.+?)(?=\n|主要发现|最终结论|问题背景|$)", r"方法[：:]\s*(.+?)(?=\n|发现|结论|背景|$)"],
+            "main_findings": [r"主要发现[：:]\s*(.+?)(?=\n|最终结论|问题背景|研究方法|$)", r"发现[：:]\s*(.+?)(?=\n|结论|背景|方法|$)"],
+            "conclusions": [r"最终结论[：:]\s*(.+?)(?=\n|问题背景|研究方法|主要发现|$)", r"结论[：:]\s*(.+?)(?=\n|背景|方法|发现|$)"]
+        }
+        
+        for key, pattern_list in patterns.items():
+            for pattern in pattern_list:
+                match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+                if match:
+                    result[key] = match.group(1).strip()
+                    break
+        
+        return result
 
 
 # 全局实例
 summary_service = SummaryService()
-

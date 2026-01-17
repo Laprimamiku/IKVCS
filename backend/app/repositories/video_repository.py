@@ -33,7 +33,8 @@ class VideoRepository(BaseRepository):
         """
         return db.query(Video).options(
             joinedload(Video.uploader),
-            joinedload(Video.category)
+            joinedload(Video.category),
+            joinedload(Video.tags)
         ).filter(Video.id == video_id).first()
     
     @classmethod

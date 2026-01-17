@@ -129,11 +129,26 @@ const visibleComments = computed(() => {
   if (!isPurified.value) return commentList.value;
   
   return commentList.value.filter(comment => {
-    // Filter logic: Score < 30 or explicitly flagged as inappropriate
-    // Default score to 100 if missing (assume innocent until proven guilty)
-    const score = comment.ai_score ?? 100; 
-    const isBad = score < 30 || (comment as any).is_inappropriate === true;
-    return !isBad;
+    // 过滤逻辑：隐藏低质量评论
+    // 1. 如果ai_score存在且 < 50，则过滤（低质量）
+    // 2. 如果ai_label是"低质量"、"引战"、"违规"等，则过滤
+    // 3. 如果ai_score不存在，保留（可能是新评论，还没有AI分析）
+    
+    const score = comment.ai_score;
+    const label = comment.ai_label?.toLowerCase() || '';
+    
+    // 如果AI评分存在且低于50，认为是低质量
+    if (score !== undefined && score !== null && score < 50) {
+      return false;
+    }
+    
+    // 如果AI标签是低质量相关，则过滤
+    const lowQualityLabels = ['低质量', '引战', '违规', '垃圾', 'spam', '低质'];
+    if (label && lowQualityLabels.some(lq => label.includes(lq.toLowerCase()))) {
+      return false;
+    }
+    
+    return true;
   });
 });
 

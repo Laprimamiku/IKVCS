@@ -36,8 +36,8 @@ class ImageReviewService:
         self.mode = getattr(settings, "VISION_MODE", "hybrid").lower()
         has_cloud_key = bool(settings.LLM_VISION_API_KEY or settings.LLM_API_KEY)
         self.use_cloud = self.mode in ("cloud_only", "hybrid") and has_cloud_key
-        # 本地视觉强制由开关控制，避免误用本地模型跑抽帧审核
-        self.use_local = bool(getattr(settings, "LOCAL_VISION_ENABLED", False)) and self.mode in ("local_only", "hybrid")
+        # Local vision (moondream) disabled for now; keep cloud-only for frame review.
+        self.use_local = False
     
     async def review_image(
         self,

@@ -15,13 +15,16 @@ export function useVideoPlayer() {
 
   const videoIdRef = computed(() => {
     const id = route.params.id;
-    return Array.isArray(id) ? parseInt(id[0]) : parseInt(id || '0');
+    const parsedId = Array.isArray(id) ? parseInt(id[0]) : parseInt(id || '0');
+    // 确保ID是有效的正整数
+    return isNaN(parsedId) || parsedId <= 0 ? 0 : parsedId;
   });
 
   const loadVideoDetail = async () => {
     loading.value = true;
     const id = videoIdRef.value;
-    if (!id) {
+    if (!id || id <= 0) {
+      ElMessage.error('视频ID无效');
       router.push('/');
       return;
     }
@@ -33,7 +36,7 @@ export function useVideoPlayer() {
         // 推荐视频可以延迟加载，先显示主要内容
       ]);
       
-      if (videoRes.success) {
+      if (videoRes.success && videoRes.data) {
         videoData.value = videoRes.data;
         
         // 并行加载推荐视频（播放量统计移到播放时处理）
@@ -44,12 +47,18 @@ export function useVideoPlayer() {
           pollTranscodingStatus(id);
         }
       } else {
-        ElMessage.error('视频不存在或已被删除');
+        ElMessage.error(videoRes.message || '视频不存在或已被删除');
         router.push('/');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('加载视频失败:', error);
-      ElMessage.error('加载视频失败');
+      // 处理404错误
+      if (error?.response?.status === 404) {
+        ElMessage.error('视频不存在或已被删除');
+        router.push('/');
+      } else {
+        ElMessage.error(error?.response?.data?.detail || error?.message || '加载视频失败');
+      }
     } finally {
       loading.value = false;
     }

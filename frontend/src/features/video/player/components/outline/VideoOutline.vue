@@ -5,8 +5,20 @@
         <el-icon><List /></el-icon>
         视频章节
       </h3>
-      <div class="outline-count" v-if="outlineList.length > 0">
-        {{ outlineList.length }} 个章节
+      <div class="outline-header-right">
+        <div class="outline-count" v-if="outlineList.length > 0">
+          {{ outlineList.length }} 个章节
+        </div>
+        <el-button
+          v-if="outlineList.length > 0"
+          text
+          size="small"
+          @click="isExpanded = !isExpanded"
+          class="expand-toggle-btn"
+        >
+          <el-icon><ArrowDown v-if="!isExpanded" /><ArrowUp v-else /></el-icon>
+          {{ isExpanded ? '折叠' : '展开' }}
+        </el-button>
       </div>
     </div>
 
@@ -19,7 +31,22 @@
       <p>暂无章节信息</p>
     </div>
 
-    <div v-else class="outline-list mindmap">
+    <!-- 折叠状态：只显示标题 -->
+    <div v-else-if="!isExpanded" class="outline-list-collapsed">
+      <div
+        v-for="(item, index) in outlineList"
+        :key="index"
+        class="outline-item-collapsed"
+        @click="isExpanded = true"
+      >
+        <span class="outline-item-index">{{ index + 1 }}</span>
+        <span class="outline-item-title">{{ item.title }}</span>
+        <span class="outline-item-time">{{ formatTime(item.start_time) }}</span>
+      </div>
+    </div>
+
+    <!-- 展开状态：完整显示，支持滚动 -->
+    <div v-else class="outline-list mindmap outline-list-expanded" @wheel="handleWheel">
       <div
         v-for="(item, index) in outlineList"
         :key="index"
@@ -59,7 +86,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { List, Document } from '@element-plus/icons-vue';
+import { List, Document, ArrowDown, ArrowUp } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import type { VideoOutlineEntry } from '@/shared/types/entity';
 import { getVideoOutline } from '@/features/video/shared/api/video.api';
@@ -78,6 +105,7 @@ const emit = defineEmits<Emits>();
 
 const loading = ref(false);
 const outlineData = ref<VideoOutlineEntry[]>([]);
+const isExpanded = ref(false); // 折叠/展开状态
 
 // 解析大纲数据（可能是JSON字符串或对象数组）
 const outlineList = computed(() => {
@@ -118,6 +146,15 @@ const formatTime = (seconds: number): string => {
 // 跳转到指定时间
 const handleJump = (time: number) => {
   emit('jump', time);
+};
+
+// 处理滚轮事件（在展开状态下）
+const handleWheel = (event: WheelEvent) => {
+  const container = event.currentTarget as HTMLElement;
+  if (container) {
+    container.scrollTop += event.deltaY;
+    event.preventDefault();
+  }
 };
 
 // 加载大纲数据
@@ -204,6 +241,17 @@ onMounted(() => {
   margin-bottom: var(--space-4);
   padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--divider-color);
+  
+  .outline-header-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  
+  .expand-toggle-btn {
+    padding: 4px 8px;
+    font-size: var(--font-size-sm);
+  }
 }
 
 .outline-title {
@@ -264,6 +312,81 @@ onMounted(() => {
       background: linear-gradient(to bottom, var(--bili-pink), rgba(251, 114, 153, 0.3));
       border-radius: 2px;
     }
+  }
+  
+  &.outline-list-expanded {
+    /* 限制高度，使其不超过视频播放器+弹幕工具栏的高度 */
+    /* 视频播放器约560px + 弹幕工具栏48px + 其他间距 ≈ 650px */
+    /* 使用固定高度，确保不影响视频观看 */
+    max-height: 400px; /* 固定高度，确保不超过弹幕工具栏位置 */
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 8px;
+    
+    /* 隐藏滚动条但保持滚动功能 */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+    
+    &::-webkit-scrollbar {
+      display: none; /* Chrome, Safari, Opera */
+    }
+    
+    /* 鼠标悬停时显示滚动条提示 */
+    &:hover {
+      padding-right: 4px;
+    }
+  }
+}
+
+/* 折叠状态样式 */
+.outline-list-collapsed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.outline-item-collapsed {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  transition: var(--transition-fast);
+  border: 1px solid transparent;
+  
+  &:hover {
+    background: var(--bg-hover);
+    border-color: var(--divider-color);
+  }
+  
+  .outline-item-index {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-circle);
+    background: var(--bg-gray-1);
+    color: var(--text-secondary);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    flex-shrink: 0;
+  }
+  
+  .outline-item-title {
+    flex: 1;
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  .outline-item-time {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    flex-shrink: 0;
   }
 }
 

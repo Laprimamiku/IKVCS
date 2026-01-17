@@ -63,12 +63,19 @@ export function uploadAvatar(file: File) {
  * 获取指定用户信息（他人主页）
  * 
  * @param userId - 用户 ID
- * @returns 返回用户公开信息
+ * @returns 返回用户公开信息和统计数据
  */
+export interface UserProfileData {
+  user: UserInfo;
+  following_count: number;
+  followers_count: number;
+  is_following: boolean;
+}
+
 export async function getUserById(userId: number) {
-  const response = await request.get<UserInfo>(`/users/${userId}`)
+  const response = await request.get<ApiResponse<UserProfileData>>(`/users/${userId}`)
   if (response.success && response.data) {
-    response.data = processUserInfo(response.data) as UserInfo
+    response.data.user = processUserInfo(response.data.user) as UserInfo
   }
   return response
 }
@@ -157,5 +164,49 @@ export async function createCollectionFolder(name: string, description?: string)
     name,
     description
   })
+}
+
+/**
+ * 关注相关 API
+ */
+export interface FollowUser {
+  id: number;
+  nickname: string;
+  username: string;
+  avatar?: string;
+  followed_at: string;
+}
+
+export interface FollowersResponse {
+  following: FollowUser[];
+  followers: FollowUser[];
+}
+
+/**
+ * 获取关注和粉丝列表
+ */
+export async function getFollowers() {
+  return request.get<ApiResponse<FollowersResponse>>('/users/me/followers')
+}
+
+/**
+ * 关注用户
+ */
+export async function followUser(userId: number) {
+  return request.post<ApiResponse>(`/users/${userId}/follow`)
+}
+
+/**
+ * 取消关注用户
+ */
+export async function unfollowUser(userId: number) {
+  return request.delete<ApiResponse>(`/users/${userId}/follow`)
+}
+
+/**
+ * 移除粉丝（被关注者取消对方的关注）
+ */
+export async function removeFollower(userId: number) {
+  return request.delete<ApiResponse>(`/users/${userId}/follower`)
 }
 

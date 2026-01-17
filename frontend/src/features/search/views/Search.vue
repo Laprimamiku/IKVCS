@@ -6,6 +6,22 @@
     <!-- 主内容区 -->
     <main class="main-content">
       <div class="content-container">
+        <!-- 已选标签（显示在搜索框下方） -->
+        <div class="selected-tags-container" v-if="selectedTagIds.length > 0">
+          <div class="tags-label">已选标签：</div>
+          <div class="tags-list">
+            <el-tag
+              v-for="tagId in selectedTagIds"
+              :key="tagId"
+              closable
+              @close="handleRemoveTag(tagId)"
+              class="tag-item"
+            >
+              {{ getTagNameById(tagId) }}
+            </el-tag>
+          </div>
+        </div>
+        
         <!-- 搜索结果头部 -->
         <div class="search-header">
           <div class="search-info">
@@ -71,6 +87,7 @@
                 </div>
               </div>
             </div>
+            
           </div>
         </div>
 
@@ -111,6 +128,18 @@
                     {{ video.uploader?.nickname || video.uploader?.username || '未知用户' }}
                   </div>
                   <div class="upload-time">{{ formatTime(video.created_at) }}</div>
+                </div>
+                <!-- 视频标签 -->
+                <div class="video-tags" v-if="video.tags && video.tags.length > 0">
+                  <el-tag
+                    v-for="(tag, index) in video.tags"
+                    :key="getTagKey(tag, index)"
+                    size="small"
+                    class="tag-item"
+                    @click.stop="handleTagClick(tag)"
+                  >
+                    {{ getTagName(tag) }}
+                  </el-tag>
                 </div>
                 <div class="video-stats">
                   <span class="stat-item">
@@ -159,16 +188,31 @@
               v-for="user in users"
               :key="user.id"
               class="user-card"
-              @click="handleUserClick(user)"
             >
               <el-avatar :size="48" :src="user.avatar">
                 {{ (user.nickname || user.username).charAt(0).toUpperCase() }}
               </el-avatar>
-              <div class="user-info">
+              <div class="user-info" @click="handleUserClick(user)">
                 <div class="user-name">{{ user.nickname || user.username }}</div>
                 <div class="user-meta">@{{ user.username }}</div>
               </div>
-              <div class="user-action">进入主页</div>
+              <div class="user-actions">
+                <el-button 
+                  type="primary" 
+                  size="small"
+                  @click.stop="handleUserClick(user)"
+                >
+                  主页
+                </el-button>
+                <el-button 
+                  v-if="userStore.isAuthenticated && user.id !== userStore.userInfo?.id"
+                  :type="user.is_following ? 'danger' : 'primary'"
+                  size="small"
+                  @click.stop="handleFollowToggle(user)"
+                >
+                  {{ user.is_following ? '取关' : '关注' }}
+                </el-button>
+              </div>
             </div>
           </div>
 
@@ -227,6 +271,8 @@ import AppHeader from "@/shared/components/layout/AppHeader.vue";
 import AuthDialog from "@/features/auth/components/AuthDialog.vue";
 import { searchVideos, searchUsers } from "../api/search.api";
 import type { Video, UserBrief } from "@/shared/types/entity";
+import { useUserStore } from "@/shared/stores/user";
+import { followUser, unfollowUser } from "@/features/user/api/user.api";
 
 const router = useRouter();
 const route = useRoute();
@@ -235,6 +281,8 @@ const route = useRoute();
 const currentKeyword = ref<string>("");
 const searchType = ref<"video" | "uploader">("video");
 const sortType = ref<string>("default");
+const selectedTagIds = ref<number[]>([]);
+const tagMap = ref<Map<number, string>>(new Map()); // 标签ID到名称的映射
 
 // 视频/用户数据
 const videos = ref<Video[]>([]);
@@ -267,6 +315,9 @@ const buildQuery = () => {
   }
   if (currentKeyword.value) {
     query.keyword = currentKeyword.value;
+  }
+  if (selectedTagIds.value.length > 0) {
+    query.tags = selectedTagIds.value.join(",");
   }
   return query;
 };
@@ -319,6 +370,16 @@ onMounted(async () => {
   if (route.query.keyword) {
     currentKeyword.value = route.query.keyword as string;
   }
+  
+  // 从URL获取标签ID
+  if (route.query.tags) {
+    const tagIdsStr = route.query.tags as string;
+    try {
+      selectedTagIds.value = tagIdsStr.split(",").map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+    } catch (error) {
+      selectedTagIds.value = [];
+    }
+  }
 
   // 加载搜索结果
   await loadResults();
@@ -333,12 +394,25 @@ watch(
     const nextType = normalizeSearchType(newQuery.type);
     const nextKeyword = (newQuery.keyword as string) || "";
 
+    // 从URL获取标签ID
+    const nextTagIds: number[] = [];
+    if (newQuery.tags) {
+      const tagIdsStr = newQuery.tags as string;
+      try {
+        nextTagIds.push(...tagIdsStr.split(",").map(id => parseInt(id.trim())).filter(id => !isNaN(id)));
+      } catch (error) {
+        // ignore
+      }
+    }
+    
     if (
       nextType !== searchType.value ||
-      nextKeyword !== currentKeyword.value
+      nextKeyword !== currentKeyword.value ||
+      JSON.stringify(nextTagIds.sort()) !== JSON.stringify(selectedTagIds.value.sort())
     ) {
       searchType.value = nextType;
       currentKeyword.value = nextKeyword;
+      selectedTagIds.value = nextTagIds;
       currentPage.value = 1;
       loadResults();
     }
@@ -373,13 +447,18 @@ const loadVideos = async (append = false) => {
 
   try {
     // 构建搜索参数
-    const params = {
+    const params: any = {
       q: currentKeyword.value || undefined,
       page: currentPage.value,
       page_size: pageSize.value,
       sort_by: getSortField(sortType.value),
       order: "desc",
     };
+    
+    // 添加标签搜索参数
+    if (selectedTagIds.value.length > 0) {
+      params.tags = selectedTagIds.value.join(",");
+    }
 
     const response = await searchVideos(params as any);
 
@@ -394,6 +473,28 @@ const loadVideos = async (append = false) => {
 
       total.value = response.data.total || 0;
       hasMore.value = videos.value.length < total.value;
+      
+      // 更新标签映射
+      updateTagMap();
+      
+      // 如果selectedTagIds中有标签在tagMap中没有名称，且搜索结果不为空，尝试从搜索结果中查找
+      if (videos.value.length > 0) {
+        selectedTagIds.value.forEach(tagId => {
+          if (!tagMap.value.has(tagId)) {
+            // 从所有搜索结果中查找标签
+            for (const video of videos.value) {
+              if (video.tags && Array.isArray(video.tags)) {
+                for (const tag of video.tags) {
+                  if (typeof tag === 'object' && tag.id === tagId && tag.name) {
+                    tagMap.value.set(tagId, tag.name);
+                    return;
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
     }
   } catch (error) {
     console.error("加载视频列表失败:", error);
@@ -491,10 +592,15 @@ const handleSortChange = (type: string) => {
 const handleTypeChange = (type: "video" | "uploader") => {
   if (searchType.value === type) return;
   searchType.value = type;
+  if (type === "uploader") {
+    selectedTagIds.value = []; // 切换类型时清除标签
+  }
   currentPage.value = 1;
   router.push({ path: "/search", query: buildQuery() });
   loadResults();
 };
+
+const userStore = useUserStore();
 
 /**
  * 点击UP主
@@ -504,9 +610,167 @@ const handleUserClick = (user: UserBrief) => {
 };
 
 /**
+ * 关注/取关切换
+ */
+const handleFollowToggle = async (user: UserBrief) => {
+  if (!userStore.isAuthenticated) {
+    ElMessage.warning('请先登录');
+    return;
+  }
+  
+  try {
+    if (user.is_following) {
+      // 取关
+      const res = await unfollowUser(user.id);
+      if (res.success) {
+        user.is_following = false;
+        ElMessage.success('取消关注成功');
+      }
+    } else {
+      // 关注
+      const res = await followUser(user.id);
+      if (res.success) {
+        user.is_following = true;
+        ElMessage.success('关注成功');
+      }
+    }
+  } catch (error: any) {
+    console.error('关注操作失败:', error);
+    ElMessage.error(error.response?.data?.detail || '操作失败');
+  }
+};
+
+/**
+ * 获取标签键值（用于v-for的key）
+ */
+const getTagKey = (tag: any, index: number): string | number => {
+  if (typeof tag === 'string') {
+    return `tag-${index}-${tag}`;
+  }
+  return tag.id || `tag-${index}`;
+};
+
+/**
+ * 获取标签名称
+ */
+const getTagName = (tag: any): string => {
+  if (typeof tag === 'string') {
+    return tag;
+  }
+  return tag.name || '';
+};
+
+/**
+ * 获取标签ID
+ */
+const getTagId = (tag: any): number | null => {
+  if (typeof tag === 'string') {
+    // 如果是字符串，尝试从tagMap中查找ID
+    for (const [id, name] of tagMap.value.entries()) {
+      if (name === tag) {
+        return id;
+      }
+    }
+    return null;
+  }
+  return tag.id || null;
+};
+
+/**
+ * 点击标签搜索
+ */
+const handleTagClick = (tag: any) => {
+  const tagId = getTagId(tag);
+  const tagName = getTagName(tag);
+  
+  // 如果有标签ID，使用ID搜索
+  if (tagId && !selectedTagIds.value.includes(tagId)) {
+    // 确保标签名称被添加到tagMap中
+    if (tagName && !tagMap.value.has(tagId)) {
+      tagMap.value.set(tagId, tagName);
+    }
+    selectedTagIds.value.push(tagId);
+    currentPage.value = 1;
+    router.push({ path: '/search', query: buildQuery() });
+    loadResults();
+  } else if (tagName) {
+    // 如果没有ID但有名称，使用名称作为关键词搜索
+    currentKeyword.value = tagName;
+    selectedTagIds.value = [];
+    currentPage.value = 1;
+    router.push({ path: '/search', query: buildQuery() });
+    loadResults();
+  }
+};
+
+/**
+ * 移除标签
+ */
+const handleRemoveTag = (tagId: number) => {
+  selectedTagIds.value = selectedTagIds.value.filter(id => id !== tagId);
+  currentPage.value = 1;
+  loadResults();
+};
+
+/**
+ * 获取标签名称（根据ID）
+ */
+const getTagNameById = (tagId: number): string => {
+  return tagMap.value.get(tagId) || `标签${tagId}`;
+};
+
+/**
+ * 更新标签映射（从视频数据中提取）
+ */
+const updateTagMap = () => {
+  videos.value.forEach(video => {
+    if (video.tags && Array.isArray(video.tags)) {
+      video.tags.forEach((tag: any) => {
+        if (typeof tag === 'object' && tag.id && tag.name) {
+          tagMap.value.set(tag.id, tag.name);
+        } else if (typeof tag === 'string') {
+          // 如果是字符串，尝试从已有映射中查找ID，如果没有则生成一个临时ID
+          let foundId: number | null = null;
+          for (const [id, name] of tagMap.value.entries()) {
+            if (name === tag) {
+              foundId = id;
+              break;
+            }
+          }
+          if (!foundId) {
+            // 生成一个临时ID（负数，避免与真实ID冲突）
+            const tempId = -(tagMap.value.size + 1);
+            tagMap.value.set(tempId, tag);
+          }
+        }
+      });
+    }
+  });
+  
+  // 如果selectedTagIds中有标签在tagMap中没有名称，尝试从搜索结果中查找
+  // 如果搜索结果为空，可能需要从后端API获取标签信息
+  selectedTagIds.value.forEach(tagId => {
+    if (!tagMap.value.has(tagId)) {
+      // 尝试从搜索结果中查找
+      for (const video of videos.value) {
+        if (video.tags && Array.isArray(video.tags)) {
+          for (const tag of video.tags) {
+            if (typeof tag === 'object' && tag.id === tagId && tag.name) {
+              tagMap.value.set(tagId, tag.name);
+              return;
+            }
+          }
+        }
+      }
+    }
+  });
+};
+
+/**
  * 清除搜索
  */
 const clearSearch = () => {
+  selectedTagIds.value = [];
   const query: Record<string, string> = {};
   if (searchType.value === "uploader") {
     query.type = "uploader";
@@ -652,6 +916,70 @@ const handleAuthSuccess = () => {
   }
 }
 
+/* 已选标签容器（显示在搜索框下方） */
+.selected-tags-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: #fff;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* 已选标签 */
+.selected-tags {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e3e5e7;
+}
+
+.tags-label {
+  font-size: 14px;
+  color: #61666d;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-item {
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &:hover {
+    background-color: #00aeec;
+    color: #fff;
+  }
+}
+
+/* 视频标签 */
+.video-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+  
+  .tag-item {
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    
+    &:hover {
+      background-color: #00aeec;
+      color: #fff;
+    }
+  }
+}
+
 /* 视频区域 */
 .video-section {
   background: #fff;
@@ -682,7 +1010,6 @@ const handleAuthSuccess = () => {
   padding: 12px 16px;
   border: 1px solid #e3e5e7;
   border-radius: 8px;
-  cursor: pointer;
   transition: all 0.2s;
 
   &:hover {
@@ -706,6 +1033,12 @@ const handleAuthSuccess = () => {
     font-size: 12px;
     color: #61666d;
   }
+}
+
+.user-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .user-action {
@@ -1054,8 +1387,9 @@ const handleAuthSuccess = () => {
     align-items: flex-start;
   }
 
-  .user-action {
-    display: none;
+  .user-actions {
+    flex-direction: column;
+    gap: 4px;
   }
 }
 </style>

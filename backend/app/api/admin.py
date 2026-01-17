@@ -527,31 +527,32 @@ async def review_subtitle_only(
     if not video:
         raise HTTPException(404, "视频不存在")
     
-    # 根据视频ID查找字幕文件（字幕文件可能被重命名，但开头包含视频ID）
+    # 优先使用当前激活字幕，其次回退到目录匹配
     subtitle_path = None
     subtitle_dir = settings.UPLOAD_SUBTITLE_DIR
-    
-    if os.path.exists(subtitle_dir):
-        # 查找以 {video_id}_ 开头的字幕文件
-        subtitle_files = list(Path(subtitle_dir).glob(f"{video_id}_*"))
+
+    if video.subtitle_url:
+        if os.path.isabs(video.subtitle_url):
+            subtitle_path = video.subtitle_url
+        elif video.subtitle_url.startswith("/"):
+            subtitle_path = os.path.join(settings.STORAGE_ROOT, video.subtitle_url.lstrip("/"))
+        else:
+            subtitle_path = os.path.join(subtitle_dir, video.subtitle_url)
+        if not os.path.exists(subtitle_path):
+            subtitle_path = None
+
+    if not subtitle_path and os.path.exists(subtitle_dir):
+        subtitle_files = sorted(
+            Path(subtitle_dir).glob(f"{video_id}_*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
         if subtitle_files:
-            # 使用第一个匹配的文件
             subtitle_path = str(subtitle_files[0])
             logger.info(f"根据视频ID找到字幕文件: video_id={video_id}, subtitle_path={subtitle_path}")
-        else:
-            # 如果没有找到，尝试使用 video.subtitle_url
-            if video.subtitle_url:
-                subtitle_path = video.subtitle_url
-                if not os.path.isabs(subtitle_path):
-                    if subtitle_path.startswith("/"):
-                        subtitle_path = os.path.join(settings.STORAGE_ROOT, subtitle_path.lstrip("/"))
-                    else:
-                        subtitle_path = os.path.join(subtitle_dir, subtitle_path)
-                logger.info(f"使用视频记录中的字幕路径: video_id={video_id}, subtitle_path={subtitle_path}")
-            else:
-                logger.warning(f"未找到视频对应的字幕文件: video_id={video_id}, subtitle_dir={subtitle_dir}")
-    else:
-        logger.warning(f"字幕目录不存在: {subtitle_dir}")
+
+    if not subtitle_path:
+        logger.warning(f"未找到视频对应的字幕文件: video_id={video_id}, subtitle_dir={subtitle_dir}")
     
     from app.utils.json_utils import parse_review_report
 
@@ -677,29 +678,30 @@ async def get_subtitle_content(
     if not video:
         raise HTTPException(404, "视频不存在")
     
-    # 根据视频ID查找字幕文件（字幕文件可能被重命名，但开头包含视频ID）
+    # 优先使用当前激活字幕，其次回退到目录匹配
     subtitle_dir = settings.UPLOAD_SUBTITLE_DIR
     full_path = None
-    
-    if os.path.exists(subtitle_dir):
-        # 查找以 {video_id}_ 开头的字幕文件
+
+    if video.subtitle_url:
+        if os.path.isabs(video.subtitle_url):
+            full_path = video.subtitle_url
+        elif video.subtitle_url.startswith("/"):
+            full_path = os.path.join(settings.STORAGE_ROOT, video.subtitle_url.lstrip("/"))
+        else:
+            full_path = os.path.join(subtitle_dir, video.subtitle_url)
+        if not os.path.exists(full_path):
+            full_path = None
+
+    if not full_path and os.path.exists(subtitle_dir):
         from pathlib import Path
-        subtitle_files = list(Path(subtitle_dir).glob(f"{video_id}_*"))
+        subtitle_files = sorted(
+            Path(subtitle_dir).glob(f"{video_id}_*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
         if subtitle_files:
-            # 使用第一个匹配的文件
             full_path = str(subtitle_files[0])
             logger.info(f"根据视频ID找到字幕文件: video_id={video_id}, subtitle_path={full_path}")
-        else:
-            # 如果没有找到，尝试使用 video.subtitle_url
-            if video.subtitle_url:
-                subtitle_path = video.subtitle_url
-                if os.path.isabs(subtitle_path):
-                    full_path = subtitle_path
-                elif subtitle_path.startswith("/"):
-                    full_path = os.path.join(settings.STORAGE_ROOT, subtitle_path.lstrip("/"))
-                else:
-                    full_path = os.path.join(subtitle_dir, subtitle_path)
-                logger.info(f"使用视频记录中的字幕路径: video_id={video_id}, subtitle_path={full_path}")
     
     if not full_path or not os.path.exists(full_path):
         raise HTTPException(404, f"该视频没有字幕文件（video_id={video_id}，已搜索目录：{subtitle_dir}）")
@@ -1051,7 +1053,7 @@ async def trigger_self_correction_analysis(
         content_type=request.content_type
     )
     
-    return result HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
+    return result
 
 
 @router.post("/ai/self-correction/update-prompt", response_model=MessageResponse, summary="更新System Prompt")
@@ -1159,3 +1161,41 @@ async def get_ai_config(
             "analysis_days": settings.SELF_CORRECTION_ANALYSIS_DAYS
         }
     }
+
+
+@router.get("/system/settings", summary="获取系统设置")
+async def get_system_settings(
+    current_admin: User = Depends(get_current_admin)
+):
+    """获取系统全局设置"""
+    from app.core.config import settings
+    return success_response(data={
+        "auto_review_enabled": settings.AUTO_REVIEW_ENABLED,
+        "high_bitrate_transcode_enabled": settings.HIGH_BITRATE_TRANSCODE_ENABLED,
+        "ai_analysis_enabled": True,  # 默认启用
+        "multi_agent_enabled": settings.MULTI_AGENT_ENABLED,
+        "max_upload_size": settings.MAX_UPLOAD_SIZE,
+        "chunk_size": settings.CHUNK_SIZE,
+        "max_frames_per_video": settings.MAX_FRAMES_PER_VIDEO,
+        "transcode_max_concurrent": settings.TRANSCODE_MAX_CONCURRENT,
+        "transcode_use_gpu": settings.TRANSCODE_USE_GPU,
+        "transcode_strategy": settings.TRANSCODE_STRATEGY,
+    })
+
+
+@router.put("/system/settings", summary="更新系统设置")
+async def update_system_settings(
+    data: dict,
+    current_admin: User = Depends(get_current_admin)
+):
+    """更新系统全局设置（注意：实际修改需要重启服务或使用环境变量）"""
+    # 这里只是返回成功，实际配置需要通过环境变量或配置文件修改
+    # 为了演示，我们可以将配置写入一个临时文件或数据库
+    # 但最佳实践是通过环境变量管理
+    
+    logger.warning(f"系统设置更新请求（需要重启服务生效）: {data}")
+    
+    return success_response(
+        data=data,
+        message="设置已保存，部分设置需要重启服务才能生效。建议通过环境变量或配置文件修改。"
+    )

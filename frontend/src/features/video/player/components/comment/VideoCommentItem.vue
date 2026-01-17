@@ -46,7 +46,7 @@
           :class="{ active: localIsLiked }"
           @click="handleLike"
         >
-          <el-icon class="btn-icon like-icon" :class="{ 'is-liked': localIsLiked }"><CircleCheckFilled /></el-icon>
+          <ThumbsUpIcon :size="16" :is-liked="localIsLiked" class="btn-icon like-icon" />
           <span class="btn-text">{{ localLikeCount || '' }}</span>
         </button>
 
@@ -143,7 +143,8 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Star, CircleCheckFilled, Minus, ChatDotRound, Warning } from "@element-plus/icons-vue";
+import { Star, Minus, ChatDotRound, Warning } from "@element-plus/icons-vue";
+import ThumbsUpIcon from "@/shared/components/icons/ThumbsUpIcon.vue";
 import type { Comment } from "@/shared/types/entity";
 import { toggleCommentLike } from "@/features/video/player/api/comment.api";
 import { createReport } from "@/features/video/player/api/report.api";

@@ -5,9 +5,7 @@
       :class="{ active: isLiked }"
       @click="$emit('like')"
     >
-      <el-icon :size="22" class="like-icon" :class="{ 'is-liked': isLiked }">
-        <CircleCheckFilled />
-      </el-icon>
+      <ThumbsUpIcon :size="22" :is-liked="isLiked" class="like-icon" />
       <span>{{ formatNumber(likeCount) || "点赞" }}</span>
     </div>
 
@@ -40,9 +38,9 @@ import {
   Star,
   StarFilled,
   Share,
-  CircleCheckFilled,
   Warning,
 } from "@element-plus/icons-vue";
+import ThumbsUpIcon from "@/shared/components/icons/ThumbsUpIcon.vue";
 import { formatNumber } from "@/features/video/player/utils/videoFormatters";
 
 defineProps<{

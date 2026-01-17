@@ -114,11 +114,81 @@
       <div class="content-container">
         <!-- Left Column - Main Content -->
         <div class="content-main">
-          <!-- Home Tab (暂时空出来) -->
+          <!-- Home Tab -->
           <section v-if="activeTab === 'home'" class="content-section">
-            <div class="empty-state">
-              <el-icon class="empty-icon" :size="64"><HomeFilled /></el-icon>
-              <p class="empty-text">主页功能开发中...</p>
+            <!-- 投稿栏目 -->
+            <div class="home-section">
+              <div class="section-header">
+                <h3 class="section-title">
+                  <el-icon class="title-icon"><VideoCamera /></el-icon>
+                  投稿
+                </h3>
+                <el-button type="primary" link @click="activeTab = 'videos'">
+                  查看更多
+                  <el-icon><ArrowRight /></el-icon>
+                </el-button>
+              </div>
+              <div class="video-grid" v-if="homeVideos.length > 0">
+                <VideoCard
+                  v-for="video in homeVideos"
+                  :key="video.id"
+                  :video="video"
+                  @click="handleVideoClick"
+                />
+              </div>
+              <el-empty v-else description="暂无投稿视频" :image-size="80" />
+            </div>
+
+            <!-- 分隔线 -->
+            <div class="home-section-divider"></div>
+
+            <!-- 收藏栏目 -->
+            <div class="home-section">
+              <div class="section-header">
+                <h3 class="section-title">
+                  <el-icon class="title-icon"><Star /></el-icon>
+                  收藏
+                </h3>
+                <el-button type="primary" link @click="activeTab = 'favorites'">
+                  查看更多
+                  <el-icon><ArrowRight /></el-icon>
+                </el-button>
+              </div>
+              <div class="video-grid" v-if="homeCollections.length > 0">
+                <VideoCard
+                  v-for="video in homeCollections"
+                  :key="video.id"
+                  :video="video"
+                  @click="handleVideoClick"
+                />
+              </div>
+              <el-empty v-else description="暂无收藏视频" :image-size="80" />
+            </div>
+
+            <!-- 分隔线 -->
+            <div class="home-section-divider"></div>
+
+            <!-- 历史记录栏目 -->
+            <div class="home-section">
+              <div class="section-header">
+                <h3 class="section-title">
+                  <el-icon class="title-icon"><Clock /></el-icon>
+                  历史记录
+                </h3>
+                <el-button type="primary" link @click="activeTab = 'history'">
+                  查看更多
+                  <el-icon><ArrowRight /></el-icon>
+                </el-button>
+              </div>
+              <div class="video-grid" v-if="homeHistory.length > 0">
+                <VideoCard
+                  v-for="item in homeHistory"
+                  :key="item.video.id"
+                  :video="item.video"
+                  @click="handleVideoClick"
+                />
+              </div>
+              <el-empty v-else description="暂无观看历史" :image-size="80" />
             </div>
           </section>
 
@@ -244,6 +314,7 @@
               <p class="empty-text">还没有观看历史</p>
             </div>
           </section>
+
         </div>
 
         <!-- Right Column - Sidebar -->
@@ -288,7 +359,7 @@
           </div>
 
           <!-- Tags Card -->
-          <div class="sidebar-card tags-card">
+          <div class="sidebar-card tags-card" v-if="topTags.length > 0">
             <div class="card-header">
               <h3 class="card-title">
                 <el-icon class="title-icon"><PriceTag /></el-icon>
@@ -297,10 +368,37 @@
             </div>
             <div class="card-body">
               <div class="tags-list">
-                <span class="tag-item">科技</span>
-                <span class="tag-item">游戏</span>
-                <span class="tag-item">音乐</span>
-                <span class="tag-item">生活</span>
+                <el-tag
+                  v-for="tag in topTags"
+                  :key="tag"
+                  class="tag-item"
+                  round
+                  @click="handleTagClick(tag)"
+                >
+                  {{ tag }}
+                </el-tag>
+              </div>
+            </div>
+          </div>
+
+          <!-- Followers Management Card -->
+          <div class="sidebar-card followers-card" @click="showFollowersDialog = true">
+            <div class="card-header">
+              <h3 class="card-title">
+                <el-icon class="title-icon"><UserFilled /></el-icon>
+                粉丝管理
+              </h3>
+            </div>
+            <div class="card-body">
+              <div class="followers-stats">
+                <div class="stat-row">
+                  <span class="stat-label">我关注的</span>
+                  <span class="stat-value">{{ followingList.length }}</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">我的粉丝</span>
+                  <span class="stat-value">{{ followersList.length }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -369,19 +467,115 @@
         <el-button type="primary" @click="handleCreateFolder">创建</el-button>
       </template>
     </el-dialog>
+
+    <!-- Followers Management Dialog -->
+    <el-dialog
+      v-model="showFollowersDialog"
+      title="粉丝管理"
+      width="600px"
+      @open="loadFollowers"
+    >
+      <!-- 标签切换 -->
+      <div class="followers-tabs">
+        <el-radio-group v-model="followersTab" @change="handleFollowersTabChange">
+          <el-radio-button label="following">我关注的</el-radio-button>
+          <el-radio-button label="followers">我的粉丝</el-radio-button>
+        </el-radio-group>
+      </div>
+
+      <!-- 加载状态 -->
+      <div v-if="followersLoading" class="loading-state">
+        <el-icon class="loading-icon" :size="32"><Loading /></el-icon>
+        <p class="loading-text">加载中...</p>
+      </div>
+
+      <!-- 我关注的列表 -->
+      <div v-else-if="followersTab === 'following'" class="followers-list">
+        <div v-if="followingList.length > 0" class="user-list">
+          <div 
+            v-for="user in followingList"
+            :key="user.id"
+            class="user-item"
+          >
+            <div class="user-avatar-wrapper" @click="handleUserClick(user.id)">
+              <img 
+                :src="user.avatar || '/default-avatar.png'" 
+                :alt="user.nickname"
+                class="user-avatar-img"
+              />
+            </div>
+            <div class="user-info-wrapper">
+              <div class="user-name" @click="handleUserClick(user.id)">{{ user.nickname }}</div>
+              <div class="user-username">@{{ user.username }}</div>
+              <div class="user-time">关注于 {{ formatDate(user.followed_at) }}</div>
+            </div>
+            <div class="user-actions">
+              <el-button 
+                type="danger" 
+                size="small"
+                @click="handleUnfollow(user.id)"
+              >
+                取消关注
+              </el-button>
+            </div>
+          </div>
+        </div>
+        <div v-else class="empty-state">
+          <el-icon class="empty-icon" :size="48"><UserFilled /></el-icon>
+          <p class="empty-text">还没有关注任何人</p>
+        </div>
+      </div>
+
+      <!-- 我的粉丝列表 -->
+      <div v-else-if="followersTab === 'followers'" class="followers-list">
+        <div v-if="followersList.length > 0" class="user-list">
+          <div 
+            v-for="user in followersList"
+            :key="user.id"
+            class="user-item"
+          >
+            <div class="user-avatar-wrapper" @click="handleUserClick(user.id)">
+              <img 
+                :src="user.avatar || '/default-avatar.png'" 
+                :alt="user.nickname"
+                class="user-avatar-img"
+              />
+            </div>
+            <div class="user-info-wrapper">
+              <div class="user-name" @click="handleUserClick(user.id)">{{ user.nickname }}</div>
+              <div class="user-username">@{{ user.username }}</div>
+              <div class="user-time">关注于 {{ formatDate(user.followed_at) }}</div>
+            </div>
+            <div class="user-actions">
+              <el-button 
+                type="danger" 
+                size="small"
+                @click="handleRemoveFollower(user.id)"
+              >
+                移除粉丝
+              </el-button>
+            </div>
+          </div>
+        </div>
+        <div v-else class="empty-state">
+          <el-icon class="empty-icon" :size="48"><UserFilled /></el-icon>
+          <p class="empty-text">还没有粉丝</p>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from "vue";
+import { ref, reactive, onMounted, onUnmounted, watch, computed } from "vue";
 import { useRouter } from "vue-router";
-import { Edit, HomeFilled, VideoCamera, Star, Clock, Search, Trophy, Bell, PriceTag, Delete, Plus, Folder, Document } from "@element-plus/icons-vue";
+import { Edit, HomeFilled, VideoCamera, Star, Clock, Search, Trophy, Bell, PriceTag, Delete, Plus, Folder, Document, ArrowRight, UserFilled, Loading } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useUserStore } from "@/shared/stores/user";
 import { useUserActions } from "@/features/user/composables/useUserActions";
 import { getMyVideos } from "@/features/video/shared/api/video.api";
 import { getMyCollections } from "@/features/video/shared/api/video.api";
-import { getUserStats, getWatchHistory, type WatchHistoryItem, getCollectionFolders, createCollectionFolder, type CollectionFolder } from "@/features/user/api/user.api";
+import { getUserStats, getWatchHistory, type WatchHistoryItem, getCollectionFolders, createCollectionFolder, type CollectionFolder, getFollowers, followUser, unfollowUser, removeFollower, type FollowUser, getUserTopTags } from "@/features/user/api/user.api";
 import type { UserInfo, Video } from "@/shared/types/entity";
 import { formatNumber } from "@/shared/utils/formatters";
 
@@ -405,6 +599,7 @@ const selectedFolderId = ref<number | null | undefined>(undefined);
 const showCreateFolderDialog = ref(false);
 const newFolderName = ref('');
 const newFolderDescription = ref('');
+const topTags = ref<string[]>([]); // 用户最常用的标签
 const userStats = reactive({
   following_count: 0,
   followers_count: 0,
@@ -413,6 +608,16 @@ const userStats = reactive({
 const editVisible = ref(false);
 const infoFormRef = ref(null);
 const activeTab = ref('home');
+const showFollowersDialog = ref(false);
+const followersTab = ref('following');
+const followersLoading = ref(false);
+const followingList = ref<any[]>([]);
+const followersList = ref<any[]>([]);
+
+// 主页展示数据（前4个）
+const homeVideos = computed(() => videos.value.slice(0, 4));
+const homeCollections = computed(() => collections.value.slice(0, 4));
+const homeHistory = computed(() => watchHistory.value.slice(0, 4));
 
 // Avatar handling
 const cropperVisible = ref(false);
@@ -427,6 +632,7 @@ onMounted(async () => {
   await loadCollectionFolders();
   await loadMyCollections();
   await loadWatchHistory();
+  await loadUserTopTags(); // 加载用户最常用标签
   
   // 监听来自导航栏的标签页切换事件
   window.addEventListener('switch-tab', handleTabSwitch);
@@ -481,7 +687,7 @@ const loadUserStats = async () => {
 // Load user's videos
 const loadMyVideos = async () => {
   try {
-    const res = await getMyVideos({ page: 1, page_size: 8 });
+    const res = await getMyVideos({ page: 1, page_size: 100 }); // 加载更多以便主页展示
     if (res.success && res.data?.items) {
       videos.value = res.data.items;
     }
@@ -514,7 +720,7 @@ const loadMyCollections = async () => {
   try {
     const res = await getMyCollections({ 
       page: 1, 
-      page_size: 8,
+      page_size: selectedFolderId.value === undefined ? 100 : 8, // 主页需要更多数据
       folder_id: selectedFolderId.value === undefined ? undefined : selectedFolderId.value
     });
     if (res.success && res.data?.items) {
@@ -611,6 +817,139 @@ const handleSubmit = async (data: { nickname?: string; intro?: string }) => {
     editVisible.value = false;
   }
 };
+
+// 粉丝管理相关函数
+const loadFollowers = async () => {
+  followersLoading.value = true;
+  try {
+    const res = await getFollowers();
+    if (res.success && res.data) {
+      followingList.value = res.data.following || [];
+      followersList.value = res.data.followers || [];
+    }
+  } catch (error) {
+    console.error('加载关注列表失败:', error);
+    ElMessage.error('加载关注列表失败');
+  } finally {
+    followersLoading.value = false;
+  }
+};
+
+const handleFollowersTabChange = () => {
+  // 标签切换时不需要重新加载，数据已经在 loadFollowers 中加载了
+};
+
+const handleUnfollow = async (userId: number) => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要取消关注该用户吗？',
+      '取消关注确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+    
+    const res = await unfollowUser(userId);
+    if (res.success) {
+      ElMessage.success('取消关注成功');
+      // 重新加载关注列表和统计数据
+      await loadFollowers();
+      await loadUserStats();
+    }
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('取消关注失败:', error);
+      ElMessage.error(error.response?.data?.detail || '取消关注失败');
+    }
+  }
+};
+
+const handleRemoveFollower = async (userId: number) => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要移除该粉丝吗？移除后该用户将不再关注你，此操作不可恢复。',
+      '移除粉丝确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+    
+    const res = await removeFollower(userId);
+    if (res.success) {
+      ElMessage.success('移除粉丝成功');
+      // 重新加载粉丝列表和统计数据
+      await loadFollowers();
+      await loadUserStats();
+    }
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('移除粉丝失败:', error);
+      ElMessage.error(error.response?.data?.detail || '移除粉丝失败');
+    }
+  }
+};
+
+const handleUserClick = (userId: number) => {
+  // 跳转到用户主页（如果当前用户是自己，则跳转到个人中心）
+  if (userId === userStore.userInfo?.id) {
+    router.push('/profile');
+  } else {
+    router.push(`/users/${userId}`);
+  }
+};
+
+// Load user top tags
+const loadUserTopTags = async () => {
+  try {
+    if (!userStore.userInfo?.id) return;
+    const res = await getUserTopTags(userStore.userInfo.id);
+    if (res.success && res.data?.top_tags) {
+      topTags.value = res.data.top_tags;
+    }
+  } catch (error) {
+    console.error('加载用户最常用标签失败:', error);
+  }
+};
+
+// Handle tag click
+const handleTagClick = (tag: string) => {
+  router.push({ path: '/search', query: { keyword: tag, type: 'video', tags: tag } });
+};
+
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  
+  if (days === 0) {
+    return '今天';
+  } else if (days === 1) {
+    return '昨天';
+  } else if (days < 7) {
+    return `${days}天前`;
+  } else if (days < 30) {
+    const weeks = Math.floor(days / 7);
+    return `${weeks}周前`;
+  } else if (days < 365) {
+    const months = Math.floor(days / 30);
+    return `${months}个月前`;
+  } else {
+    const years = Math.floor(days / 365);
+    return `${years}年前`;
+  }
+};
+
+// 监听粉丝管理对话框打开，加载数据
+watch(showFollowersDialog, async (isOpen) => {
+  if (isOpen) {
+    await loadFollowers();
+  }
+});
 </script>
 
 <style lang="scss" scoped>
@@ -1157,6 +1496,199 @@ const handleSubmit = async (data: { nickname?: string; intro?: string }) => {
 
 .history-grid {
   position: relative;
+}
+
+/* Home Section Styles */
+.home-section {
+  margin-bottom: var(--space-6);
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+  
+  .section-header {
+    margin-bottom: var(--space-4);
+  }
+  
+  .section-title {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+  }
+}
+
+.home-section-divider {
+  height: 1px;
+  background: var(--border-light);
+  margin: var(--space-6) 0;
+  position: relative;
+  
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 8px;
+    height: 8px;
+    background: var(--bg-white);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-circle);
+    transform: translateY(-50%);
+  }
+  
+  &::before {
+    left: -4px;
+  }
+  
+  &::after {
+    right: -4px;
+  }
+}
+
+/* Followers Management Card */
+.followers-card {
+  cursor: pointer;
+  transition: all var(--transition-base);
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+}
+
+.followers-stats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) 0;
+  
+  .stat-label {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+  }
+  
+  .stat-value {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--primary-color);
+  }
+}
+
+/* Followers Management Dialog */
+.followers-tabs {
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.followers-list {
+  margin-top: var(--space-4);
+}
+
+.user-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--bg-gray-1);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-base);
+  
+  &:hover {
+    background: var(--bg-gray-2);
+    box-shadow: var(--shadow-sm);
+  }
+}
+
+.user-avatar-wrapper {
+  flex-shrink: 0;
+  cursor: pointer;
+  
+  .user-avatar-img {
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-circle);
+    object-fit: cover;
+    border: 2px solid var(--border-light);
+    transition: all var(--transition-base);
+    
+    &:hover {
+      border-color: var(--primary-color);
+      transform: scale(1.05);
+    }
+  }
+}
+
+.user-info-wrapper {
+  flex: 1;
+  min-width: 0;
+  
+  .user-name {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-primary);
+    margin-bottom: var(--space-1);
+    cursor: pointer;
+    transition: color var(--transition-base);
+    
+    &:hover {
+      color: var(--primary-color);
+    }
+  }
+  
+  .user-username {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    margin-bottom: var(--space-1);
+  }
+  
+  .user-time {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+  }
+}
+
+.user-actions {
+  flex-shrink: 0;
+}
+
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12) 0;
+  color: var(--text-tertiary);
+  
+  .loading-icon {
+    animation: rotate 1s linear infinite;
+    margin-bottom: var(--space-4);
+  }
+  
+  .loading-text {
+    font-size: var(--font-size-sm);
+    margin: 0;
+  }
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Responsive */

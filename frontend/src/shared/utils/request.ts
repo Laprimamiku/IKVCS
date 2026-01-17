@@ -71,15 +71,19 @@ service.interceptors.response.use(
     if (error.response) {
       const { status, data } = error.response;
       const msg = data?.detail || data?.message || '请求失败';
+      const isSilent = Boolean((error as any)?.config?.silent);
       
       if (status === 401) {
         ElMessage.error('登录已过期，请重新登录');
         localStorage.removeItem('access_token');
-      } else {
+      } else if (!isSilent) {
         ElMessage.error(msg);
       }
     } else {
-      ElMessage.error('网络错误，请检查网络连接');
+      const isSilent = Boolean((error as any)?.config?.silent);
+      if (!isSilent) {
+        ElMessage.error('网络错误，请检查网络连接');
+      }
     }
     return Promise.reject(error);
   }
@@ -121,4 +125,3 @@ export const uploadRequest = {
 };
 
 export default service;
-

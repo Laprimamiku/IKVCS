@@ -54,7 +54,23 @@ class SubtitleReviewService:
         self.mode = getattr(settings, "LLM_MODE", "hybrid").lower()
         self.use_cloud = self.mode in ("cloud_only", "hybrid") and bool(settings.LLM_API_KEY)
         # 字幕审核由云端模型负责；本地模型不用于字幕审核（可后续扩展）
-        self.use_local = False
+        self.use_local = self.mode in ("local_only", "hybrid") and bool(self.local_base_url) and bool(self.local_model)
+
+    def _normalize_confidence(self, result: Dict[str, Any]) -> float:
+        conf = result.get("confidence")
+        if conf is None:
+            score = result.get("score", 60)
+            conf = max(0.0, min(1.0, float(score) / 100))
+        return float(conf)
+
+    def _should_escalate(self, confidence: float, text_length: int) -> bool:
+        if not getattr(settings, "LOCAL_LLM_ESCALATE_TO_CLOUD", True):
+            return False
+        min_chars = int(getattr(settings, "LOCAL_LLM_ESCALATE_MIN_CHARS", 0) or 0)
+        if text_length < min_chars:
+            return False
+        threshold = float(getattr(settings, "LOCAL_LLM_ESCALATE_CONFIDENCE", 0.55) or 0.55)
+        return confidence < threshold
     
     async def review_subtitle(
         self,
@@ -92,11 +108,35 @@ class SubtitleReviewService:
                 "description": "LLM_MODE=off，跳过字幕审核"
             }
         
+        if self.use_local:
+            logger.info(
+                "[SubtitleReview] local model: %s @ %s",
+                self.local_model,
+                self.local_base_url,
+            )
+            local_result = await self._review_with_local_model(subtitle_text)
+            if local_result is not None:
+                confidence = self._normalize_confidence(local_result)
+                local_result.setdefault("confidence", confidence)
+                local_result.setdefault("source", "local_model")
+                local_result.setdefault("model_name", self.local_model)
+                if self.use_cloud and self._should_escalate(confidence, len(subtitle_text)):
+                    logger.info("[SubtitleReview] low confidence, escalate to cloud")
+                    cloud = await self._review_with_cloud_model(subtitle_text)
+                    if cloud is not None:
+                        cloud.setdefault("source", "cloud_llm")
+                        cloud.setdefault("model_name", settings.LLM_MODEL)
+                        return cloud
+                return local_result
+            logger.warning("[SubtitleReview] local model failed, fallback to cloud if available")
+
         # 字幕审核：统一走云端（当前不使用本地模型进行字幕审核）
         if self.use_cloud:
             logger.info(f"[SubtitleReview] 调用云端模型: {settings.LLM_MODEL} @ {settings.LLM_BASE_URL}")
             cloud = await self._review_with_cloud_model(subtitle_text)
             if cloud is not None:
+                cloud.setdefault("source", "cloud_llm")
+                cloud.setdefault("model_name", settings.LLM_MODEL)
                 return cloud
             logger.warning("[SubtitleReview] 云端模型审核失败")
 

@@ -5,7 +5,7 @@
       @register="showAuthDialog = true"
     />
 
-    <div class="page-content" v-if="videoData">
+    <div class="page-content" v-if="videoData && !loading">
       <!-- Main Content Area -->
       <div class="main-section">
         <!-- Player Container -->
@@ -73,7 +73,7 @@
           <div class="action-bar">
             <div class="action-item like-btn" :class="{ active: isLiked }" @click="handleLike">
               <div class="action-icon">
-                <el-icon :size="20" class="like-icon" :class="{ 'is-liked': isLiked }"><CircleCheckFilled /></el-icon>
+                <ThumbsUpIcon :size="20" :is-liked="isLiked" class="like-icon" />
               </div>
               <span class="action-text">{{ formatNumber(likeCount) }}</span>
             </div>
@@ -101,13 +101,47 @@
           </div>
 
           <!-- Video Description -->
-          <div class="video-desc" :class="{ expanded: descExpanded }">
-            <div class="desc-content">
-              {{ videoData.description || '暂无简介' }}
+          <div class="video-desc-section">
+            <div class="desc-header">
+              <h3 class="desc-title">简介</h3>
+              <el-button 
+                type="primary" 
+                size="small" 
+                :loading="summaryGenerating"
+                @click="handleGenerateSummary"
+              >
+                <el-icon><MagicStick /></el-icon>
+                生成摘要
+              </el-button>
             </div>
-            <div class="desc-toggle" v-if="videoData.description?.length > 100" @click="descExpanded = !descExpanded">
-              {{ descExpanded ? '收起' : '展开' }}
-              <el-icon><ArrowDown v-if="!descExpanded" /><ArrowUp v-else /></el-icon>
+            <div class="video-desc" :class="{ expanded: descExpanded }">
+              <div class="desc-content">
+                {{ videoData.description || '暂无简介' }}
+              </div>
+              <div class="desc-toggle" v-if="videoData.description?.length > 100" @click="descExpanded = !descExpanded">
+                {{ descExpanded ? '收起' : '展开' }}
+                <el-icon><ArrowDown v-if="!descExpanded" /><ArrowUp v-else /></el-icon>
+              </div>
+            </div>
+            
+            <!-- AI Generated Summary -->
+            <div v-if="aiSummary" class="ai-summary-section">
+              <div class="summary-item" v-if="aiSummary.problem_background">
+                <h4 class="summary-label">问题背景</h4>
+                <p class="summary-content">{{ aiSummary.problem_background }}</p>
+              </div>
+              <div class="summary-item" v-if="aiSummary.research_methods">
+                <h4 class="summary-label">研究方法</h4>
+                <p class="summary-content">{{ aiSummary.research_methods }}</p>
+              </div>
+              <div class="summary-item" v-if="aiSummary.main_findings">
+                <h4 class="summary-label">主要发现</h4>
+                <p class="summary-content">{{ aiSummary.main_findings }}</p>
+              </div>
+              <div class="summary-item" v-if="aiSummary.conclusions">
+                <h4 class="summary-label">最终结论</h4>
+                <p class="summary-content">{{ aiSummary.conclusions }}</p>
+              </div>
             </div>
           </div>
 
@@ -123,8 +157,15 @@
           </div>
 
           <!-- Tags -->
-          <div class="video-tags" v-if="videoData.category">
-            <span class="tag">{{ videoData.category.name }}</span>
+          <div class="video-tags" v-if="displayTags.length > 0">
+            <el-tag
+              v-for="tag in displayTags"
+              :key="tag.id || `category-${tag.name}`"
+              class="tag"
+              @click="handleTagClick(tag)"
+            >
+              {{ tag.name }}
+            </el-tag>
           </div>
         </div>
 
@@ -176,7 +217,7 @@
     </div>
 
     <!-- Loading State -->
-    <div v-else class="loading-state">
+    <div v-else-if="loading" class="loading-state">
       <div class="loading-player">
         <div class="skeleton-box"></div>
       </div>
@@ -208,9 +249,10 @@ import {
   More,
   ArrowDown,
   ArrowUp,
-  CircleCheckFilled,
   Warning,
+  MagicStick,
 } from "@element-plus/icons-vue";
+import ThumbsUpIcon from "@/shared/components/icons/ThumbsUpIcon.vue";
 
 import AppHeader from "@/shared/components/layout/AppHeader.vue";
 import AuthDialog from "@/features/auth/components/AuthDialog.vue";
@@ -231,8 +273,10 @@ import {
   useDanmaku,
   DANMAKU_DURATION,
 } from "@/features/video/player/composables/useDanmaku";
-import { getVideoOutline } from "@/features/video/shared/api/video.api";
+import { getVideoOutline, generateStructuredVideoSummary } from "@/features/video/shared/api/video.api";
+import { request } from "@/shared/utils/request";
 import type { VideoOutlineEntry } from "@/shared/types/entity";
+import { followUser, unfollowUser } from "@/features/user/api/user.api";
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -242,6 +286,29 @@ const showMoreActions = ref(false);
 const descExpanded = ref(false);
 const isFollowed = ref(false);
 const filterLowScore = ref(false);
+const summaryGenerating = ref(false);
+const aiSummary = ref<{
+  problem_background?: string;
+  research_methods?: string;
+  main_findings?: string;
+  conclusions?: string;
+} | null>(null);
+
+// 显示标签（不包含分类标签）
+const displayTags = computed(() => {
+  const tags: Array<{ id?: number; name: string }> = [];
+  
+  // 只显示用户添加的标签，不包含分类
+  if (videoData.value?.tags && Array.isArray(videoData.value.tags)) {
+    videoData.value.tags.forEach((tag: any) => {
+      if (typeof tag === 'object' && tag.id && tag.name) {
+        tags.push({ id: tag.id, name: tag.name });
+      }
+    });
+  }
+  
+  return tags;
+});
 // 播放量统计在后端拉取详情时处理，这里不在播放事件中重复计数
 
 // 注意：精选开关切换时不需要任何操作
@@ -250,7 +317,20 @@ const filterLowScore = ref(false);
 // 弹幕会继续按照原来的时间位置滚动，只是根据 filterLowScore 控制可见性
 
 // Video data
-const { videoData, recommendVideos, videoIdRef } = useVideoPlayer();
+const { videoData, recommendVideos, videoIdRef, loading } = useVideoPlayer();
+
+// 初始化关注状态（从视频数据中获取）
+watch(
+  () => videoData.value?.uploader?.is_following,
+  (isFollowing) => {
+    if (isFollowing !== undefined) {
+      isFollowed.value = isFollowing;
+    } else {
+      isFollowed.value = false;
+    }
+  },
+  { immediate: true }
+);
 
 // 视频大纲数据
 const outlineData = ref<VideoOutlineEntry[]>([]);
@@ -398,13 +478,39 @@ const handleOutlineJump = (time: number) => {
   }
 };
 
-const handleFollow = () => {
+const handleFollow = async () => {
   if (!userStore.isLoggedIn) {
     showAuthDialog.value = true;
     return;
   }
-  isFollowed.value = !isFollowed.value;
-  ElMessage.success(isFollowed.value ? "关注成功" : "已取消关注");
+  
+  if (!videoData.value?.uploader?.id) {
+    ElMessage.error('无法获取UP主信息');
+    return;
+  }
+  
+  const uploaderId = videoData.value.uploader.id;
+  
+  try {
+    if (isFollowed.value) {
+      // 取关
+      const res = await unfollowUser(uploaderId);
+      if (res.success) {
+        isFollowed.value = false;
+        ElMessage.success('取消关注成功');
+      }
+    } else {
+      // 关注
+      const res = await followUser(uploaderId);
+      if (res.success) {
+        isFollowed.value = true;
+        ElMessage.success('关注成功');
+      }
+    }
+  } catch (error: any) {
+    console.error('关注操作失败:', error);
+    ElMessage.error(error.response?.data?.detail || '操作失败');
+  }
 };
 
 // Handle collect click
@@ -467,6 +573,16 @@ const handleReport = async () => {
   }
 };
 
+// Handle tag click
+const handleTagClick = (tag: { id?: number; name: string }) => {
+  // 如果有标签ID，使用标签ID搜索；如果没有ID（如分类标签），使用名称作为关键词搜索
+  if (tag.id) {
+    router.push({ path: '/search', query: { type: 'video', tags: tag.id.toString() } });
+  } else {
+    router.push({ path: '/search', query: { keyword: tag.name, type: 'video' } });
+  }
+};
+
 // Handle folder selection confirm
 const handleFolderConfirm = async (folderId: number | null) => {
   if (!videoData.value) return;
@@ -495,6 +611,38 @@ const handleFolderConfirm = async (folderId: number | null) => {
     ElMessage.error('收藏失败');
   }
 };
+
+// Handle generate summary
+const handleGenerateSummary = async () => {
+  if (!videoData.value) return;
+  
+  summaryGenerating.value = true;
+  aiSummary.value = null;
+  
+  try {
+    // 调用后端API实时生成结构化摘要
+    const response = await generateStructuredVideoSummary(videoData.value.id);
+    
+    if (response.success && response.data) {
+      // 直接使用返回的结构化摘要数据
+      aiSummary.value = {
+        problem_background: response.data.problem_background || '',
+        research_methods: response.data.research_methods || '',
+        main_findings: response.data.main_findings || '',
+        conclusions: response.data.conclusions || ''
+      };
+      ElMessage.success('摘要生成成功');
+    } else {
+      ElMessage.error('生成摘要失败');
+    }
+  } catch (error: any) {
+    console.error('生成摘要失败:', error);
+    ElMessage.error(error?.response?.data?.detail || '生成摘要失败');
+  } finally {
+    summaryGenerating.value = false;
+  }
+};
+
 </script>
 
 <style lang="scss" scoped>
@@ -729,9 +877,29 @@ const handleFolderConfirm = async (folderId: number | null) => {
   }
 }
 
-/* Video Description */
-.video-desc {
+/* Video Description Section */
+.video-desc-section {
   padding: var(--space-4) 0;
+  border-top: 1px solid var(--divider-color);
+  margin-top: var(--space-4);
+}
+
+.desc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+  
+  .desc-title {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin: 0;
+  }
+}
+
+.video-desc {
+  padding: var(--space-3) 0;
   
   .desc-content {
     font-size: var(--font-size-base);
@@ -757,6 +925,36 @@ const handleFolderConfirm = async (folderId: number | null) => {
     
     &:hover {
       color: var(--bili-pink);
+    }
+  }
+}
+
+/* AI Summary Section */
+.ai-summary-section {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  background: var(--bg-gray-1);
+  border-radius: var(--radius-md);
+  
+  .summary-item {
+    margin-bottom: var(--space-4);
+    
+    &:last-child {
+      margin-bottom: 0;
+    }
+    
+    .summary-label {
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
+      margin: 0 0 var(--space-2);
+    }
+    
+    .summary-content {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin: 0;
     }
   }
 }

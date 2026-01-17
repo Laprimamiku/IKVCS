@@ -14,8 +14,12 @@ from app.models.danmaku import Danmaku
 from app.models.comment import Comment
 from app.models.report import Report
 from app.models.ai_training_sample import AiTrainingSample
+from app.models.ai_prompt_task import AiPromptTask
+from app.models.ai_prompt_experiment import AiPromptExperiment
 from app.models.watch_history import WatchHistory
 from app.models.collection_folder import CollectionFolder
+from app.models.user_follow import UserFollow
+from app.models.video_tag import VideoTag
 
 # AI 相关模型（可选）
 try:
@@ -35,6 +39,10 @@ __all__ = [
     "Report",
     "WatchHistory",
     "CollectionFolder",
+    "UserFollow",
+    "VideoTag",
+    "AiPromptTask",
+    "AiPromptExperiment",
 ]
 
 if _has_agent_analysis:

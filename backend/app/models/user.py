@@ -45,6 +45,8 @@ class User(Base):
     # 权限和状态
     role = Column(Enum('user', 'admin', name='user_role'), default='user', comment="角色")
     status = Column(Integer, default=1, comment="状态：0=封禁, 1=正常")
+    # profile_visible 字段暂时不添加到模型中，因为数据库表中可能还没有该字段
+    # 如果需要，可以通过数据库迁移添加该字段
     
     # 时间字段
     last_login_time = Column(DateTime, nullable=True, comment="最后登录时间")
