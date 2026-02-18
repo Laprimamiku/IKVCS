@@ -33,12 +33,20 @@ export default defineConfig({
         target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true
       },
-      // 注意：不要代理 /videos，因为这是前端路由
-      // 只代理 /api/v1/videos 的 API 请求
-      // '/videos': {
-      //   target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
-      //   changeOrigin: true
-      // },
+      // 代理 /videos 路径（HLS 视频文件），但排除前端路由 /videos/:id
+      '/videos': {
+        target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
+        changeOrigin: true,
+        bypass(req) {
+          // 如果请求的是前端路由 /videos/:id（数字ID），不代理
+          const path = req.url || '';
+          const videoIdMatch = path.match(/^\/videos\/(\d+)$/);
+          if (videoIdMatch) {
+            return '/index.html';
+          }
+          // 其他 /videos 路径（如 /videos/hls/...）代理到后端
+        }
+      },
       '/uploads': {
         target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true,
