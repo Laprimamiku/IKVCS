@@ -9,9 +9,9 @@
       class="form"
     >
       <el-form-item label="用户名">
-        <el-input 
-          :model-value="userInfo.username" 
-          disabled 
+        <el-input
+          :model-value="userInfo.username"
+          disabled
           class="input-disabled"
         />
         <span class="form-tip">用户名不可修改</span>
@@ -20,7 +20,7 @@
       <el-form-item label="昵称" prop="nickname">
         <el-input
           v-model="formData.nickname"
-          placeholder="请输入昵称"
+          placeholder="默认使用用户名"
           maxlength="50"
           show-word-limit
           class="input"
@@ -31,21 +31,12 @@
         <el-input
           v-model="formData.intro"
           type="textarea"
-          placeholder="介绍一下自己吧~"
+          placeholder="这个人很懒，什么都没有写~"
           :rows="4"
           maxlength="500"
           show-word-limit
           class="textarea"
         />
-      </el-form-item>
-
-      <el-form-item label="角色">
-        <el-tag 
-          :type="userInfo.role === 'admin' ? 'danger' : 'info'"
-          class="role-tag"
-        >
-          {{ userInfo.role === 'admin' ? '管理员' : '普通用户' }}
-        </el-tag>
       </el-form-item>
 
       <el-form-item label="注册时间">
@@ -57,16 +48,16 @@
       </el-form-item>
 
       <el-form-item>
-        <el-button 
-          type="primary" 
-          @click="handleSubmit" 
+        <el-button
+          type="primary"
+          @click="handleSubmit"
           :loading="submitting"
           class="submit-btn"
         >
           <el-icon v-if="!submitting"><Check /></el-icon>
           <span>{{ submitting ? '保存中...' : '保存修改' }}</span>
         </el-button>
-        <el-button 
+        <el-button
           @click="handleReset"
           class="reset-btn"
         >
@@ -79,22 +70,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, watch } from 'vue'
 import { Check, RefreshLeft } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { UserInfo } from "@/shared/types/entity"
 
-defineProps<{
+const props = defineProps<{
   userInfo: UserInfo
   submitting: boolean
 }>()
 
 const emit = defineEmits<{
   submit: [data: { nickname: string; intro: string }]
-  reset: []
 }>()
 
 const formRef = ref<FormInstance | null>(null)
+const DEFAULT_INTRO = '这个人很懒，什么都没有写~'
 
 const formData = reactive({
   nickname: '',
@@ -103,13 +94,37 @@ const formData = reactive({
 
 const rules: FormRules = {
   nickname: [
-    { required: true, message: '请输入昵称', trigger: 'blur' },
-    { min: 1, max: 50, message: '昵称长度在 1 到 50 个字符', trigger: 'blur' }
+    {
+      validator: (_rule, value, callback) => {
+        const normalized = String(value || '').trim()
+        if (!normalized) {
+          callback()
+          return
+        }
+        if (normalized.length < 2 || normalized.length > 50) {
+          callback(new Error('昵称长度在 2 到 50 个字符'))
+          return
+        }
+        callback()
+      },
+      trigger: 'blur'
+    }
   ],
   intro: [
     { max: 500, message: '简介长度不能超过 500 个字符', trigger: 'blur' }
   ]
 }
+
+const syncFormData = () => {
+  formData.nickname = props.userInfo.nickname || props.userInfo.username || ''
+  formData.intro = props.userInfo.intro || DEFAULT_INTRO
+}
+
+watch(
+  () => [props.userInfo.username, props.userInfo.nickname, props.userInfo.intro],
+  syncFormData,
+  { immediate: true }
+)
 
 const formatDate = (dateStr?: string): string => {
   if (!dateStr) return '未知'
@@ -122,23 +137,27 @@ const handleSubmit = async () => {
 
   await formRef.value.validate((valid) => {
     if (valid) {
-      emit('submit', { ...formData })
+      emit('submit', {
+        nickname: (formData.nickname || props.userInfo.username || '').trim(),
+        intro: (formData.intro || DEFAULT_INTRO).trim()
+      })
     }
   })
 }
 
 const handleReset = () => {
-  emit('reset')
+  syncFormData()
+  formRef.value?.clearValidate()
 }
 
-// 暴露方法供父组件调用
 defineExpose({
   setFormData: (data: { nickname: string; intro: string }) => {
     formData.nickname = data.nickname
     formData.intro = data.intro
   },
   resetForm: () => {
-    formRef.value?.resetFields()
+    syncFormData()
+    formRef.value?.clearValidate()
   }
 })
 </script>
@@ -193,12 +212,6 @@ defineExpose({
   margin-left: 8px;
 }
 
-.role-tag {
-  font-size: 14px;
-  padding: 6px 16px;
-  border-radius: 12px;
-}
-
 .info-text {
   font-size: 14px;
   color: var(--bili-text-2);
@@ -226,4 +239,3 @@ defineExpose({
   }
 }
 </style>
-

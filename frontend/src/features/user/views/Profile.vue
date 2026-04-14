@@ -20,30 +20,13 @@
           
           <div class="user-info">
             <div class="name-row">
-              <h1 class="nickname">{{ displayUser.nickname }}</h1>
+              <h1 class="nickname">{{ displayNickname }}</h1>
               <span class="vip-badge" v-if="false">大会员</span>
             </div>
             
             <p class="user-bio">
-              {{ displayUser.intro || "这个人很懒，什么都没有写~" }}
+              {{ displayIntro }}
             </p>
-            
-            <div class="user-stats">
-              <div class="stat-item">
-                <span class="stat-value">{{ formatNumber(userStats.following_count) }}</span>
-                <span class="stat-label">关注</span>
-              </div>
-              <div class="stat-divider"></div>
-              <div class="stat-item">
-                <span class="stat-value">{{ formatNumber(userStats.followers_count) }}</span>
-                <span class="stat-label">粉丝</span>
-              </div>
-              <div class="stat-divider"></div>
-              <div class="stat-item">
-                <span class="stat-value">{{ formatNumber(userStats.total_likes) }}</span>
-                <span class="stat-label">获赞</span>
-              </div>
-            </div>
           </div>
           
           <div class="action-buttons">
@@ -75,7 +58,6 @@
           >
             <el-icon class="tab-icon"><VideoCamera /></el-icon>
             <span class="tab-text">投稿</span>
-            <span class="tab-count">{{ videos.length }}</span>
           </div>
           <div 
             class="nav-tab"
@@ -92,18 +74,6 @@
           >
             <el-icon class="tab-icon"><Clock /></el-icon>
             <span class="tab-text">历史记录</span>
-            <span class="tab-count">{{ watchHistory.length }}</span>
-          </div>
-        </div>
-        
-        <div class="nav-search">
-          <div class="search-box">
-            <el-icon class="search-icon"><Search /></el-icon>
-            <input 
-              type="text" 
-              placeholder="搜索视频" 
-              class="search-input"
-            />
           </div>
         </div>
       </div>
@@ -184,7 +154,7 @@
                 <VideoCard
                   v-for="item in homeHistory"
                   :key="item.video.id"
-                  :video="item.video"
+                  :video="item.video as Video"
                   @click="handleVideoClick"
                 />
               </div>
@@ -334,27 +304,34 @@
               </div>
               <div class="achievement-item">
                 <span class="achievement-label">获得播放</span>
-                <span class="achievement-value">{{ formatNumber(videos.reduce((sum, v) => sum + (v.view_count || 0), 0)) }}</span>
+                <span class="achievement-value">{{ formatNumber(userStats.total_views) }}</span>
               </div>
               <div class="achievement-item">
                 <span class="achievement-label">获得收藏</span>
-                <span class="achievement-value">{{ formatNumber(videos.reduce((sum, v) => sum + (v.collect_count || 0), 0)) }}</span>
+                <span class="achievement-value">{{ formatNumber(userStats.total_collections) }}</span>
               </div>
             </div>
           </div>
 
-          <!-- Announcement Card -->
-          <div class="sidebar-card announcement-card">
+          <!-- Followers Management Card -->
+          <div class="sidebar-card followers-card" @click="showFollowersDialog = true">
             <div class="card-header">
               <h3 class="card-title">
-                <el-icon class="title-icon"><Bell /></el-icon>
-                公告
+                <el-icon class="title-icon"><UserFilled /></el-icon>
+                粉丝管理
               </h3>
             </div>
             <div class="card-body">
-              <p class="announcement-text">
-                欢迎来到我的个人空间！感谢关注~
-              </p>
+              <div class="followers-stats">
+                <div class="stat-row">
+                  <span class="stat-label">我关注的</span>
+                  <span class="stat-value">{{ formatNumber(userStats.following_count) }}</span>
+                </div>
+                <div class="stat-row">
+                  <span class="stat-label">我的粉丝</span>
+                  <span class="stat-value">{{ formatNumber(userStats.followers_count) }}</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -377,28 +354,6 @@
                 >
                   {{ tag }}
                 </el-tag>
-              </div>
-            </div>
-          </div>
-
-          <!-- Followers Management Card -->
-          <div class="sidebar-card followers-card" @click="showFollowersDialog = true">
-            <div class="card-header">
-              <h3 class="card-title">
-                <el-icon class="title-icon"><UserFilled /></el-icon>
-                粉丝管理
-              </h3>
-            </div>
-            <div class="card-body">
-              <div class="followers-stats">
-                <div class="stat-row">
-                  <span class="stat-label">我关注的</span>
-                  <span class="stat-value">{{ followingList.length }}</span>
-                </div>
-                <div class="stat-row">
-                  <span class="stat-label">我的粉丝</span>
-                  <span class="stat-value">{{ followersList.length }}</span>
-                </div>
               </div>
             </div>
           </div>
@@ -569,7 +524,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, watch, computed } from "vue";
 import { useRouter } from "vue-router";
-import { Edit, HomeFilled, VideoCamera, Star, Clock, Search, Trophy, Bell, PriceTag, Delete, Plus, Folder, Document, ArrowRight, UserFilled, Loading } from "@element-plus/icons-vue";
+import { Edit, HomeFilled, VideoCamera, Star, Clock, Trophy, PriceTag, Delete, Plus, Folder, Document, ArrowRight, UserFilled, Loading } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useUserStore } from "@/shared/stores/user";
 import { useUserActions } from "@/features/user/composables/useUserActions";
@@ -603,7 +558,9 @@ const topTags = ref<string[]>([]); // 用户最常用的标签
 const userStats = reactive({
   following_count: 0,
   followers_count: 0,
-  total_likes: 0
+  total_likes: 0,
+  total_views: 0,
+  total_collections: 0
 });
 const editVisible = ref(false);
 const infoFormRef = ref(null);
@@ -618,6 +575,8 @@ const followersList = ref<any[]>([]);
 const homeVideos = computed(() => videos.value.slice(0, 4));
 const homeCollections = computed(() => collections.value.slice(0, 4));
 const homeHistory = computed(() => watchHistory.value.slice(0, 4));
+const displayNickname = computed(() => displayUser.nickname || displayUser.username || '未命名用户');
+const displayIntro = computed(() => displayUser.intro || '这个人很懒，什么都没有写~');
 
 // Avatar handling
 const cropperVisible = ref(false);
@@ -1025,15 +984,19 @@ watch(showFollowersDialog, async (isOpen) => {
 
 .user-info {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 96px;
   color: var(--text-white);
-  padding-bottom: var(--space-2);
+  padding-bottom: 0;
 }
 
 .name-row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .nickname {
@@ -1056,39 +1019,11 @@ watch(showFollowersDialog, async (isOpen) => {
 .user-bio {
   font-size: var(--font-size-sm);
   opacity: 0.9;
-  margin: 0 0 var(--space-3);
+  margin: 0;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-  max-width: 400px;
+  max-width: 420px;
 }
 
-.user-stats {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-
-.stat-value {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
-}
-
-.stat-label {
-  font-size: var(--font-size-xs);
-  opacity: 0.8;
-}
-
-.stat-divider {
-  width: 1px;
-  height: 24px;
-  background: rgba(255, 255, 255, 0.3);
-}
 
 .action-buttons {
   flex-shrink: 0;
@@ -1160,11 +1095,6 @@ watch(showFollowersDialog, async (isOpen) => {
     font-size: var(--font-size-lg);
   }
 
-  .tab-count {
-    font-size: var(--font-size-xs);
-    color: var(--text-tertiary);
-    margin-left: var(--space-1);
-  }
 
   &:hover {
     color: var(--text-primary);
@@ -1189,43 +1119,6 @@ watch(showFollowersDialog, async (isOpen) => {
   }
 }
 
-.nav-search {
-  flex-shrink: 0;
-}
-
-.search-box {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  background: var(--bg-gray-1);
-  border-radius: var(--radius-round);
-  transition: all var(--transition-base);
-
-  &:focus-within {
-    background: var(--bg-white);
-    box-shadow: 0 0 0 2px var(--primary-light);
-  }
-}
-
-.search-icon {
-  font-style: normal;
-  font-size: var(--font-size-sm);
-  opacity: 0.5;
-}
-
-.search-input {
-  width: 120px;
-  border: none;
-  background: transparent;
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-  outline: none;
-
-  &::placeholder {
-    color: var(--text-tertiary);
-  }
-}
 
 /* Main Content */
 .profile-content {
@@ -1441,13 +1334,6 @@ watch(showFollowersDialog, async (isOpen) => {
   color: var(--primary-color);
 }
 
-/* Announcement Card */
-.announcement-text {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  line-height: var(--line-height-relaxed);
-  margin: 0;
-}
 
 /* Tags Card */
 .tags-list {
@@ -1753,3 +1639,4 @@ watch(showFollowersDialog, async (isOpen) => {
   }
 }
 </style>
+

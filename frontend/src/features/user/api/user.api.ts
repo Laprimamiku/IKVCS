@@ -52,7 +52,7 @@ export function uploadAvatar(file: File) {
   const formData = new FormData()
   formData.append('file', file)
   
-  return request.post<ApiResponse<{ avatar_url: string }>>('/users/me/avatar', formData, {
+  return request.post<{ avatar_url: string }>('/users/me/avatar', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
@@ -73,7 +73,7 @@ export interface UserProfileData {
 }
 
 export async function getUserById(userId: number) {
-  const response = await request.get<ApiResponse<UserProfileData>>(`/users/${userId}`)
+  const response = await request.get<UserProfileData>(`/users/${userId}`)
   if (response.success && response.data) {
     response.data.user = processUserInfo(response.data.user) as UserInfo
   }
@@ -105,7 +105,7 @@ export interface WatchHistoryItem {
 }
 
 export async function getWatchHistory(params?: { page?: number; page_size?: number }) {
-  return request.get<ApiResponse<{ items: WatchHistoryItem[]; total: number; page: number; page_size: number }>>('/users/me/watch-history', { params })
+  return request.get<{ items: WatchHistoryItem[]; total: number; page: number; page_size: number }>('/users/me/watch-history', { params })
 }
 
 /**
@@ -115,7 +115,7 @@ export async function getWatchHistory(params?: { page?: number; page_size?: numb
  * @returns 返回删除结果
  */
 export async function deleteWatchHistory(watchHistoryId: number) {
-  return request.delete<ApiResponse>(`/users/me/watch-history/${watchHistoryId}`)
+  return request.delete(`/users/me/watch-history/${watchHistoryId}`)
 }
 
 /**
@@ -127,10 +127,14 @@ export interface UserStats {
   following_count: number
   followers_count: number
   total_likes: number
+  total_views: number
+  total_collections: number
+  total_comments?: number
+  total_danmakus?: number
 }
 
 export async function getUserStats() {
-  return request.get<ApiResponse<UserStats>>('/users/me/stats')
+  return request.get<UserStats>('/users/me/stats')
 }
 
 /**
@@ -153,14 +157,14 @@ export interface CollectionFoldersResponse {
  * 获取收藏文件夹列表
  */
 export async function getCollectionFolders() {
-  return request.get<ApiResponse<CollectionFoldersResponse>>('/users/me/favorites/folders')
+  return request.get<CollectionFoldersResponse>('/users/me/favorites/folders')
 }
 
 /**
  * 创建收藏文件夹
  */
 export async function createCollectionFolder(name: string, description?: string) {
-  return request.post<ApiResponse<CollectionFolder>>('/users/me/favorites/folders', {
+  return request.post<CollectionFolder>('/users/me/favorites/folders', {
     name,
     description
   })
@@ -182,31 +186,61 @@ export interface FollowersResponse {
   followers: FollowUser[];
 }
 
+export interface UserTopTagItem {
+  id: number;
+  name: string;
+  count: number;
+}
+
+export interface UserTopTagsResponse {
+  top_tags: string[];
+}
+
 /**
  * 获取关注和粉丝列表
  */
 export async function getFollowers() {
-  return request.get<ApiResponse<FollowersResponse>>('/users/me/followers')
+  return request.get<FollowersResponse>('/users/me/followers')
 }
 
 /**
  * 关注用户
  */
 export async function followUser(userId: number) {
-  return request.post<ApiResponse>(`/users/${userId}/follow`)
+  return request.post(`/users/${userId}/follow`)
 }
 
 /**
  * 取消关注用户
  */
 export async function unfollowUser(userId: number) {
-  return request.delete<ApiResponse>(`/users/${userId}/follow`)
+  return request.delete(`/users/${userId}/follow`)
 }
 
 /**
  * 移除粉丝（被关注者取消对方的关注）
  */
 export async function removeFollower(userId: number) {
-  return request.delete<ApiResponse>(`/users/${userId}/follower`)
+  return request.delete(`/users/${userId}/follower`)
 }
+/**
+ * 获取用户最常用标签
+ *
+ * 复用用户主页接口，并将标签对象转换为页面直接可用的标签名数组。
+ */
+export async function getUserTopTags(userId: number): Promise<ApiResponse<UserTopTagsResponse>> {
+  const response = await request.get<{ top_tags?: UserTopTagItem[] }>(`/users/${userId}`)
+  const topTags = response.success && Array.isArray(response.data?.top_tags)
+    ? response.data.top_tags
+        .map((tag) => tag.name)
+        .filter((name): name is string => Boolean(name))
+    : []
 
+  return {
+    success: response.success,
+    message: response.message,
+    data: {
+      top_tags: topTags
+    }
+  }
+}

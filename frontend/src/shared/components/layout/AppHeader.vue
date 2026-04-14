@@ -32,7 +32,7 @@
       </div>
 
       <!-- Center Section: Search -->
-      <div class="center-search" ref="searchContainerRef">
+      <div v-if="props.showSearch" class="center-search" ref="searchContainerRef">
         <div class="search-wrap" :class="{ focused: isSearchFocused }">
           <input
             ref="searchInputRef"
@@ -208,6 +208,15 @@ import {
   Clock,
 } from "@element-plus/icons-vue";
 
+const props = withDefaults(
+  defineProps<{
+    showSearch?: boolean;
+  }>(),
+  {
+    showSearch: true,
+  }
+);
+
 const router = useRouter();
 const route = useRoute();
 const userStore = useUserStore();
@@ -227,6 +236,10 @@ const emit = defineEmits(["login", "register"]);
 
 // Load search history from localStorage
 onMounted(() => {
+  if (!props.showSearch) {
+    return;
+  }
+
   const saved = localStorage.getItem('searchHistory');
   if (saved) {
     searchHistory.value = JSON.parse(saved).slice(0, 5);
@@ -237,11 +250,16 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleGlobalKeydown);
+  if (props.showSearch) {
+    document.removeEventListener('keydown', handleGlobalKeydown);
+  }
 });
 
 // Global keyboard shortcuts
 const handleGlobalKeydown = (e: KeyboardEvent) => {
+  if (!props.showSearch) {
+    return;
+  }
   // "/" to focus search
   if (e.key === '/' && !isSearchFocused.value && !isInputElement(e.target)) {
     e.preventDefault();
@@ -1002,3 +1020,4 @@ const handleLogout = async () => {
   }
 }
 </style>
+
