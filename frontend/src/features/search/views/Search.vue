@@ -169,6 +169,46 @@
               </template>
             </div>
           </div>
+          <div
+            v-if="videos.length > 0 && totalPages > 1"
+            class="pagination-section"
+          >
+            <div class="search-pagination" role="navigation" aria-label="搜索结果分页">
+              <button
+                type="button"
+                class="pagination-btn pagination-btn--nav"
+                :disabled="currentPage <= 1"
+                @click="handlePageChange(currentPage - 1)"
+              >
+                上一页
+              </button>
+
+              <button
+                v-for="item in visiblePageItems"
+                :key="String(item)"
+                type="button"
+                class="pagination-btn"
+                :class="{
+                  'is-active': item === currentPage,
+                  'is-ellipsis': typeof item !== 'number',
+                }"
+                :disabled="typeof item !== 'number'"
+                @click="typeof item === 'number' && handlePageChange(item)"
+              >
+                {{ typeof item === 'number' ? item : '...' }}
+              </button>
+
+              <button
+                type="button"
+                class="pagination-btn pagination-btn--nav"
+                :disabled="currentPage >= totalPages"
+                @click="handlePageChange(currentPage + 1)"
+              >
+                下一页
+              </button>
+            </div>
+          </div>
+
         </div>
 
         <!-- UP主列表 -->
@@ -205,7 +245,7 @@
                   主页
                 </el-button>
                 <el-button 
-                  v-if="userStore.isAuthenticated && user.id !== userStore.userInfo?.id"
+                  v-if="userStore.isLoggedIn && user.id !== userStore.userInfo?.id"
                   :type="user.is_following ? 'danger' : 'primary'"
                   size="small"
                   @click.stop="handleFollowToggle(user)"
@@ -234,7 +274,7 @@
         </div>
 
         <!-- 加载更多 -->
-        <div v-if="hasMore && (videos.length > 0 || users.length > 0)" class="load-more-section">
+        <div v-if="searchType === 'uploader' && hasMore && users.length > 0" class="load-more-section">
           <el-button 
             class="load-more-btn"
             :loading="loading"
@@ -245,7 +285,7 @@
         </div>
 
         <!-- 到底了 -->
-        <div v-if="!hasMore && (videos.length > 0 || users.length > 0)" class="no-more-section">
+        <div v-if="searchType === 'uploader' && !hasMore && users.length > 0" class="no-more-section">
           <div class="no-more-line"></div>
           <span class="no-more-text">没有更多了</span>
           <div class="no-more-line"></div>
@@ -292,6 +332,7 @@ const total = ref<number>(0);
 const currentPage = ref<number>(1);
 const pageSize = ref<number>(20);
 const hasMore = ref<boolean>(true);
+const videoPageSize = 8;
 
 // 认证弹窗
 const authDialogVisible = ref<boolean>(false);
@@ -301,6 +342,26 @@ const authMode = ref<"login" | "register">("login");
 const searchTime = computed(() => {
   const now = new Date();
   return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+});
+
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / videoPageSize)));
+const visiblePageItems = computed<(number | string)[]>(() => {
+  const pageCount = totalPages.value;
+  const page = currentPage.value;
+
+  if (pageCount <= 7) {
+    return Array.from({ length: pageCount }, (_, index) => index + 1);
+  }
+
+  if (page <= 4) {
+    return [1, 2, 3, 4, 5, 'ellipsis-right', pageCount];
+  }
+
+  if (page >= pageCount - 3) {
+    return [1, 'ellipsis-left', pageCount - 4, pageCount - 3, pageCount - 2, pageCount - 1, pageCount];
+  }
+
+  return [1, 'ellipsis-left', page - 1, page, page + 1, 'ellipsis-right', pageCount];
 });
 
 const normalizeSearchType = (value: unknown): "video" | "uploader" => {
@@ -318,6 +379,9 @@ const buildQuery = () => {
   }
   if (selectedTagIds.value.length > 0) {
     query.tags = selectedTagIds.value.join(",");
+  }
+  if (currentPage.value > 1) {
+    query.page = currentPage.value;
   }
   return query;
 };
@@ -365,6 +429,7 @@ const formatTime = (dateStr: string): string => {
  */
 onMounted(async () => {
   searchType.value = normalizeSearchType(route.query.type);
+  currentPage.value = Math.max(1, Number(route.query.page) || 1);
 
   // 从URL获取搜索关键词
   if (route.query.keyword) {
@@ -393,6 +458,7 @@ watch(
   (newQuery) => {
     const nextType = normalizeSearchType(newQuery.type);
     const nextKeyword = (newQuery.keyword as string) || "";
+    const nextPage = Math.max(1, Number(newQuery.page) || 1);
 
     // 从URL获取标签ID
     const nextTagIds: number[] = [];
@@ -408,12 +474,13 @@ watch(
     if (
       nextType !== searchType.value ||
       nextKeyword !== currentKeyword.value ||
+      nextPage !== currentPage.value ||
       JSON.stringify(nextTagIds.sort()) !== JSON.stringify(selectedTagIds.value.sort())
     ) {
       searchType.value = nextType;
       currentKeyword.value = nextKeyword;
+      currentPage.value = nextPage;
       selectedTagIds.value = nextTagIds;
-      currentPage.value = 1;
       loadResults();
     }
   }
@@ -450,7 +517,7 @@ const loadVideos = async (append = false) => {
     const params: any = {
       q: currentKeyword.value || undefined,
       page: currentPage.value,
-      page_size: pageSize.value,
+      page_size: videoPageSize,
       sort_by: getSortField(sortType.value),
       order: "desc",
     };
@@ -583,7 +650,7 @@ const handleVideoClick = (video: Video) => {
 const handleSortChange = (type: string) => {
   sortType.value = type;
   currentPage.value = 1;
-  loadResults();
+  router.push({ path: "/search", query: buildQuery() });
 };
 
 /**
@@ -597,7 +664,6 @@ const handleTypeChange = (type: "video" | "uploader") => {
   }
   currentPage.value = 1;
   router.push({ path: "/search", query: buildQuery() });
-  loadResults();
 };
 
 const userStore = useUserStore();
@@ -613,7 +679,7 @@ const handleUserClick = (user: UserBrief) => {
  * 关注/取关切换
  */
 const handleFollowToggle = async (user: UserBrief) => {
-  if (!userStore.isAuthenticated) {
+  if (!userStore.isLoggedIn) {
     ElMessage.warning('请先登录');
     return;
   }
@@ -692,14 +758,12 @@ const handleTagClick = (tag: any) => {
     selectedTagIds.value.push(tagId);
     currentPage.value = 1;
     router.push({ path: '/search', query: buildQuery() });
-    loadResults();
   } else if (tagName) {
     // 如果没有ID但有名称，使用名称作为关键词搜索
     currentKeyword.value = tagName;
     selectedTagIds.value = [];
     currentPage.value = 1;
     router.push({ path: '/search', query: buildQuery() });
-    loadResults();
   }
 };
 
@@ -709,7 +773,7 @@ const handleTagClick = (tag: any) => {
 const handleRemoveTag = (tagId: number) => {
   selectedTagIds.value = selectedTagIds.value.filter(id => id !== tagId);
   currentPage.value = 1;
-  loadResults();
+  router.push({ path: "/search", query: buildQuery() });
 };
 
 /**
@@ -771,11 +835,17 @@ const updateTagMap = () => {
  */
 const clearSearch = () => {
   selectedTagIds.value = [];
+  currentPage.value = 1;
   const query: Record<string, string> = {};
   if (searchType.value === "uploader") {
     query.type = "uploader";
   }
   router.push({ path: "/search", query });
+};
+
+const handlePageChange = (page: number) => {
+  if (page === currentPage.value || page < 1 || page > totalPages.value) return;
+  router.push({ path: "/search", query: { ...buildQuery(), page } });
 };
 
 /**
@@ -1212,6 +1282,7 @@ const handleAuthSuccess = () => {
     line-height: 1.4;
     margin: 0 0 8px;
     display: -webkit-box;
+    line-clamp: 2;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
@@ -1329,6 +1400,77 @@ const handleAuthSuccess = () => {
   color: #9499a0;
 }
 
+.pagination-section {
+  display: flex;
+  justify-content: center;
+  padding-top: 32px;
+}
+
+.search-pagination {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 auto;
+  padding: 0 8px;
+}
+
+.pagination-btn {
+  min-width: 42px;
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid #dcdfe6;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #18191c;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(24, 25, 28, 0.04);
+  transition: color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.pagination-btn--nav {
+  min-width: 104px;
+  padding: 0 24px;
+}
+
+.pagination-btn:hover:not(:disabled):not(.is-active):not(.is-ellipsis) {
+  border-color: #c9ccd3;
+  color: #00a1d6;
+  box-shadow: 0 6px 16px rgba(24, 25, 28, 0.08);
+  transform: translateY(-1px);
+}
+
+.pagination-btn.is-active {
+  border-color: #00a1d6;
+  background: linear-gradient(180deg, #2ab7f6 0%, #00a1d6 100%);
+  color: #ffffff;
+  box-shadow: 0 10px 20px rgba(0, 161, 214, 0.22);
+}
+
+.pagination-btn.is-ellipsis {
+  min-width: 26px;
+  height: 42px;
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: #61666d;
+  cursor: default;
+}
+
+.pagination-btn:disabled:not(.is-ellipsis) {
+  color: #9499a0;
+  background: #f1f2f3;
+  border-color: #e3e5e7;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* 响应式 */
 @media (max-width: 1200px) {
   .content-container {
@@ -1381,6 +1523,28 @@ const handleAuthSuccess = () => {
   .loading-grid {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 12px;
+  }
+
+  .pagination-section {
+    padding-top: 20px;
+  }
+
+  .search-pagination {
+    gap: 8px;
+    padding: 0;
+  }
+
+  .pagination-btn {
+    min-width: 40px;
+    height: 40px;
+    font-size: 15px;
+    padding: 0 12px;
+    border-radius: 10px;
+  }
+
+  .pagination-btn--nav {
+    min-width: 88px;
+    padding: 0 18px;
   }
 
   .user-card {

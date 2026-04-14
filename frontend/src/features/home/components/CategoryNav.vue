@@ -7,7 +7,6 @@
         :class="{ active: active === null }"
         @click="$emit('select', null)"
       >
-        <el-icon class="nav-icon"><HomeFilled /></el-icon>
         <span>推荐</span>
       </div>
       
@@ -35,7 +34,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from "vue";
-import { HomeFilled, More } from "@element-plus/icons-vue";
+import { More } from "@element-plus/icons-vue";
 
 const props = defineProps<{
   categories: Array<{ id: number; name: string }>;
