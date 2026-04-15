@@ -99,12 +99,15 @@ async def stats_trends(
     admin: User = Depends(get_current_admin)
 ):
     """获取趋势分析数据（增强版：包含播放量、点赞数等）"""
-    end = datetime.utcnow()
-    start = end - timedelta(days=days)
+    # 以“日期”为粒度统计近 N 天（包含今天），避免按时分秒窗口导致当日数据丢失
+    end_date = datetime.utcnow().date()
+    start_date = end_date - timedelta(days=days - 1)
+    start = datetime.combine(start_date, datetime.min.time())
+    end_exclusive = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
 
     # 初始化日期映射
     date_map = {
-        (start + timedelta(days=i)).strftime("%Y-%m-%d"): {
+        (start_date + timedelta(days=i)).strftime("%Y-%m-%d"): {
             "user": 0, 
             "video": 0,
             "views": 0,
@@ -115,7 +118,10 @@ async def stats_trends(
     }
 
     # 用户注册趋势
-    users = db.query(User.created_at).filter(User.created_at >= start).all()
+    users = db.query(User.created_at).filter(
+        User.created_at >= start,
+        User.created_at < end_exclusive,
+    ).all()
     for u in users:
         d = u.created_at.strftime("%Y-%m-%d")
         if d in date_map:
@@ -124,6 +130,7 @@ async def stats_trends(
     # 视频发布趋势（仅已发布）
     videos = db.query(Video.created_at, Video.view_count, Video.like_count, Video.collect_count).filter(
         Video.created_at >= start,
+        Video.created_at < end_exclusive,
         Video.status == VideoStatus.PUBLISHED
     ).all()
     for v in videos:

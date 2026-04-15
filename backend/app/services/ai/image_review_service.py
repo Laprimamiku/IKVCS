@@ -272,7 +272,12 @@ class ImageReviewService:
 - 31-60: 疑似违规，需要人工审核
 - 61-100: 正常内容，可以发布
 
-请务必只返回 JSON 数组格式结果，不要包含 Markdown 标记或其他解释文本。"""
+请务必只返回 JSON 数组格式结果，不要包含 Markdown 标记或其他解释文本。
+
+语言要求（必须遵守）：
+- 输出内容必须使用中文或阿拉伯数字。
+- 除国际通用单位（如 kg、km、cm、℃、%）或不可替代的专有名词外，不要使用英文。
+- violation_type 字段仍必须严格使用约定枚举值：violence/blood/porn/other/none。"""
         
         payload = {
             "model": model,
@@ -450,7 +455,12 @@ class ImageReviewService:
 - 31-60: 疑似违规，需要人工审核
 - 61-100: 正常内容，可以发布
 
-请务必只返回 JSON 格式结果，不要包含 Markdown 标记或其他解释文本。"""
+请务必只返回 JSON 格式结果，不要包含 Markdown 标记或其他解释文本。
+
+语言要求（必须遵守）：
+- 输出内容必须使用中文或阿拉伯数字。
+- 除国际通用单位（如 kg、km、cm、℃、%）或不可替代的专有名词外，不要使用英文。
+- violation_type 字段仍必须严格使用约定枚举值：violence/blood/porn/other/none。"""
             
             payload = {
                 "model": model,
@@ -535,7 +545,12 @@ class ImageReviewService:
 评分标准：
 - 0-30: 明显违规，必须拒绝
 - 31-60: 疑似违规，需要人工审核
-- 61-100: 正常内容，可以发布"""
+- 61-100: 正常内容，可以发布
+
+语言要求（必须遵守）：
+- 输出内容必须使用中文或阿拉伯数字。
+- 除国际通用单位（如 kg、km、cm、℃、%）或不可替代的专有名词外，不要使用英文。
+- violation_type 字段仍必须严格使用约定枚举值：violence/blood/porn/other/none。"""
         
         try:
             logger.info(f"[LocalVision] 调用本地图像模型: {self.local_model} @ {self.local_base_url}")

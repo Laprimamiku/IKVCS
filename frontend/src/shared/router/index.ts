@@ -129,6 +129,8 @@ router.beforeEach(async (to, from, next) => {
   // 设置页面标题
   document.title = to.meta.title ? `${to.meta.title} - IKVCS` : "IKVCS";
 
+  const isAdminRoute = to.path.startsWith('/admin');
+
   // 检查是否需要登录
   if (to.meta.requiresAuth) {
     const token = localStorage.getItem("access_token");
@@ -137,13 +139,26 @@ router.beforeEach(async (to, from, next) => {
       next({ name: "Home" });
       return;
     }
+    // 动态导入 userStore 避免循环依赖
+    const { useUserStore } = await import("@/shared/stores/user");
+    const userStore = useUserStore();
     
-    // 检查是否需要管理员权限
-    if (to.meta.requiresAdmin) {
-      // 动态导入 userStore 避免循环依赖
-      const { useUserStore } = await import("@/shared/stores/user");
-      const userStore = useUserStore();
-      
+    // 若是管理员，强制停留在管理员页面，避免通过 URL 访问普通页面
+    if (!userStore.userInfo) {
+      try {
+        await userStore.fetchUserInfo();
+      } catch (error) {
+        console.error('获取用户信息失败:', error);
+      }
+    }
+
+    if (userStore.isAdmin && !isAdminRoute) {
+      next({ path: "/admin/dashboard" });
+      return;
+    }
+
+    // 检查是否需要管理员权限（并防止普通用户通过改 URL 访问 admin）
+    if (to.meta.requiresAdmin || isAdminRoute) {
       // 如果用户信息未加载，先加载
       if (!userStore.userInfo) {
         try {
@@ -158,6 +173,15 @@ router.beforeEach(async (to, from, next) => {
         next({ name: "Home" });
         return;
       }
+    }
+  }
+
+  // 非登录状态直接访问 /admin/* 也拦截
+  if (isAdminRoute) {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      next({ name: "Home" });
+      return;
     }
   }
 

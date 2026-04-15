@@ -1,5 +1,16 @@
 <template>
   <div class="bili-dashboard">
+    <div class="dashboard-toolbar">
+      <div class="toolbar-info">
+        <el-icon><DataAnalysis /></el-icon>
+        <span>默认自动刷新：关闭（仅首次加载）</span>
+        <span class="last-refresh">最近刷新：{{ lastRefreshText }}</span>
+      </div>
+      <el-button type="primary" :loading="refreshing" @click="fetchDashboardData">
+        手动刷新
+      </el-button>
+    </div>
+
     <!-- Stats Cards -->
     <div class="stats-grid">
       <div class="stat-card users">
@@ -41,11 +52,11 @@
       <div class="stat-card active">
         <el-icon class="stat-icon"><TrendCharts /></el-icon>
         <div class="stat-content">
-          <div class="stat-value">{{ formatNumber(12580) }}</div>
+          <div class="stat-value">{{ formatNumber(overview.active_users_today || 0) }}</div>
           <div class="stat-label">今日活跃</div>
           <div class="stat-trend up">
             <span class="trend-icon">↑</span>
-            较昨日 +15%
+            实时统计
           </div>
         </div>
       </div>
@@ -77,14 +88,14 @@
               <div class="bars">
                 <div 
                   class="bar users" 
-                  :style="{ height: getBarHeight(item.user_count, maxUserCount) }"
+                  :style="{ height: getBarHeight(item.user_count, maxTrendCount) }"
                   :title="`用户: ${item.user_count}`"
                 >
                   <span class="bar-value">{{ item.user_count }}</span>
                 </div>
                 <div 
                   class="bar videos" 
-                  :style="{ height: getBarHeight(item.video_count, maxVideoCount) }"
+                  :style="{ height: getBarHeight(item.video_count, maxTrendCount) }"
                   :title="`视频: ${item.video_count}`"
                 >
                   <span class="bar-value">{{ item.video_count }}</span>
@@ -101,7 +112,7 @@
       <div class="chart-card category-chart">
         <div class="card-header">
           <h3 class="card-title">
-            <span class="title-icon">📂</span>
+            <el-icon class="title-icon"><TrendCharts /></el-icon>
             分类分布
           </h3>
         </div>
@@ -128,7 +139,7 @@
     <!-- Quick Actions -->
     <div class="quick-actions">
       <h3 class="section-title">
-        <span class="title-icon">⚡</span>
+        <el-icon class="title-icon"><DataAnalysis /></el-icon>
         快捷操作
       </h3>
       <div class="actions-grid">
@@ -155,6 +166,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
+import { ElMessage } from "element-plus";
 import { UserFilled, VideoCamera, Warning, TrendCharts, DataAnalysis, Folder } from "@element-plus/icons-vue";
 import {
   adminApi,
@@ -172,9 +184,18 @@ const overview = ref<StatsOverview>({
 });
 const trends = ref<ChartData[]>([]);
 const categories = ref<CategoryStat[]>([]);
+const refreshing = ref(false);
+const lastRefreshAt = ref<Date | null>(null);
 
-const maxUserCount = computed(() => Math.max(...trends.value.map(t => t.user_count), 1));
-const maxVideoCount = computed(() => Math.max(...trends.value.map(t => t.video_count), 1));
+/** 用户与视频共用同一纵轴刻度，便于同一天对比（如 2 与 1 呈 2:1） */
+const maxTrendCount = computed(() => {
+  if (!trends.value.length) return 1;
+  let m = 0;
+  for (const t of trends.value) {
+    m = Math.max(m, t.user_count || 0, t.video_count || 0);
+  }
+  return Math.max(m, 1);
+});
 const maxCatCount = computed(() => Math.max(...categories.value.map(c => c.count), 1));
 
 const formatNumber = (num: number) => {
@@ -187,7 +208,10 @@ const formatDate = (dateStr: string) => {
 };
 
 const getBarHeight = (value: number, max: number) => {
-  const percentage = Math.max((value / max) * 100, 5);
+  if (!value || max <= 0) return "0%";
+  const raw = (value / max) * 100;
+  // 有数据时至少保留一点高度，避免非零小数值完全看不见；零仍为 0%
+  const percentage = Math.max(raw, 3);
   return `${percentage}%`;
 };
 
@@ -196,7 +220,17 @@ const getCategoryWidth = (count: number) => {
   return `${percentage}%`;
 };
 
-onMounted(async () => {
+const lastRefreshText = computed(() => {
+  if (!lastRefreshAt.value) return "未刷新";
+  const d = lastRefreshAt.value;
+  const h = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
+  const s = String(d.getSeconds()).padStart(2, "0");
+  return `${h}:${m}:${s}`;
+});
+
+const fetchDashboardData = async () => {
+  refreshing.value = true;
   try {
     const [resOverview, resTrends, resCats] = await Promise.all([
       adminApi.getOverview(),
@@ -213,9 +247,17 @@ onMounted(async () => {
     if (resCats.success && resCats.data) {
       categories.value = resCats.data;
     }
+    lastRefreshAt.value = new Date();
   } catch (e) {
-    console.error('加载仪表板数据失败:', e);
+    console.error("加载仪表板数据失败:", e);
+    ElMessage.error("刷新数据失败，请稍后重试");
+  } finally {
+    refreshing.value = false;
   }
+};
+
+onMounted(() => {
+  void fetchDashboardData();
 });
 </script>
 
@@ -224,6 +266,29 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+}
+
+.dashboard-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--bg-white);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: var(--shadow-card);
+
+  .toolbar-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+  }
+
+  .last-refresh {
+    color: var(--text-primary);
+  }
 }
 
 /* Stats Grid */
@@ -520,33 +585,55 @@ onMounted(async () => {
   gap: var(--space-4);
 }
 
+/* 与 AdminLayout 侧栏 .nav-item 默认 / active风格一致：白底深字，悬停或当前路由为浅粉底+主色 */
 .action-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-5);
-  background: var(--bg-gray-1);
-  border-radius: var(--radius-lg);
+  background: var(--bg-white);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
   text-decoration: none;
+  color: var(--text-primary);
   transition: all var(--transition-base);
 
   .action-icon {
     font-size: 32px;
-    font-style: normal;
+    color: var(--text-primary);
   }
 
   .action-text {
     font-size: var(--font-size-sm);
-    color: var(--text-secondary);
+    color: var(--text-primary);
   }
 
-  &:hover {
+  &:hover,
+  &.router-link-active {
     background: var(--primary-light);
-    transform: translateY(-2px);
+    color: var(--primary-color);
 
+    &::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 20px;
+      background: var(--primary-color);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    }
+
+    .action-icon,
     .action-text {
       color: var(--primary-color);
+    }
+
+    .action-text {
+      font-weight: var(--font-weight-medium);
     }
   }
 }
