@@ -142,12 +142,10 @@ const banners = computed(() => {
 // 获取轮播图视频（最新上传的3个视频）
 const loadBannerVideos = async () => {
   try {
-    // 推荐页（currentCategory 为 null）显示所有分类的最新视频
-    // 其他分类页只显示该分类下的最新视频
+    // 轮播图固定显示全站最新上传的视频（不受分类/兴趣影响）
     const res = await getVideoList({
       page: 1,
       page_size: 3, // 获取最新的3个视频作为轮播图
-      category_id: currentCategory.value, // 如果是推荐页则为 null，其他分类页则为对应的 category_id
     });
     
     if (res.success) {

@@ -18,6 +18,7 @@ from app.models.interaction import UserCollection
 from app.schemas.interaction import CollectionCreate, ReportCreate
 from app.utils.timezone_utils import isoformat_in_app_tz, utc_now
 from app.utils.json_utils import parse_review_report, safe_json_dumps
+from app.services.recommendation.interest_profile_service import InterestProfileService
 
 logger = logging.getLogger(__name__)
 
@@ -49,21 +50,26 @@ class InteractionService(BaseService[Video, VideoRepository]):
             resource_name="视频",
             error_code=ErrorCode.VIDEO_NOT_FOUND
         )
-        
+
         # 检查是否已收藏
-        exists = InteractionRepository.get_collection(
-            db, user_id, video_id
-        )
-        
+        exists = InteractionRepository.get_collection(db, user_id, video_id)
         if exists:
             return {"is_collected": True}
-        
+
+        video = db.query(Video).filter(Video.id == video_id).first()
+
         # 创建收藏记录
         InteractionRepository.create_collection(db, user_id, video_id)
-        
+
         # 同步增加视频收藏数
         VideoRepository.increment_collect_count(db, video_id)
-        
+
+        try:
+            InterestProfileService.adjust_interest(db, user_id, video.category_id if video else None, delta=5)
+            db.commit()
+        except Exception as e:
+            logger.warning(f"更新用户兴趣失败（collect）：user_id={user_id}, video_id={video_id}, err={e}")
+
         return {"is_collected": True}
     
     @staticmethod
@@ -84,16 +90,22 @@ class InteractionService(BaseService[Video, VideoRepository]):
             dict: 包含 is_collected 的状态
         """
         # 查找收藏记录
-        collection = InteractionRepository.get_collection(
-            db, user_id, video_id
-        )
+        collection = InteractionRepository.get_collection(db, user_id, video_id)
         
         if collection:
+            video = db.query(Video).filter(Video.id == video_id).first()
+
             # 删除收藏记录
             InteractionRepository.delete_collection(db, collection.id)
-            
+
             # 同步减少视频收藏数
             VideoRepository.decrement_collect_count(db, video_id)
+
+            try:
+                InterestProfileService.adjust_interest(db, user_id, video.category_id if video else None, delta=-5)
+                db.commit()
+            except Exception as e:
+                logger.warning(f"更新用户兴趣失败（uncollect）：user_id={user_id}, video_id={video_id}, err={e}")
         
         return {"is_collected": False}
     

@@ -7,6 +7,7 @@ from typing import List
 
 from app.core.dependencies import get_db, get_current_user
 from app.models.user import User
+from app.models.video import Video
 
 # [修改 2] 引入 ReportCreate
 from app.schemas.interaction import (
@@ -19,6 +20,7 @@ from app.schemas.user import MessageResponse
 
 from app.services.cache.redis_service import redis_service
 from app.services.interaction.interaction_service import InteractionService
+from app.services.recommendation.interest_profile_service import InterestProfileService
 
 router = APIRouter()
 
@@ -33,6 +35,16 @@ async def like_target(
     """点赞"""
     # 1. 写入 Redis
     await redis_service.add_like(current_user.id, like_in.target_type, like_in.target_id)
+
+    # 仅视频点赞写入兴趣画像
+    if like_in.target_type == "video":
+        video = db.query(Video).filter(Video.id == like_in.target_id).first()
+        if video:
+            try:
+                InterestProfileService.adjust_interest(db, current_user.id, video.category_id, delta=3)
+                db.commit()
+            except Exception:
+                pass
     
     # 2. 获取最新数量
     count = await redis_service.get_like_count(like_in.target_type, like_in.target_id)
@@ -43,11 +55,22 @@ async def like_target(
 async def unlike_target(
     target_id: int,
     target_type: str, 
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """取消点赞"""
     # 1. 移除 Redis
     await redis_service.remove_like(current_user.id, target_type, target_id)
+
+    # 仅视频取消点赞回撤兴趣画像
+    if target_type == "video":
+        video = db.query(Video).filter(Video.id == target_id).first()
+        if video:
+            try:
+                InterestProfileService.adjust_interest(db, current_user.id, video.category_id, delta=-3)
+                db.commit()
+            except Exception:
+                pass
     
     # 2. 获取最新数量
     count = await redis_service.get_like_count(target_type, target_id)

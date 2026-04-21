@@ -1,6 +1,7 @@
 """
 观看历史记录 Repository
 """
+import logging
 from typing import List, Optional
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_
@@ -8,11 +9,20 @@ from sqlalchemy import and_
 from app.core.repository import BaseRepository
 from app.models.watch_history import WatchHistory
 from app.models.video import Video
+from app.services.recommendation.interest_profile_service import InterestProfileService
+
+logger = logging.getLogger(__name__)
 
 
 class WatchHistoryRepository(BaseRepository):
     """观看历史记录 Repository"""
     model = WatchHistory
+
+    @classmethod
+    def _update_interest_on_watch(cls, db: Session, user_id: int, video_id: int) -> None:
+        """播放行为：按视频分类为用户兴趣加 1。"""
+        category_id = db.query(Video.category_id).filter(Video.id == video_id).scalar()
+        InterestProfileService.adjust_interest(db, user_id, category_id, delta=1)
     
     @classmethod
     def record_watch(
@@ -44,6 +54,10 @@ class WatchHistoryRepository(BaseRepository):
             # 更新观看时间
             from datetime import datetime
             existing.watched_at = datetime.utcnow()
+            try:
+                cls._update_interest_on_watch(db, user_id, video_id)
+            except Exception as e:
+                logger.warning(f"更新用户兴趣失败（watch）：user_id={user_id}, video_id={video_id}, err={e}")
             db.commit()
             db.refresh(existing)
             return existing
@@ -54,6 +68,10 @@ class WatchHistoryRepository(BaseRepository):
                 video_id=video_id
             )
             db.add(watch_history)
+            try:
+                cls._update_interest_on_watch(db, user_id, video_id)
+            except Exception as e:
+                logger.warning(f"更新用户兴趣失败（watch）：user_id={user_id}, video_id={video_id}, err={e}")
             db.commit()
             db.refresh(watch_history)
             return watch_history
@@ -115,4 +133,3 @@ class WatchHistoryRepository(BaseRepository):
             db.commit()
             return True
         return False
-

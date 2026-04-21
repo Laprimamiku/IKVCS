@@ -20,6 +20,7 @@ from app.models.watch_history import WatchHistory
 from app.models.collection_folder import CollectionFolder
 from app.models.user_follow import UserFollow
 from app.models.video_tag import VideoTag
+from app.models.interest import UserInterest
 
 # AI 相关模型（可选）
 try:
@@ -41,6 +42,7 @@ __all__ = [
     "CollectionFolder",
     "UserFollow",
     "VideoTag",
+    "UserInterest",
     "AiPromptTask",
     "AiPromptExperiment",
 ]

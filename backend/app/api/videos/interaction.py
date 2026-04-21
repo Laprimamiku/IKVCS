@@ -14,6 +14,7 @@ from app.core.dependencies import get_current_user
 from app.core.exceptions import ResourceNotFoundException
 from app.models.user import User
 from app.models.video import Video
+from app.services.recommendation.interest_profile_service import InterestProfileService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -46,21 +47,35 @@ async def like_video(
         # 取消点赞
         await redis_service.remove_like(current_user.id, "video", video_id)
         count = await redis_service.get_like_count("video", video_id)
-        
+
         # 立即同步更新数据库的 like_count
         video.like_count = count
+
+        # 轻量兴趣回撤：取消点赞 -3
+        try:
+            InterestProfileService.adjust_interest(db, current_user.id, video.category_id, delta=-3)
+        except Exception as e:
+            logger.warning(f"更新用户兴趣失败（unlike）：user_id={current_user.id}, video_id={video_id}, err={e}")
+
         db.commit()
-        
+
         return {"is_liked": False, "like_count": count}
     else:
         # 点赞
         await redis_service.add_like(current_user.id, "video", video_id)
         count = await redis_service.get_like_count("video", video_id)
-        
+
         # 立即同步更新数据库的 like_count
         video.like_count = count
+
+        # 点赞 +3
+        try:
+            InterestProfileService.adjust_interest(db, current_user.id, video.category_id, delta=3)
+        except Exception as e:
+            logger.warning(f"更新用户兴趣失败（like）：user_id={current_user.id}, video_id={video_id}, err={e}")
+
         db.commit()
-        
+
         return {"is_liked": True, "like_count": count}
 
 
@@ -81,6 +96,10 @@ async def collect_video(
     - request_data: 请求体，包含 folder_id（可选，None 表示未分类）
     """
     from app.models.interaction import UserCollection
+
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
     
     # 从请求体获取 folder_id
     folder_id = None
@@ -112,10 +131,17 @@ async def collect_video(
         db.query(Video).filter(Video.id == video_id).update(
             {Video.collect_count: Video.collect_count - 1}
         )
+
+        # 轻量兴趣回撤：取消收藏 -5
+        try:
+            InterestProfileService.adjust_interest(db, current_user.id, video.category_id, delta=-5)
+        except Exception as e:
+            logger.warning(f"更新用户兴趣失败（uncollect）：user_id={current_user.id}, video_id={video_id}, err={e}")
+
         db.commit()
         # 获取最新收藏数
-        video = db.query(Video).filter(Video.id == video_id).first()
-        return {"is_collected": False, "collect_count": video.collect_count if video else 0}
+        latest_video = db.query(Video).filter(Video.id == video_id).first()
+        return {"is_collected": False, "collect_count": latest_video.collect_count if latest_video else 0}
     else:
         # 如果 folder_id 为 None，自动创建或获取"默认收藏夹"
         if folder_id is None:
@@ -148,8 +174,14 @@ async def collect_video(
         db.query(Video).filter(Video.id == video_id).update(
             {Video.collect_count: Video.collect_count + 1}
         )
+
+        # 收藏 +5
+        try:
+            InterestProfileService.adjust_interest(db, current_user.id, video.category_id, delta=5)
+        except Exception as e:
+            logger.warning(f"更新用户兴趣失败（collect）：user_id={current_user.id}, video_id={video_id}, err={e}")
+
         db.commit()
         # 获取最新收藏数
-        video = db.query(Video).filter(Video.id == video_id).first()
-        return {"is_collected": True, "collect_count": video.collect_count if video else 0}
-
+        latest_video = db.query(Video).filter(Video.id == video_id).first()
+        return {"is_collected": True, "collect_count": latest_video.collect_count if latest_video else 0}
