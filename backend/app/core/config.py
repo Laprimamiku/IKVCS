@@ -158,7 +158,7 @@ class Settings(BaseSettings):
     # 注意：智谱GLM免费用户并发限制
     # - glm-4v-plus（视觉模型）：5次并发
     # - glm-4-flash（文本模型）：200次并发
-    CLOUD_FRAME_REVIEW_MAX_CONCURRENT: int = 5  # 云端帧审核最大并发数（GLM-4V-Plus免费用户限制：5次）
+    CLOUD_FRAME_REVIEW_MAX_CONCURRENT: int = 2  # 云端帧审核最大并发数（GLM-4V-Plus免费用户限制：5次）
     CLOUD_MAX_CALLS_PER_VIDEO: int = 50  # 每个视频云端模型最大调用次数（成本控制）
     CLOUD_MAX_INPUT_CHARS_PER_VIDEO: int = 5000  # 每个视频云端模型最大输入字符数（Token控制）
     CLOUD_DAILY_BUDGET_CALLS: int = 1000  # 每日云端调用预算限制
@@ -166,8 +166,8 @@ class Settings(BaseSettings):
     
     # 图片批量审核配置（模型调度优化）
     FRAME_BATCH_REVIEW_ENABLED: bool = True  # 是否启用批量审核（图片拼接）
-    FRAME_GRID_ROWS: int = 3  # 网格行数（默认3×3）
-    FRAME_GRID_COLS: int = 3  # 网格列数（默认3×3）
+    FRAME_GRID_ROWS: int = 2  # 网格行数（默认2×2）
+    FRAME_GRID_COLS: int = 2  # 网格列数（默认2×2）
 
     # 多模态两阶段审核配置（Stage 1 低成本初筛 + Stage 2 精审）
     TWO_STAGE_REVIEW_ENABLED: bool = True
@@ -216,8 +216,8 @@ class Settings(BaseSettings):
     UPLOAD_SESSION_EXPIRE: int = 604800  # 上传会话过期时间：7天（秒）
     
     # 视频帧提取配置
-    MAX_FRAMES_PER_VIDEO: int = 50  # 每个视频最多提取的帧数量（避免存储过大）
-    FRAME_EXTRACT_MAX_COUNT: int = 30  # 兼容旧配置
+    MAX_FRAMES_PER_VIDEO: int = 12  # 每个视频最多提取的帧数量（2x2拼图最多3张）
+    FRAME_EXTRACT_MAX_COUNT: int = 12  # 兼容旧配置
     FRAME_EXTRACT_INTERVAL: int = 5  # 均匀采样间隔（秒），从10秒改为5秒，提高采样密度
     FRAME_EXTRACT_MIN_FRAMES: int = 10  # 每个视频最少提取的帧数量（确保短视频也能有足够的采样）
     FRAME_REVIEW_MAX_CONCURRENT: int = 3  # 帧审核最大并发数（避免超出模型算力，可根据 GPU 显存调整）

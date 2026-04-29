@@ -79,6 +79,12 @@ backend/pytest.ini
 # Docker/本地数据
 docker/
 docker-compose.yml
+
 .cursor/commands/basic.md
 .cursor/commands/thesis-draft.md
 .cursor/rules/basic.mdc
+
+AGENTS.md
+config.toml
+.agents/
+

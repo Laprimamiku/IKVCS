@@ -62,13 +62,18 @@ class FrameExtractor:
                 - frame_path: 帧文件路径（相对于storage根目录）
                 - frame_type: 帧类型
         """
-        # 使用配置默认值
+        # 使用配置默认值（统一以 MAX_FRAMES_PER_VIDEO 为主上限）
         if interval is None:
             interval = getattr(settings, 'FRAME_EXTRACT_INTERVAL', 5)
+        configured_cap = int(
+            getattr(settings, 'MAX_FRAMES_PER_VIDEO', None)
+            or getattr(settings, 'FRAME_EXTRACT_MAX_COUNT', 50)
+        )
+        configured_cap = max(1, configured_cap)
         if max_frames is None:
-            # 优先使用 MAX_FRAMES_PER_VIDEO，如果没有则使用 FRAME_EXTRACT_MAX_COUNT
-            max_frames = getattr(settings, 'MAX_FRAMES_PER_VIDEO', None) or getattr(settings, 'FRAME_EXTRACT_MAX_COUNT', 50)
-        min_frames = getattr(settings, 'FRAME_EXTRACT_MIN_FRAMES', 10)
+            max_frames = configured_cap
+        else:
+            max_frames = max(1, min(int(max_frames), configured_cap))
         
         if not os.path.exists(video_path):
             logger.error(f"视频文件不存在: {video_path}")
@@ -77,18 +82,18 @@ class FrameExtractor:
         # 获取视频时长，用于智能调整采样策略
         video_duration = self._get_video_duration(video_path)
         
-        # 根据视频时长动态调整采样间隔和最大帧数
+        # 根据视频时长动态调整采样间隔，尽量均匀覆盖整段视频
         if video_duration > 0:
-            if video_duration < 120:  # 短视频（<2分钟）
-                interval = 3  # 每3秒一帧
-                max_frames = 20
-            elif video_duration < 600:  # 中等视频（2-10分钟）
-                interval = 10  # 每10秒一帧
-                max_frames = 30
-            else:  # 长视频（>10分钟）
-                interval = 20  # 每20秒一帧
-                max_frames = 40
-            logger.info(f"视频时长 {video_duration}秒，使用采样间隔 {interval}秒，最多提取 {max_frames} 帧")
+            # 目标抽帧数量：不超过 max_frames，且不超过视频总秒数（避免 interval < 1 秒导致过密）
+            target_frames = max(1, min(max_frames, int(video_duration) if video_duration >= 1 else 1))
+            interval = max(1.0, video_duration / target_frames)
+            logger.info(
+                "视频时长 %.2f 秒，动态均匀抽帧：target_frames=%s, interval=%.2f 秒, max_frames=%s",
+                video_duration,
+                target_frames,
+                interval,
+                max_frames,
+            )
         
         # 创建视频专用的帧存储目录
         video_frame_dir = os.path.join(self.storage_path, str(video_id))
@@ -141,7 +146,7 @@ class FrameExtractor:
         video_path: str,
         video_id: int,
         output_dir: str,
-        interval: int
+        interval: float
     ) -> List[Dict[str, Any]]:
         """
         均匀采样提取帧（每隔N秒提取一帧）
@@ -167,7 +172,7 @@ class FrameExtractor:
         ]
         
         try:
-            logger.info(f"开始提取帧: video_id={video_id}, interval={interval}秒, output_dir={output_dir}")
+            logger.info(f"开始提取帧: video_id={video_id}, interval={interval:.2f}秒, output_dir={output_dir}")
             # 执行 FFmpeg 命令
             result = subprocess.run(
                 command,
@@ -330,4 +335,3 @@ class FrameExtractor:
 
 # 全局实例
 frame_extractor = FrameExtractor()
-

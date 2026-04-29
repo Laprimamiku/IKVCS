@@ -46,6 +46,16 @@ from app.schemas.category import CategoryCreate, CategoryResponse, CategoryUpdat
 
 router = APIRouter()
 
+def _normalize_review_score(score: object) -> Optional[int]:
+    """将审核评分规范化为 0-100 的整数，异常值返回 None。"""
+    if score is None:
+        return None
+    try:
+        normalized = int(round(float(score)))
+    except (TypeError, ValueError):
+        return None
+    return max(0, min(100, normalized))
+
 # =========================
 # Schema 定义
 # =========================
@@ -291,6 +301,7 @@ async def manage_videos(
                 review_score = review_report_dict.get("final_score")
             if review_status is None:
                 review_status = review_report_dict.get("final_status")
+        review_score = _normalize_review_score(review_score)
         
         items.append(AdminVideoListItemResponse(
             id=video.id,

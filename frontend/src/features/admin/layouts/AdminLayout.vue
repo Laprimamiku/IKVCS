@@ -41,26 +41,12 @@
             <el-icon class="nav-icon"><Folder /></el-icon>
             <span class="nav-text">分类管理</span>
           </router-link>
-          
-          <router-link to="/admin/settings" class="nav-item" active-class="active">
-            <el-icon class="nav-icon"><Setting /></el-icon>
-            <span class="nav-text">系统设置</span>
-          </router-link>
-          
+
           <!-- 暂时移除智能治理 -->
           <!-- <router-link to="/admin/ai" class="nav-item" active-class="active">
             <el-icon class="nav-icon"><Setting /></el-icon>
             <span class="nav-text">智能治理</span>
           </router-link> -->
-        </div>
-
-        <div class="nav-divider"></div>
-
-        <div class="nav-section">
-          <router-link to="/" class="nav-item">
-            <el-icon class="nav-icon"><HomeFilled /></el-icon>
-            <span class="nav-text">返回主站</span>
-          </router-link>
         </div>
       </nav>
 
@@ -124,7 +110,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from "vue";
 import { useRoute } from "vue-router";
-import { VideoCamera, DataAnalysis, UserFilled, Warning, Folder, Setting, HomeFilled, Refresh, Bell } from "@element-plus/icons-vue";
+import { VideoCamera, DataAnalysis, UserFilled, Warning, Folder, Refresh, Bell } from "@element-plus/icons-vue";
 import { useUserStore } from "@/shared/stores/user";
 import { adminApi } from "../api/admin.api";
 

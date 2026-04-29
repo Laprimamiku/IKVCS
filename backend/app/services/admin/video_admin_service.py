@@ -33,6 +33,17 @@ logger = logging.getLogger(__name__)
 class VideoAdminService(BaseService[Video, VideoRepository]):
     """视频管理服务（管理员）"""
     repository = VideoRepository
+
+    @staticmethod
+    def _normalize_review_score(score: Any) -> Optional[int]:
+        """将审核评分规范化为 0-100 的整数，异常值返回 None。"""
+        if score is None:
+            return None
+        try:
+            normalized = int(round(float(score)))
+        except (TypeError, ValueError):
+            return None
+        return max(0, min(100, normalized))
     
     @staticmethod
     def approve_video(
@@ -296,6 +307,7 @@ class VideoAdminService(BaseService[Video, VideoRepository]):
                     review_score = review_report_dict.get("final_score")
                 if review_status is None:
                     review_status = review_report_dict.get("final_status")
+            review_score = VideoAdminService._normalize_review_score(review_score)
             
             # 获取举报统计信息
             report_info = report_stats.get(video.id, {})
