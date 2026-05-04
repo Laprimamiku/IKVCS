@@ -11,6 +11,7 @@ import os
 import logging
 import threading
 from threading import Semaphore
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from sqlalchemy.orm import Session
 
 from app.models.video import Video
@@ -151,13 +152,32 @@ class TranscodeService:
                 
                 # 第一阶段：转码优先级清晰度（快速完成，让用户能立即观看）
                 logger.info(f"第一阶段：转码优先级清晰度 {[r[0] for r in priority_list]}")
-                for name, resolution, video_bitrate, audio_bitrate in priority_list:
-                    result = TranscodeService._transcode_single_resolution(
-                        name, resolution, video_bitrate, audio_bitrate,
-                        input_path, output_dir
-                    )
-                    if result:
-                        transcoded_resolutions.append(result)
+                if len(priority_list) <= 1:
+                    for name, resolution, video_bitrate, audio_bitrate in priority_list:
+                        result = TranscodeService._transcode_single_resolution(
+                            name, resolution, video_bitrate, audio_bitrate,
+                            input_path, output_dir
+                        )
+                        if result:
+                            transcoded_resolutions.append(result)
+                else:
+                    # 并行转码优先级清晰度（通常是 360p / 480p）
+                    with ThreadPoolExecutor(max_workers=len(priority_list)) as executor:
+                        future_map = {
+                            executor.submit(
+                                TranscodeService._transcode_single_resolution,
+                                name, resolution, video_bitrate, audio_bitrate,
+                                input_path, output_dir
+                            ): name
+                            for name, resolution, video_bitrate, audio_bitrate in priority_list
+                        }
+                        for future in as_completed(future_map):
+                            try:
+                                result = future.result()
+                                if result:
+                                    transcoded_resolutions.append(result)
+                            except Exception as exc:
+                                logger.error(f"优先级清晰度并行转码异常 ({future_map[future]}): {exc}", exc_info=True)
                 
                 # 如果至少有一个清晰度转码成功，立即生成播放列表并更新状态
                 # 特别地，如果 360p 转码成功，立即更新状态让用户可观看

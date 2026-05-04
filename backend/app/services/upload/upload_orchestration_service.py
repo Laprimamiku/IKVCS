@@ -6,6 +6,7 @@ from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, HTTPException, status
 import logging
+import asyncio
 
 from app.models.upload import UploadSession
 from app.models.video import Video
@@ -15,6 +16,7 @@ from app.services.upload.session_service import SessionService
 from app.services.upload.chunk_service import ChunkService
 from app.repositories.video_repository import VideoRepository
 from app.repositories.upload_repository import UploadSessionRepository
+from app.core.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -272,14 +274,7 @@ class UploadOrchestrationService:
                 detail="分片临时目录不存在，请重新上传"
             )
         
-        # 5. 合并分片文件
-        final_file_path = FileStorageService.merge_chunks(
-            file_hash,
-            session.file_name,
-            session.total_chunks
-        )
-        
-        # 6. 创建视频记录
+        # 5. 创建视频记录（快速返回；文件合并和转码在后台执行）
         video = Video(
             uploader_id=user_id,
             category_id=category_id,
@@ -295,14 +290,57 @@ class UploadOrchestrationService:
         db.commit()
         db.refresh(video)
         
-        # 7. 标记上传会话为已完成
+        # 6. 标记上传会话为已完成
         SessionService.mark_session_completed(db, session.file_hash, video.id)
         
-        # 8. 清理 Redis
+        # 7. 清理 Redis
         ChunkService.cleanup_redis(file_hash)
         
         logger.info(f"上传完成：{file_hash} -> video_id={video.id}")
         return video
+
+    @staticmethod
+    async def process_uploaded_video(
+        file_hash: str,
+        video_id: int
+    ) -> None:
+        """
+        后台处理上传后流程：合并分片 -> 触发转码。
+        """
+        db = SessionLocal()
+        try:
+            session = SessionService.get_session_by_hash(db, file_hash)
+            if not session:
+                logger.error(f"后台处理失败：上传会话不存在 file_hash={file_hash}")
+                return
+            if session.video_id != video_id:
+                logger.error(
+                    f"后台处理失败：会话与视频不匹配 file_hash={file_hash}, "
+                    f"session.video_id={session.video_id}, expected={video_id}"
+                )
+                return
+
+            # 合并分片（CPU/IO 密集，放到线程执行避免阻塞事件循环）
+            await asyncio.to_thread(
+                FileStorageService.merge_chunks,
+                file_hash,
+                session.file_name,
+                session.total_chunks,
+            )
+
+            from app.services.transcode import TranscodeService
+            await TranscodeService.transcode_video(video_id)
+        except Exception as e:
+            logger.error(f"后台处理上传视频失败：video_id={video_id}, error={e}", exc_info=True)
+            try:
+                video = VideoRepository.get_by_id(db, video_id)
+                if video:
+                    video.status = -1
+                    db.commit()
+            except Exception:
+                logger.error(f"更新失败状态失败：video_id={video_id}", exc_info=True)
+        finally:
+            db.close()
     
     @staticmethod
     def get_upload_progress(

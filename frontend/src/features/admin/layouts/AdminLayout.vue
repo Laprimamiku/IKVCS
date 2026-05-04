@@ -80,7 +80,10 @@
 
         <div class="header-right">
           <div class="header-actions">
-            <button class="action-btn" title="刷新">
+            <a class="action-btn action-link" href="/" title="返回主站首页">
+              <el-icon class="action-icon"><House /></el-icon>
+            </a>
+            <button class="action-btn" title="刷新" @click="handleRefreshClick">
               <el-icon class="action-icon"><Refresh /></el-icon>
             </button>
             <button class="action-btn" title="通知">
@@ -110,7 +113,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from "vue";
 import { useRoute } from "vue-router";
-import { VideoCamera, DataAnalysis, UserFilled, Warning, Folder, Refresh, Bell } from "@element-plus/icons-vue";
+import { VideoCamera, DataAnalysis, UserFilled, Warning, Folder, Refresh, Bell, House } from "@element-plus/icons-vue";
 import { useUserStore } from "@/shared/stores/user";
 import { adminApi } from "../api/admin.api";
 
@@ -143,6 +146,10 @@ const fetchPendingCount = async () => {
       pendingCount.value = res.data.total_reports_pending || 0;
     }
   } catch (e) {}
+};
+
+const handleRefreshClick = () => {
+  window.dispatchEvent(new CustomEvent("admin:refresh"));
 };
 
 let timeInterval: number;

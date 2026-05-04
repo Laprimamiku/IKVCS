@@ -177,11 +177,13 @@ async def finish_upload(
             finish_data.cover_url
         )
         
-        # 触发后台转码任务（需求 3.6, 4.2）
-        # 已有视频且已转码完成时不重复触发
+        # 触发后台处理任务：合并分片 -> 转码（快速返回，减少 finish 阻塞）
         if video.status == 0 or not video.video_url:
-            from app.services.transcode import TranscodeService
-            background_tasks.add_task(TranscodeService.transcode_video, video.id)
+            background_tasks.add_task(
+                UploadOrchestrationService.process_uploaded_video,
+                finish_data.file_hash,
+                video.id
+            )
         
         return UploadFinishResponse(
             video_id=video.id,
