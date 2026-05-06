@@ -26,10 +26,6 @@
             <el-icon><VideoPlay /></el-icon>
             <span>{{ formatNumber(video.view_count) }}</span>
           </span>
-          <span class="stat-item">
-            <el-icon><ChatDotRound /></el-icon>
-            <span>{{ formatNumber(video.danmaku_count || 0) }}</span>
-          </span>
         </div>
         <span class="duration">{{ formatDuration(video.duration) }}</span>
       </div>
@@ -41,10 +37,6 @@
         </div>
       </div>
       
-      <!-- Watch Later Button -->
-      <div class="watch-later" @click.stop="handleWatchLater">
-        <el-icon><Clock /></el-icon>
-      </div>
     </div>
 
     <!-- Info Section -->
@@ -62,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { VideoPlay, ChatDotRound, User, Clock } from "@element-plus/icons-vue";
+import { VideoPlay, User } from "@element-plus/icons-vue";
 import { useRouter } from "vue-router";
 import type { Video } from "@/shared/types/entity";
 
@@ -144,11 +136,6 @@ const goToUploader = () => {
   }
 };
 
-// Add to watch later (placeholder)
-const handleWatchLater = () => {
-  console.log("Add to watch later:", props.video.id);
-};
-
 // Get status class
 const getStatusClass = (status: number): string => {
   switch (status) {
@@ -192,10 +179,6 @@ const getStatusText = (status: number): string => {
         opacity: 1;
       }
       
-      .watch-later {
-        opacity: 1;
-        transform: translateY(0);
-      }
     }
     
     .video-title {
@@ -342,29 +325,6 @@ const getStatusText = (status: number): string => {
   }
 }
 
-/* Watch Later Button */
-.watch-later {
-  position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  background: rgba(0, 0, 0, 0.6);
-  border-radius: var(--radius-sm);
-  color: var(--text-white);
-  opacity: 0;
-  transform: translateY(-5px);
-  transition: all var(--transition-base);
-  z-index: 4;
-  
-  &:hover {
-    background: var(--bili-pink);
-  }
-}
-
 /* Info Section */
 .card-info {
   padding: var(--space-3) var(--space-1) 0;
@@ -443,8 +403,5 @@ const getStatusText = (status: number): string => {
     display: none;
   }
   
-  .watch-later {
-    display: none;
-  }
 }
 </style>

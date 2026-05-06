@@ -115,7 +115,7 @@ const currentCategory = ref<number | null>(null);
 const authVisible = ref(false);
 const authMode = ref<"login" | "register">("login");
 
-// 推荐算法已实现：
+// 推荐算法：
 // 1. 热门推荐（播放量、点赞数、收藏数加权）
 // 2. 同类推荐（同分类/同作者）
 // 3. 个性化推荐（基于用户观看/点赞/收藏行为）
@@ -123,34 +123,34 @@ const authMode = ref<"login" | "register">("login");
 
 // 计算属性：过滤掉轮播图中的视频，避免重复显示
 const videos = computed(() => {
-  const bannerVideoIds = new Set(bannerVideos.value.map(v => v.id));
-  return allVideos.value.filter(v => !bannerVideoIds.has(v.id));
+  const bannerVideoIds = new Set(bannerVideos.value.map((v) => v.id));
+  return allVideos.value.filter((v) => !bannerVideoIds.has(v.id));
 });
 
 // 轮播图数据转换
 const banners = computed(() => {
-  return bannerVideos.value.map(video => ({
+  return bannerVideos.value.map((video) => ({
     id: video.id,
     title: video.title,
-    description: video.description || `UP主: ${video.uploader?.nickname || '未知'}`,
-    image: video.cover_url || '/default-cover.jpg',
+    description:
+      video.description || `UP主: ${video.uploader?.nickname || "未知"}`,
+    image: video.cover_url || "/default-cover.jpg",
     link: `/videos/${video.id}`,
-    video: video // 保存完整视频信息，用于点击跳转
+    video: video, // 保存完整视频信息，用于点击跳转
   }));
 });
 
-// 获取轮播图视频（最新上传的3个视频）
+// 获取轮播图视频
 const loadBannerVideos = async () => {
   try {
-    // 轮播图固定显示全站最新上传的视频（不受分类/兴趣影响）
     const res = await getVideoList({
       page: 1,
-      page_size: 3, // 获取最新的3个视频作为轮播图
+      page_size: 3,
     });
-    
+
     if (res.success) {
       const data = res.data as PageResult<Video>;
-      bannerVideos.value = (data.items || []).slice(0, 3); // 确保最多3个视频
+      bannerVideos.value = (data.items || []).slice(0, 3);
     }
   } catch (e) {
     console.error("Failed to load banner videos:", e);
@@ -171,17 +171,17 @@ const loadCategories = async () => {
 const loadVideos = async (append = false) => {
   if (loading.value) return;
   loading.value = true;
-  
+
   try {
     if (!append) {
       currentPage.value = 1;
       allVideos.value = [];
     }
-    
+
     // 计算需要跳过的视频数量（轮播图视频数量）
     const skipCount = bannerVideos.value.length;
     const actualPage = append ? currentPage.value : 1;
-    
+
     let res;
     // 如果是推荐页（currentCategory 为 null），使用推荐 API
     if (currentCategory.value === null && actualPage === 1) {
@@ -197,19 +197,19 @@ const loadVideos = async (append = false) => {
         category_id: currentCategory.value,
       });
     }
-    
+
     if (res.success) {
       const data = res.data as PageResult<Video>;
       let newVideos = data.items || [];
-      
+
       // 如果是第一页，需要过滤掉轮播图中的视频
       if (actualPage === 1) {
-        const bannerVideoIds = new Set(bannerVideos.value.map(v => v.id));
-        newVideos = newVideos.filter(v => !bannerVideoIds.has(v.id));
+        const bannerVideoIds = new Set(bannerVideos.value.map((v) => v.id));
+        newVideos = newVideos.filter((v) => !bannerVideoIds.has(v.id));
         // 确保获得足够的视频数量
         newVideos = newVideos.slice(0, pageSize.value);
       }
-      
+
       allVideos.value = append ? [...allVideos.value, ...newVideos] : newVideos;
       hasMore.value = allVideos.value.length < (data.total || 0) - skipCount;
       currentPage.value++;
@@ -312,7 +312,7 @@ onMounted(async () => {
 .grid-video-item {
   width: 100%;
   opacity: 0;
-  
+
   &.animate-in {
     animation: fadeInUp 0.4s ease-out forwards;
   }
@@ -332,7 +332,7 @@ onMounted(async () => {
 /* Skeleton Loading */
 .skeleton-card {
   width: 100%;
-  
+
   .skeleton-cover {
     width: 100%;
     padding-top: 56.25%;
@@ -346,11 +346,11 @@ onMounted(async () => {
     background-size: 200% 100%;
     animation: skeleton-loading 1.5s infinite;
   }
-  
+
   .skeleton-info {
     padding: var(--space-3) 0;
   }
-  
+
   .skeleton-title {
     height: var(--font-size-lg);
     width: 90%;
@@ -365,7 +365,7 @@ onMounted(async () => {
     border-radius: var(--radius-sm);
     margin-bottom: var(--space-2);
   }
-  
+
   .skeleton-meta {
     height: var(--font-size-sm);
     width: 60%;
@@ -382,8 +382,12 @@ onMounted(async () => {
 }
 
 @keyframes skeleton-loading {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* Empty State */
@@ -395,17 +399,17 @@ onMounted(async () => {
   justify-content: center;
   padding: var(--space-16) var(--space-6);
   color: var(--text-tertiary);
-  
+
   .empty-icon {
     font-size: var(--font-size-5xl);
     margin-bottom: var(--space-4);
   }
-  
+
   .empty-text {
     font-size: var(--font-size-lg);
     margin-bottom: var(--space-2);
   }
-  
+
   .empty-hint {
     font-size: var(--font-size-sm);
   }
@@ -424,7 +428,7 @@ onMounted(async () => {
   gap: var(--space-3);
   color: var(--text-tertiary);
   font-size: var(--font-size-sm);
-  
+
   .loading-spinner {
     width: var(--space-5);
     height: var(--space-5);
@@ -436,7 +440,9 @@ onMounted(async () => {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .load-more-btn {
@@ -452,15 +458,15 @@ onMounted(async () => {
   font-size: var(--font-size-base);
   cursor: pointer;
   transition: var(--transition-base);
-  
+
   .arrow-icon {
     transition: transform var(--transition-base);
   }
-  
+
   &:hover {
     border-color: var(--bili-pink);
     color: var(--bili-pink);
-    
+
     .arrow-icon {
       transform: translateY(2px);
     }
@@ -473,13 +479,13 @@ onMounted(async () => {
   gap: var(--space-4);
   color: var(--text-tertiary);
   font-size: var(--font-size-sm);
-  
+
   .divider-line {
     width: 60px;
     height: 1px; /* 保持 1px 细线 */
     background: var(--border-color);
   }
-  
+
   .no-more-text {
     white-space: nowrap;
   }
@@ -497,7 +503,7 @@ onMounted(async () => {
     grid-template-columns: repeat(3, 1fr);
     gap: var(--space-4);
   }
-  
+
   .grid-banner {
     grid-column: span 3;
     grid-row: span 1;
@@ -509,12 +515,12 @@ onMounted(async () => {
   .main-content {
     padding: 0 var(--content-padding-mobile) var(--space-8);
   }
-  
+
   .bili-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: var(--space-3);
   }
-  
+
   .grid-banner {
     grid-column: span 2;
     min-height: 200px;
@@ -526,7 +532,7 @@ onMounted(async () => {
     grid-template-columns: 1fr;
     gap: var(--space-4);
   }
-  
+
   .grid-banner {
     grid-column: span 1;
     min-height: 180px;

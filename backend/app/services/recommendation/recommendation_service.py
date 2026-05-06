@@ -77,7 +77,7 @@ class RecommendationService:
         """
         获取热门视频（全站/分类）
 
-        排序规则：播放量 + 点赞数 + 收藏数（加权）
+        排序规则：播放量 + 点赞数 + 收藏数
         """
         from sqlalchemy.orm import joinedload
 
@@ -250,7 +250,7 @@ class RecommendationService:
 
     @classmethod
     def _calculate_hot_score_value(cls, video: Video) -> int:
-        """计算单个视频的热门分（内存重排用）。"""
+        """计算单个视频的热门程度。"""
         return int(video.view_count or 0) + int(video.like_count or 0) * 3 + int(video.collect_count or 0) * 5
 
     @classmethod

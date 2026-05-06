@@ -156,6 +156,13 @@ export function deleteVideo(videoId: number) {
 }
 
 /**
+ * 申诉已拒绝视频，重新进入审核中
+ */
+export function appealVideo(videoId: number) {
+  return request.post(`/videos/${videoId}/appeal`);
+}
+
+/**
  * 点赞/取消点赞视频
  */
 export function toggleVideoLike(videoId: number) {

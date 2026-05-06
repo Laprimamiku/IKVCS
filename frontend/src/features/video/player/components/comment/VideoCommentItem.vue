@@ -50,9 +50,14 @@
           <span class="btn-text">{{ localLikeCount || '' }}</span>
         </button>
 
-        <!-- Dislike Button (visual only) -->
-        <button class="action-btn dislike-btn">
-          <el-icon class="btn-icon"><Minus /></el-icon>
+        <!-- Delete Button (only for owner) -->
+        <button
+          v-if="canDeleteComment"
+          class="action-btn delete-btn"
+          @click="handleDeleteComment(comment.id)"
+        >
+          <el-icon class="btn-icon"><Delete /></el-icon>
+          <span class="btn-text">删除</span>
         </button>
 
         <!-- Reply Button -->
@@ -82,9 +87,10 @@
 
       <!-- Sub Comments / Replies -->
       <div 
-        v-if="comment.replies && comment.replies.length > 0" 
+        v-if="(comment.reply_count || 0) > 0" 
         class="replies-container"
       >
+        <div v-if="replyLoading" class="reply-loading">加载回复中...</div>
         <div
           v-for="reply in displayedReplies"
           :key="reply.id"
@@ -122,31 +128,56 @@
               >
                 回复
               </button>
+              <button
+                v-if="canDeleteReply(reply)"
+                class="reply-action delete-reply"
+                @click="handleDeleteComment(reply.id)"
+              >
+                删除
+              </button>
             </div>
           </div>
         </div>
 
-        <!-- Show More Replies -->
-        <button 
-          v-if="comment.replies.length > 3 && !showAllReplies"
-          class="show-more-replies"
-          @click="showAllReplies = true"
-        >
-          <span>共 {{ comment.replies.length }} 条回复</span>
-          <i class="arrow">▼</i>
-        </button>
+        <div v-if="replyTotal > replyPageSize" class="reply-pagination">
+          <button
+            class="reply-page-btn nav"
+            :disabled="replyCurrentPage <= 1"
+            @click="handleReplyPageChange(replyCurrentPage - 1)"
+          >
+            上一页
+          </button>
+          <button
+            v-for="item in replyVisiblePageItems"
+            :key="String(item)"
+            class="reply-page-btn"
+            :class="{ active: item === replyCurrentPage, ellipsis: typeof item !== 'number' }"
+            :disabled="typeof item !== 'number'"
+            @click="typeof item === 'number' && handleReplyPageChange(item)"
+          >
+            {{ typeof item === 'number' ? item : '...' }}
+          </button>
+          <button
+            class="reply-page-btn nav"
+            :disabled="replyCurrentPage >= replyTotalPages"
+            @click="handleReplyPageChange(replyCurrentPage + 1)"
+          >
+            下一页
+          </button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Star, Minus, ChatDotRound, Warning } from "@element-plus/icons-vue";
+import { Star, ChatDotRound, Warning, Delete } from "@element-plus/icons-vue";
 import ThumbsUpIcon from "@/shared/components/icons/ThumbsUpIcon.vue";
 import type { Comment } from "@/shared/types/entity";
-import { toggleCommentLike } from "@/features/video/player/api/comment.api";
+import { toggleCommentLike, getReplies } from "@/features/video/player/api/comment.api";
+import { deleteComment } from "@/features/video/player/api/comment.api";
 import { createReport } from "@/features/video/player/api/report.api";
 import { useUserStore } from "@/shared/stores/user";
 import CommentInput from "./CommentInput.vue";
@@ -158,6 +189,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "reply", content: string, parentId: number, replyToUserId?: number | null): Promise<void>;
+  (e: "deleted", commentId: number): void;
 }>();
 
 const userStore = useUserStore();
@@ -165,8 +197,12 @@ const userStore = useUserStore();
 // Reply state
 const showReplyBox = ref(false);
 const submitting = ref(false);
-const showAllReplies = ref(false);
 const replyToUser = ref<{ id: number; nickname: string } | null>(null); // 回复目标用户
+const replyCurrentPage = ref(1);
+const replyPageSize = 3;
+const replyLoading = ref(false);
+const replyItems = ref<Comment[]>([]);
+const replyTotal = ref(0);
 
 // Like state (optimistic update)
 const localIsLiked = ref(!!props.comment.is_liked);
@@ -174,13 +210,55 @@ const localLikeCount = ref(props.comment.like_count || 0);
 
 // Computed
 const isUploader = computed(() => props.comment.user_id === props.uploaderId);
+const canDeleteComment = computed(() => userStore.userInfo?.id === props.comment.user_id);
+const canDeleteReply = (reply: Comment) => userStore.userInfo?.id === reply.user_id;
 
-const displayedReplies = computed(() => {
-  if (!props.comment.replies) return [];
-  return showAllReplies.value 
-    ? props.comment.replies 
-    : props.comment.replies.slice(0, 3);
+const displayedReplies = computed(() => replyItems.value);
+
+const replyTotalPages = computed(() => {
+  return Math.max(1, Math.ceil(replyTotal.value / replyPageSize));
 });
+
+const replyVisiblePageItems = computed<(number | string)[]>(() => {
+  const pageCount = replyTotalPages.value;
+  const page = replyCurrentPage.value;
+
+  if (pageCount <= 7) {
+    return Array.from({ length: pageCount }, (_, index) => index + 1);
+  }
+
+  if (page <= 4) {
+    return [1, 2, 3, 4, 5, "ellipsis-right", pageCount];
+  }
+
+  if (page >= pageCount - 3) {
+    return [1, "ellipsis-left", pageCount - 4, pageCount - 3, pageCount - 2, pageCount - 1, pageCount];
+  }
+
+  return [1, "ellipsis-left", page - 1, page, page + 1, "ellipsis-right", pageCount];
+});
+
+const handleReplyPageChange = (page: number) => {
+  if (page < 1 || page > replyTotalPages.value || page === replyCurrentPage.value) return;
+  replyCurrentPage.value = page;
+  loadReplies(page);
+};
+
+const loadReplies = async (page = 1) => {
+  replyLoading.value = true;
+  try {
+    const res = await getReplies(props.comment.id, { page, page_size: replyPageSize });
+    if (res.success && res.data) {
+      replyItems.value = res.data.items || [];
+      replyTotal.value = res.data.total || 0;
+      replyCurrentPage.value = res.data.page || page;
+    }
+  } catch (error) {
+    console.error("加载回复失败:", error);
+  } finally {
+    replyLoading.value = false;
+  }
+};
 
 // Format date
 const formatDate = (dateStr: string) => {
@@ -228,10 +306,25 @@ const handleReplySubmit = async (content: string) => {
     await emit("reply", content, props.comment.id, replyToUser.value?.id || null);
     showReplyBox.value = false;
     replyToUser.value = null;
+    await loadReplies(1);
   } finally {
     submitting.value = false;
   }
 };
+
+watch(
+  () => props.comment.id,
+  () => {
+    replyCurrentPage.value = 1;
+    if ((props.comment.reply_count || 0) > 0) {
+      loadReplies(1);
+    } else {
+      replyItems.value = [];
+      replyTotal.value = 0;
+    }
+  },
+  { immediate: true }
+);
 
 // Handle reply like
 const handleReplyLike = async (reply: Comment) => {
@@ -329,6 +422,38 @@ const handleReport = async () => {
     if (error !== 'cancel') {
       console.error('举报失败:', error);
       ElMessage.error(error?.response?.data?.detail || '举报提交失败');
+    }
+  }
+};
+
+const handleDeleteComment = async (commentId: number) => {
+  if (!userStore.isLoggedIn) {
+    ElMessage.warning("请先登录");
+    return;
+  }
+
+  try {
+    await ElMessageBox.confirm("确认删除这条评论吗？", "删除评论", {
+      confirmButtonText: "删除",
+      cancelButtonText: "取消",
+      type: "warning",
+    });
+
+    const res = await deleteComment(commentId);
+    if (res.success) {
+      ElMessage.success("评论已删除");
+      if (commentId === props.comment.id) {
+        emit("deleted", commentId);
+      } else {
+        replyItems.value = replyItems.value.filter((item) => item.id !== commentId);
+        replyTotal.value = Math.max(0, replyTotal.value - 1);
+      }
+    } else {
+      ElMessage.error(res.message || "删除失败");
+    }
+  } catch (error: unknown) {
+    if (error !== "cancel") {
+      ElMessage.error("删除失败");
     }
   }
 };
@@ -618,32 +743,49 @@ const handleReport = async () => {
   color: var(--text-quaternary);
 }
 
-/* Show More Replies */
-.show-more-replies {
+.reply-pagination {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  flex-wrap: wrap;
+  gap: 6px;
   margin-top: var(--space-2);
-  padding: var(--space-1) 0;
-  background: none;
-  border: none;
-  font-size: var(--font-size-xs);
-  color: var(--secondary-color);
-  cursor: pointer;
-  transition: color var(--transition-base);
+}
 
-  .arrow {
-    font-size: 10px;
-    font-style: normal;
-    transition: transform var(--transition-base);
+.reply-loading {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-1);
+}
+
+.reply-page-btn {
+  min-width: 28px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-white);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
   }
 
-  &:hover {
-    color: var(--secondary-hover);
+  &.active {
+    color: var(--text-white);
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+  }
 
-    .arrow {
-      transform: translateY(2px);
-    }
+  &.ellipsis {
+    cursor: default;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 }
 

@@ -6,14 +6,20 @@
         <router-link to="/" class="logo-wrap">
           <div class="logo-icon">
             <svg viewBox="0 0 512 512" fill="currentColor">
-              <path d="M488.6 104.1C505.3 122.2 513 143.8 511.9 169.8V372.2C511.5 398.6 502.7 420.3 485.4 437.3C468.2 454.3 446.3 463.2 419.9 464H92.02C65.57 463.2 43.81 454.2 26.74 436.8C9.682 419.4 .7667 397.8 0 372.2V169.8C.7667 143.8 9.682 122.2 26.74 104.1C43.81 87.75 65.57 78.77 92.02 78H121.4L96.05 52.19C90.3 46.46 87.42 39.19 87.42 30.4C87.42 21.6 90.3 14.34 96.05 8.603C101.8 2.868 109.1 0 117.9 0C126.7 0 134 2.868 139.8 8.603L213.1 78H298.9L372.2 8.603C378 2.868 385.3 0 394.1 0C402.9 0 410.2 2.868 415.9 8.603C421.7 14.34 424.6 21.6 424.6 30.4C424.6 39.19 421.7 46.46 415.9 52.19L390.6 78H419.9C446.3 78.77 468.2 87.75 485.4 104.1H488.6zM449.8 173.8C449.4 164.2 446.1 156.4 439.1 150.3C433.9 144.2 425.1 140.9 416.2 140.5H95.8C86.06 140.9 78.18 144.2 72.06 150.3C65.96 156.4 62.68 164.2 62.24 173.8V368.2C62.68 377.4 65.96 385.2 72.06 391.2C78.18 397.2 86.06 400.5 95.8 400.9H416.2C425.1 400.5 433.9 397.2 439.1 391.2C446.1 385.2 449.4 377.4 449.8 368.2V173.8zM185.5 216.5C191.8 222.8 195.2 230.5 195.2 239.5C195.2 248.5 191.8 256.1 185.5 262.5L163.5 284.5C157.2 290.8 149.5 294.2 140.5 294.2C131.5 294.2 123.8 290.8 117.5 284.5C111.2 278.2 107.8 270.5 107.8 261.5V217.5C107.8 208.5 111.2 200.8 117.5 194.5C123.8 188.2 131.5 184.8 140.5 184.8C149.5 184.8 157.2 188.2 163.5 194.5L185.5 216.5zM348.5 194.5C354.8 188.2 362.5 184.8 371.5 184.8C380.5 184.8 388.2 188.2 394.5 194.5C400.8 200.8 404.2 208.5 404.2 217.5V261.5C404.2 270.5 400.8 278.2 394.5 284.5C388.2 290.8 380.5 294.2 371.5 294.2C362.5 294.2 354.8 290.8 348.5 284.5L326.5 262.5C320.2 256.1 316.8 248.5 316.8 239.5C316.8 230.5 320.2 222.8 326.5 216.5L348.5 194.5z"/>
+              <path
+                d="M488.6 104.1C505.3 122.2 513 143.8 511.9 169.8V372.2C511.5 398.6 502.7 420.3 485.4 437.3C468.2 454.3 446.3 463.2 419.9 464H92.02C65.57 463.2 43.81 454.2 26.74 436.8C9.682 419.4 .7667 397.8 0 372.2V169.8C.7667 143.8 9.682 122.2 26.74 104.1C43.81 87.75 65.57 78.77 92.02 78H121.4L96.05 52.19C90.3 46.46 87.42 39.19 87.42 30.4C87.42 21.6 90.3 14.34 96.05 8.603C101.8 2.868 109.1 0 117.9 0C126.7 0 134 2.868 139.8 8.603L213.1 78H298.9L372.2 8.603C378 2.868 385.3 0 394.1 0C402.9 0 410.2 2.868 415.9 8.603C421.7 14.34 424.6 21.6 424.6 30.4C424.6 39.19 421.7 46.46 415.9 52.19L390.6 78H419.9C446.3 78.77 468.2 87.75 485.4 104.1H488.6zM449.8 173.8C449.4 164.2 446.1 156.4 439.1 150.3C433.9 144.2 425.1 140.9 416.2 140.5H95.8C86.06 140.9 78.18 144.2 72.06 150.3C65.96 156.4 62.68 164.2 62.24 173.8V368.2C62.68 377.4 65.96 385.2 72.06 391.2C78.18 397.2 86.06 400.5 95.8 400.9H416.2C425.1 400.5 433.9 397.2 439.1 391.2C446.1 385.2 449.4 377.4 449.8 368.2V173.8zM185.5 216.5C191.8 222.8 195.2 230.5 195.2 239.5C195.2 248.5 191.8 256.1 185.5 262.5L163.5 284.5C157.2 290.8 149.5 294.2 140.5 294.2C131.5 294.2 123.8 290.8 117.5 284.5C111.2 278.2 107.8 270.5 107.8 261.5V217.5C107.8 208.5 111.2 200.8 117.5 194.5C123.8 188.2 131.5 184.8 140.5 184.8C149.5 184.8 157.2 188.2 163.5 194.5L185.5 216.5zM348.5 194.5C354.8 188.2 362.5 184.8 371.5 184.8C380.5 184.8 388.2 188.2 394.5 194.5C400.8 200.8 404.2 208.5 404.2 217.5V261.5C404.2 270.5 400.8 278.2 394.5 284.5C388.2 290.8 380.5 294.2 371.5 294.2C362.5 294.2 354.8 290.8 348.5 284.5L326.5 262.5C320.2 256.1 316.8 248.5 316.8 239.5C316.8 230.5 320.2 222.8 326.5 216.5L348.5 194.5z"
+              />
             </svg>
           </div>
           <span class="logo-text">IKVCS</span>
         </router-link>
 
         <nav class="main-nav">
-          <router-link to="/" class="nav-item" :class="{ active: isActiveRoute('/') }">
+          <router-link
+            to="/"
+            class="nav-item"
+            :class="{ active: isActiveRoute('/') }"
+          >
             <span>首页</span>
           </router-link>
           <a href="#" class="nav-item">
@@ -32,14 +38,18 @@
       </div>
 
       <!-- Center Section: Search -->
-      <div v-if="props.showSearch" class="center-search" ref="searchContainerRef">
+      <div
+        v-if="props.showSearch"
+        class="center-search"
+        ref="searchContainerRef"
+      >
         <div class="search-wrap" :class="{ focused: isSearchFocused }">
           <input
             ref="searchInputRef"
             v-model="keyword"
             type="text"
             class="search-input"
-            placeholder="搜索视频、UP主或番剧"
+            placeholder="搜索视频、UP主"
             @focus="handleSearchFocus"
             @blur="handleSearchBlur"
             @keyup.enter="handleSearch"
@@ -57,22 +67,30 @@
             </div>
           </div>
         </div>
-        
+
         <!-- Search Suggestions Dropdown -->
         <transition name="dropdown">
-          <div 
-            v-if="showSuggestions && (searchHistory.length > 0 || suggestions.length > 0)" 
+          <div
+            v-if="
+              showSuggestions &&
+              (searchHistory.length > 0 || suggestions.length > 0)
+            "
             class="search-suggestions"
           >
             <!-- Search History -->
-            <div v-if="searchHistory.length > 0 && !keyword" class="suggestion-section">
+            <div
+              v-if="searchHistory.length > 0 && !keyword"
+              class="suggestion-section"
+            >
               <div class="section-header">
                 <span class="section-title">搜索历史</span>
-                <button class="clear-btn" @click.stop="clearHistory">清空</button>
+                <button class="clear-btn" @click.stop="clearHistory">
+                  清空
+                </button>
               </div>
               <div class="suggestion-list">
-                <div 
-                  v-for="(item, index) in searchHistory.slice(0, 5)" 
+                <div
+                  v-for="(item, index) in searchHistory.slice(0, 5)"
                   :key="'history-' + index"
                   class="suggestion-item"
                   :class="{ active: selectedIndex === index }"
@@ -81,16 +99,24 @@
                 >
                   <el-icon class="item-icon"><Clock /></el-icon>
                   <span class="item-text">{{ item }}</span>
-                  <button class="remove-btn" @click.stop="removeHistoryItem(index)">×</button>
+                  <button
+                    class="remove-btn"
+                    @click.stop="removeHistoryItem(index)"
+                  >
+                    ×
+                  </button>
                 </div>
               </div>
             </div>
-            
+
             <!-- Search Suggestions -->
-            <div v-if="keyword && suggestions.length > 0" class="suggestion-section">
+            <div
+              v-if="keyword && suggestions.length > 0"
+              class="suggestion-section"
+            >
               <div class="suggestion-list">
-                <div 
-                  v-for="(item, index) in suggestions" 
+                <div
+                  v-for="(item, index) in suggestions"
                   :key="'suggest-' + index"
                   class="suggestion-item"
                   :class="{ active: selectedIndex === index }"
@@ -98,7 +124,10 @@
                   @mouseenter="selectedIndex = index"
                 >
                   <el-icon class="item-icon"><Search /></el-icon>
-                  <span class="item-text" v-html="highlightKeyword(item)"></span>
+                  <span
+                    class="item-text"
+                    v-html="highlightKeyword(item)"
+                  ></span>
                 </div>
               </div>
             </div>
@@ -111,7 +140,12 @@
         <!-- Logged In State -->
         <template v-if="userStore.isLoggedIn">
           <!-- Avatar with Dropdown -->
-          <el-dropdown trigger="hover" placement="bottom" :show-timeout="50" :hide-timeout="150">
+          <el-dropdown
+            trigger="hover"
+            placement="bottom"
+            :show-timeout="50"
+            :hide-timeout="150"
+          >
             <div class="user-avatar-wrap" @click="goToProfile">
               <el-avatar :src="userStore.avatar" :size="32" class="user-avatar">
                 {{ userStore.userInfo?.nickname?.charAt(0).toUpperCase() }}
@@ -124,7 +158,9 @@
                     {{ userStore.userInfo?.nickname?.charAt(0).toUpperCase() }}
                   </el-avatar>
                   <div class="user-info">
-                    <div class="nickname">{{ userStore.userInfo?.nickname }}</div>
+                    <div class="nickname">
+                      {{ userStore.userInfo?.nickname }}
+                    </div>
                   </div>
                 </div>
                 <div class="dropdown-body">
@@ -180,7 +216,9 @@
                 <el-icon :size="18"><User /></el-icon>
               </el-avatar>
             </div>
-            <el-button class="register-btn" @click="$emit('register')">注册</el-button>
+            <el-button class="register-btn" @click="$emit('register')"
+              >注册</el-button
+            >
           </div>
         </template>
 
@@ -214,7 +252,7 @@ const props = withDefaults(
   }>(),
   {
     showSearch: true,
-  }
+  },
 );
 
 const router = useRouter();
@@ -240,18 +278,18 @@ onMounted(() => {
     return;
   }
 
-  const saved = localStorage.getItem('searchHistory');
+  const saved = localStorage.getItem("searchHistory");
   if (saved) {
     searchHistory.value = JSON.parse(saved).slice(0, 5);
   }
 
   // Global keyboard shortcuts
-  document.addEventListener('keydown', handleGlobalKeydown);
+  document.addEventListener("keydown", handleGlobalKeydown);
 });
 
 onUnmounted(() => {
   if (props.showSearch) {
-    document.removeEventListener('keydown', handleGlobalKeydown);
+    document.removeEventListener("keydown", handleGlobalKeydown);
   }
 });
 
@@ -261,13 +299,13 @@ const handleGlobalKeydown = (e: KeyboardEvent) => {
     return;
   }
   // "/" to focus search
-  if (e.key === '/' && !isSearchFocused.value && !isInputElement(e.target)) {
+  if (e.key === "/" && !isSearchFocused.value && !isInputElement(e.target)) {
     e.preventDefault();
     searchInputRef.value?.focus();
   }
-  
+
   // "Escape" to blur search
-  if (e.key === 'Escape' && isSearchFocused.value) {
+  if (e.key === "Escape" && isSearchFocused.value) {
     searchInputRef.value?.blur();
     closeSuggestions();
   }
@@ -276,7 +314,11 @@ const handleGlobalKeydown = (e: KeyboardEvent) => {
 const isInputElement = (target: EventTarget | null): boolean => {
   if (!target) return false;
   const tagName = (target as HTMLElement).tagName?.toLowerCase();
-  return tagName === 'input' || tagName === 'textarea' || (target as HTMLElement).isContentEditable;
+  return (
+    tagName === "input" ||
+    tagName === "textarea" ||
+    (target as HTMLElement).isContentEditable
+  );
 };
 
 // Check if current route matches
@@ -306,7 +348,8 @@ const handleSearchInput = async () => {
   if (keyword.value.trim()) {
     // 调用真实 API 获取搜索建议
     try {
-      const { getSearchSuggestions } = await import("@/features/search/api/search.api");
+      const { getSearchSuggestions } =
+        await import("@/features/search/api/search.api");
       const response = await getSearchSuggestions(keyword.value, 10);
       if (response.success && response.data) {
         suggestions.value = response.data.suggestions || [];
@@ -323,15 +366,14 @@ const handleSearchInput = async () => {
 };
 
 const handleSearch = () => {
-  const searchTerm = selectedIndex.value >= 0 
-    ? getSelectedSuggestion() 
-    : keyword.value.trim();
-    
+  const searchTerm =
+    selectedIndex.value >= 0 ? getSelectedSuggestion() : keyword.value.trim();
+
   if (!searchTerm) return;
-  
+
   // Save to history
   addToHistory(searchTerm);
-  
+
   keyword.value = searchTerm;
   closeSuggestions();
   goToSearch(searchTerm);
@@ -339,9 +381,9 @@ const handleSearch = () => {
 
 const getSelectedSuggestion = (): string => {
   if (!keyword.value) {
-    return searchHistory.value[selectedIndex.value] || '';
+    return searchHistory.value[selectedIndex.value] || "";
   }
-  return suggestions.value[selectedIndex.value] || '';
+  return suggestions.value[selectedIndex.value] || "";
 };
 
 const selectSuggestion = (text: string) => {
@@ -352,12 +394,12 @@ const selectSuggestion = (text: string) => {
 };
 
 const navigateSuggestion = (direction: number) => {
-  const totalItems = keyword.value 
-    ? suggestions.value.length 
+  const totalItems = keyword.value
+    ? suggestions.value.length
     : searchHistory.value.length;
-    
+
   if (totalItems === 0) return;
-  
+
   selectedIndex.value += direction;
   if (selectedIndex.value < 0) selectedIndex.value = totalItems - 1;
   if (selectedIndex.value >= totalItems) selectedIndex.value = 0;
@@ -369,24 +411,24 @@ const closeSuggestions = () => {
 };
 
 const addToHistory = (term: string) => {
-  const filtered = searchHistory.value.filter(h => h !== term);
+  const filtered = searchHistory.value.filter((h) => h !== term);
   searchHistory.value = [term, ...filtered].slice(0, 5);
-  localStorage.setItem('searchHistory', JSON.stringify(searchHistory.value));
+  localStorage.setItem("searchHistory", JSON.stringify(searchHistory.value));
 };
 
 const removeHistoryItem = (index: number) => {
   searchHistory.value.splice(index, 1);
-  localStorage.setItem('searchHistory', JSON.stringify(searchHistory.value));
+  localStorage.setItem("searchHistory", JSON.stringify(searchHistory.value));
 };
 
 const clearHistory = () => {
   searchHistory.value = [];
-  localStorage.removeItem('searchHistory');
+  localStorage.removeItem("searchHistory");
 };
 
 const highlightKeyword = (text: string): string => {
   if (!keyword.value) return text;
-  const regex = new RegExp(`(${keyword.value})`, 'gi');
+  const regex = new RegExp(`(${keyword.value})`, "gi");
   return text.replace(regex, '<em class="highlight">$1</em>');
 };
 
@@ -411,7 +453,7 @@ const goToCollections = () => {
   router.push("/profile");
   // 延迟切换标签页，确保页面已加载
   setTimeout(() => {
-    const event = new CustomEvent('switch-tab', { detail: 'favorites' });
+    const event = new CustomEvent("switch-tab", { detail: "favorites" });
     window.dispatchEvent(event);
   }, 100);
 };
@@ -420,7 +462,7 @@ const goToHistory = () => {
   router.push("/profile");
   // 延迟切换标签页，确保页面已加载
   setTimeout(() => {
-    const event = new CustomEvent('switch-tab', { detail: 'history' });
+    const event = new CustomEvent("switch-tab", { detail: "history" });
     window.dispatchEvent(event);
   }, 100);
 };
@@ -445,12 +487,14 @@ const handlePostClick = () => {
     emit("login");
     return;
   }
-  router.push({ name: "VideoCenter", query: { tab: "videos", upload: "1" } }).catch((err) => {
-    console.error("跳转到投稿入口失败:", err);
-    router.push("/video-center?tab=videos&upload=1").catch((err2) => {
-      console.error("使用路径跳转投稿入口失败:", err2);
+  router
+    .push({ name: "VideoCenter", query: { tab: "videos", upload: "1" } })
+    .catch((err) => {
+      console.error("跳转到投稿入口失败:", err);
+      router.push("/video-center?tab=videos&upload=1").catch((err2) => {
+        console.error("使用路径跳转投稿入口失败:", err2);
+      });
     });
-  });
 };
 
 const handleLogout = async () => {
@@ -503,7 +547,7 @@ const handleLogout = async () => {
     width: 36px;
     height: 36px;
     color: var(--bili-pink);
-    
+
     svg {
       width: 100%;
       height: 100%;
@@ -832,7 +876,7 @@ const handleLogout = async () => {
 
   .login-btn {
     cursor: pointer;
-    
+
     .default-avatar {
       background: var(--bili-pink-light);
       color: var(--bili-pink);
@@ -901,7 +945,11 @@ const handleLogout = async () => {
     align-items: center;
     gap: var(--space-3);
     padding: var(--space-4);
-    background: linear-gradient(135deg, var(--bili-pink-light) 0%, var(--bg-white) 100%);
+    background: linear-gradient(
+      135deg,
+      var(--bili-pink-light) 0%,
+      var(--bg-white) 100%
+    );
     border-bottom: 1px solid var(--divider-color);
 
     .user-info {
@@ -913,7 +961,6 @@ const handleLogout = async () => {
         color: var(--text-primary);
         margin-bottom: var(--space-1);
       }
-
     }
   }
 
@@ -975,7 +1022,7 @@ const handleLogout = async () => {
   }
 
   .action-icons {
-    .icon-item:nth-child(n+3) {
+    .icon-item:nth-child(n + 3) {
       display: none;
     }
   }
@@ -1020,4 +1067,3 @@ const handleLogout = async () => {
   }
 }
 </style>
-

@@ -180,7 +180,16 @@
                     <el-icon><Edit /></el-icon>
                     编辑删除
                   </el-button>
+                    <el-button
+                      v-if="statusFilter === 3"
+                      size="small"
+                      class="appeal-btn"
+                      @click="handleAppeal(video)"
+                    >
+                      申诉复审
+                    </el-button>
                     <el-button 
+                      v-else
                       size="small" 
                       @click="handleTranscodeHighBitrate(video.id)"
                       :loading="transcodingVideos.has(video.id)"
@@ -437,6 +446,7 @@ const {
   handleStatusChange,
   viewVideo,
   deleteVideoItem,
+  appealVideoItem,
   updateVideoInfo,
   generateOutline,
 } = useVideoManagement();
@@ -526,36 +536,6 @@ const formatTime = (dateStr: string): string => {
   if (!dateStr) return "";
   const date = new Date(dateStr);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-};
-
-/**
- * 获取状态样式类
- * 状态定义：0=转码中, 1=审核中, 2=已发布, 3=拒绝, 4=软删除
- */
-const getStatusClass = (status: number): string => {
-  switch (status) {
-    case 0: return 'transcoding';  // 转码中
-    case 1: return 'reviewing';    // 审核中
-    case 2: return 'published';    // 已发布
-    case 3: return 'rejected';   // 已拒绝
-    case 4: return 'deleted';     // 已删除
-    default: return 'unknown';
-  }
-};
-
-/**
- * 获取状态文本
- * 状态定义：0=转码中, 1=审核中, 2=已发布, 3=拒绝, 4=软删除
- */
-const getStatusText = (status: number): string => {
-  switch (status) {
-    case 0: return '转码中';
-    case 1: return '审核中';
-    case 2: return '已发布';
-    case 3: return '已拒绝';
-    case 4: return '已删除';
-    default: return '未知';
-  }
 };
 
 // 操作处理
@@ -801,6 +781,23 @@ const handleGenerateOutline = async (video: Video) => {
 const handleEdit = (video: Video) => {
   editingVideo.value = video;
   editDialogVisible.value = true;
+};
+
+const handleAppeal = async (video: Video) => {
+  if (statusFilter.value !== 3) {
+    ElMessage.warning("仅已拒绝视频支持申诉");
+    return;
+  }
+  try {
+    await ElMessageBox.confirm(
+      "申诉后视频将重新进入“审核中”，是否继续？",
+      "提交申诉",
+      { confirmButtonText: "确认申诉", cancelButtonText: "取消", type: "warning" }
+    );
+  } catch {
+    return;
+  }
+  await appealVideoItem(video);
 };
 
 const handleDeleteFromDialog = async (video: Video) => {
@@ -1179,13 +1176,23 @@ onMounted(() => {
       color: var(--text-white);
     }
     
-    &.pending {
+    &.reviewing {
       background: var(--warning-color);
       color: var(--text-white);
     }
     
     &.rejected {
       background: var(--danger-color);
+      color: var(--text-white);
+    }
+
+    &.transcoding {
+      background: var(--info-color);
+      color: var(--text-white);
+    }
+
+    &.deleted {
+      background: var(--text-secondary);
       color: var(--text-white);
     }
   }
@@ -1312,6 +1319,19 @@ onMounted(() => {
 
     .el-button + .el-button {
       margin-left: 0;
+    }
+
+    .appeal-btn {
+      background: #fb7299;
+      border-color: #fb7299;
+      color: #fff;
+    }
+
+    .appeal-btn:hover,
+    .appeal-btn:focus {
+      background: #fc8bab;
+      border-color: #fc8bab;
+      color: #fff;
     }
   }
 }

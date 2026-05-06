@@ -32,14 +32,10 @@ async def get_recommendations(
     """
     获取推荐视频列表
     
-    三路召回：
+    三路召回（未完全实现）：
     1. 热门（全站/分类）
     2. 同类（同分类/同作者）
     3. 个性化（基于用户行为）
-    
-    去重与冷启动：
-    - 新用户：热门+最新
-    - 已看过的视频降权/过滤
     """
     # 获取当前用户（可选）
     current_user = get_current_user_optional(request, db)

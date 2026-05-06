@@ -104,15 +104,6 @@
           <div class="video-desc-section">
             <div class="desc-header">
               <h3 class="desc-title">简介</h3>
-              <el-button 
-                type="primary" 
-                size="small" 
-                :loading="summaryGenerating"
-                @click="handleGenerateSummary"
-              >
-                <el-icon><MagicStick /></el-icon>
-                生成摘要
-              </el-button>
             </div>
             <div class="video-desc" :class="{ expanded: descExpanded }">
               <div class="desc-content">
@@ -124,36 +115,6 @@
               </div>
             </div>
             
-            <!-- AI Generated Summary -->
-            <div v-if="aiSummary" class="ai-summary-section">
-              <div class="summary-item" v-if="aiSummary.problem_background">
-                <h4 class="summary-label">问题背景</h4>
-                <p class="summary-content">{{ aiSummary.problem_background }}</p>
-              </div>
-              <div class="summary-item" v-if="aiSummary.research_methods">
-                <h4 class="summary-label">研究方法</h4>
-                <p class="summary-content">{{ aiSummary.research_methods }}</p>
-              </div>
-              <div class="summary-item" v-if="aiSummary.main_findings">
-                <h4 class="summary-label">主要发现</h4>
-                <p class="summary-content">{{ aiSummary.main_findings }}</p>
-              </div>
-              <div class="summary-item" v-if="aiSummary.conclusions">
-                <h4 class="summary-label">最终结论</h4>
-                <p class="summary-content">{{ aiSummary.conclusions }}</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Video Summary -->
-          <div class="video-summary-wrapper">
-            <VideoSummary
-              :video-id="videoData.id"
-              :summary-short="videoData.summary_short"
-              :summary-detailed="videoData.summary_detailed"
-              :knowledge-points="videoData.knowledge_points"
-              :show-generate-button="true"
-            />
           </div>
 
           <!-- Tags -->
@@ -246,11 +207,9 @@ import {
   ChatDotRound,
   Star,
   Share,
-  More,
   ArrowDown,
   ArrowUp,
   Warning,
-  MagicStick,
 } from "@element-plus/icons-vue";
 import ThumbsUpIcon from "@/shared/components/icons/ThumbsUpIcon.vue";
 
@@ -262,7 +221,6 @@ import DanmakuDisplay from "@/features/video/player/components/danmaku/DanmakuDi
 import DanmakuToolbar from "@/features/video/player/components/danmaku/DanmakuToolbar.vue";
 import RecommendList from "@/features/video/player/components/recommend/RecommendList.vue";
 import VideoCommentSection from "@/features/video/player/components/comment/VideoCommentSection.vue";
-import VideoSummary from "@/features/video/player/components/summary/VideoSummary.vue";
 import VideoOutline from "@/features/video/player/components/outline/VideoOutline.vue";
 
 import { useUserStore } from "@/shared/stores/user";
@@ -273,7 +231,7 @@ import {
   useDanmaku,
   DANMAKU_DURATION,
 } from "@/features/video/player/composables/useDanmaku";
-import { getVideoOutline, generateStructuredVideoSummary } from "@/features/video/shared/api/video.api";
+import { getVideoOutline } from "@/features/video/shared/api/video.api";
 import { request } from "@/shared/utils/request";
 import type { VideoOutlineEntry } from "@/shared/types/entity";
 import { followUser, unfollowUser } from "@/features/user/api/user.api";
@@ -282,17 +240,9 @@ const router = useRouter();
 const userStore = useUserStore();
 const showAuthDialog = ref(false);
 const showFolderDialog = ref(false);
-const showMoreActions = ref(false);
 const descExpanded = ref(false);
 const isFollowed = ref(false);
 const filterLowScore = ref(false);
-const summaryGenerating = ref(false);
-const aiSummary = ref<{
-  problem_background?: string;
-  research_methods?: string;
-  main_findings?: string;
-  conclusions?: string;
-} | null>(null);
 
 // 显示标签（不包含分类标签）
 const displayTags = computed(() => {
@@ -609,37 +559,6 @@ const handleFolderConfirm = async (folderId: number | null) => {
   } catch (error) {
     console.error('收藏失败:', error);
     ElMessage.error('收藏失败');
-  }
-};
-
-// Handle generate summary
-const handleGenerateSummary = async () => {
-  if (!videoData.value) return;
-  
-  summaryGenerating.value = true;
-  aiSummary.value = null;
-  
-  try {
-    // 调用后端API实时生成结构化摘要
-    const response = await generateStructuredVideoSummary(videoData.value.id);
-    
-    if (response.success && response.data) {
-      // 直接使用返回的结构化摘要数据
-      aiSummary.value = {
-        problem_background: response.data.problem_background || '',
-        research_methods: response.data.research_methods || '',
-        main_findings: response.data.main_findings || '',
-        conclusions: response.data.conclusions || ''
-      };
-      ElMessage.success('摘要生成成功');
-    } else {
-      ElMessage.error('生成摘要失败');
-    }
-  } catch (error: any) {
-    console.error('生成摘要失败:', error);
-    ElMessage.error(error?.response?.data?.detail || '生成摘要失败');
-  } finally {
-    summaryGenerating.value = false;
   }
 };
 
@@ -1062,11 +981,6 @@ const handleGenerateSummary = async () => {
       }
     }
   }
-}
-
-/* Video Summary Wrapper */
-.video-summary-wrapper {
-  margin: var(--space-4) 0;
 }
 
 /* Outline Section */

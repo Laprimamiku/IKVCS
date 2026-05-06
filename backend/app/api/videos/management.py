@@ -27,6 +27,7 @@ from app.core.exceptions import ResourceNotFoundException, ForbiddenException, V
 from app.core.response import success_response
 from app.core.transaction import transaction
 from app.core.config import settings
+from app.core.video_constants import VideoStatus, ReviewStatus
 from app.models.user import User
 from app.models.video import Video
 from app.models.video_tag import VideoTag, video_tag_association
@@ -137,6 +138,37 @@ async def delete_video(
     
     return success_response(
         message="视频删除成功"
+    )
+
+
+@router.post("/{video_id}/appeal", summary="申诉已拒绝视频并重新进入审核")
+async def appeal_rejected_video(
+    video_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    已拒绝视频申诉（仅上传者可操作）：
+    - 仅 status=3（已拒绝）可申诉
+    - 申诉后状态改为审核中（status=1）
+    - 重置 review_status 为待审核（0）
+    """
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise ResourceNotFoundException(resource="视频", resource_id=video_id)
+    if video.uploader_id != current_user.id:
+        raise ForbiddenException("只有视频上传者可以申诉")
+    if video.status != VideoStatus.REJECTED:
+        raise ValidationException(message="仅已拒绝视频可申诉")
+
+    with transaction(db):
+        video.status = VideoStatus.REVIEWING
+        video.review_status = ReviewStatus.PENDING
+
+    logger.info(f"视频申诉成功：video_id={video_id}, uploader_id={current_user.id}, 新状态=审核中")
+    return success_response(
+        message="申诉已提交，视频已重新进入审核中",
+        data={"video_id": video_id, "status": int(VideoStatus.REVIEWING)},
     )
 
 

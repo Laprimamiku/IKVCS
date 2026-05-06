@@ -335,28 +335,6 @@
             </div>
           </div>
 
-          <!-- Tags Card -->
-          <div class="sidebar-card tags-card" v-if="topTags.length > 0">
-            <div class="card-header">
-              <h3 class="card-title">
-                <el-icon class="title-icon"><PriceTag /></el-icon>
-                兴趣标签
-              </h3>
-            </div>
-            <div class="card-body">
-              <div class="tags-list">
-                <el-tag
-                  v-for="tag in topTags"
-                  :key="tag"
-                  class="tag-item"
-                  round
-                  @click="handleTagClick(tag)"
-                >
-                  {{ tag }}
-                </el-tag>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -524,13 +502,13 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, watch, computed } from "vue";
 import { useRouter } from "vue-router";
-import { Edit, HomeFilled, VideoCamera, Star, Clock, Trophy, PriceTag, Delete, Plus, Folder, Document, ArrowRight, UserFilled, Loading } from "@element-plus/icons-vue";
+import { Edit, HomeFilled, VideoCamera, Star, Clock, Trophy, Delete, Plus, Folder, Document, ArrowRight, UserFilled, Loading } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { useUserStore } from "@/shared/stores/user";
 import { useUserActions } from "@/features/user/composables/useUserActions";
 import { getMyVideos } from "@/features/video/shared/api/video.api";
 import { getMyCollections } from "@/features/video/shared/api/video.api";
-import { getUserStats, getWatchHistory, type WatchHistoryItem, getCollectionFolders, createCollectionFolder, type CollectionFolder, getFollowers, followUser, unfollowUser, removeFollower, type FollowUser, getUserTopTags } from "@/features/user/api/user.api";
+import { getUserStats, getWatchHistory, type WatchHistoryItem, getCollectionFolders, createCollectionFolder, type CollectionFolder, getFollowers, followUser, unfollowUser, removeFollower, type FollowUser } from "@/features/user/api/user.api";
 import type { UserInfo, Video } from "@/shared/types/entity";
 import { formatNumber } from "@/shared/utils/formatters";
 
@@ -554,7 +532,6 @@ const selectedFolderId = ref<number | null | undefined>(undefined);
 const showCreateFolderDialog = ref(false);
 const newFolderName = ref('');
 const newFolderDescription = ref('');
-const topTags = ref<string[]>([]); // 用户最常用的标签
 const userStats = reactive({
   following_count: 0,
   followers_count: 0,
@@ -591,7 +568,6 @@ onMounted(async () => {
   await loadCollectionFolders();
   await loadMyCollections();
   await loadWatchHistory();
-  await loadUserTopTags(); // 加载用户最常用标签
   
   // 监听来自导航栏的标签页切换事件
   window.addEventListener('switch-tab', handleTabSwitch);
@@ -859,24 +835,6 @@ const handleUserClick = (userId: number) => {
   } else {
     router.push(`/users/${userId}`);
   }
-};
-
-// Load user top tags
-const loadUserTopTags = async () => {
-  try {
-    if (!userStore.userInfo?.id) return;
-    const res = await getUserTopTags(userStore.userInfo.id);
-    if (res.success && res.data?.top_tags) {
-      topTags.value = res.data.top_tags;
-    }
-  } catch (error) {
-    console.error('加载用户最常用标签失败:', error);
-  }
-};
-
-// Handle tag click
-const handleTagClick = (tag: string) => {
-  router.push({ path: '/search', query: { keyword: tag, type: 'video', tags: tag } });
 };
 
 const formatDate = (dateString: string) => {

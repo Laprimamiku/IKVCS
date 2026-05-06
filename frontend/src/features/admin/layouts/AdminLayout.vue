@@ -86,10 +86,6 @@
             <button class="action-btn" title="刷新" @click="handleRefreshClick">
               <el-icon class="action-icon"><Refresh /></el-icon>
             </button>
-            <button class="action-btn" title="通知">
-              <el-icon class="action-icon"><Bell /></el-icon>
-              <span v-if="pendingCount > 0" class="action-badge"></span>
-            </button>
           </div>
           
           <div class="header-time">
@@ -113,7 +109,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from "vue";
 import { useRoute } from "vue-router";
-import { VideoCamera, DataAnalysis, UserFilled, Warning, Folder, Refresh, Bell, House } from "@element-plus/icons-vue";
+import { VideoCamera, DataAnalysis, UserFilled, Warning, Folder, Refresh, House } from "@element-plus/icons-vue";
 import { useUserStore } from "@/shared/stores/user";
 import { adminApi } from "../api/admin.api";
 

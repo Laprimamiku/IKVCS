@@ -46,7 +46,7 @@ service.interceptors.request.use(
 
 // 响应拦截器
 service.interceptors.response.use(
-  (response: AxiosResponse<ApiResponse<unknown>>) => {
+  (response: AxiosResponse) => {
     const payload = response.data;
     
     // 兼容处理：如果后端返回的是数组或已经包含 success 字段
@@ -68,10 +68,10 @@ service.interceptors.response.use(
   },
   (error: unknown) => {
     console.error('📥 响应错误:', error);
-    if (error.response) {
+    if (axios.isAxiosError(error) && error.response) {
       const { status, data } = error.response;
       const msg = data?.detail || data?.message || '请求失败';
-      const isSilent = Boolean((error as any)?.config?.silent);
+      const isSilent = Boolean((error.config as RequestConfig | undefined)?.silent);
       
       if (status === 401) {
         ElMessage.error('登录已过期，请重新登录');
@@ -80,7 +80,9 @@ service.interceptors.response.use(
         ElMessage.error(msg);
       }
     } else {
-      const isSilent = Boolean((error as any)?.config?.silent);
+      const isSilent = axios.isAxiosError(error)
+        ? Boolean((error.config as RequestConfig | undefined)?.silent)
+        : false;
       if (!isSilent) {
         ElMessage.error('网络错误，请检查网络连接');
       }

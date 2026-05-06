@@ -10,6 +10,7 @@ import {
   getMyVideos, 
   updateVideo, 
   deleteVideo, 
+  appealVideo,
   uploadVideoCover, 
   uploadVideoSubtitle,
   uploadVideoSubtitleAudio,
@@ -102,6 +103,22 @@ export function useVideoManagement() {
         console.error('删除失败:', error)
         ElMessage.error('删除失败，请重试')
       }
+    }
+  }
+
+  /**
+   * 申诉已拒绝视频
+   */
+  const appealVideoItem = async (video: Video) => {
+    try {
+      await appealVideo(video.id)
+      ElMessage.success('申诉已提交，视频已进入审核中')
+      await loadVideos()
+      return true
+    } catch (error: any) {
+      const msg = error?.response?.data?.detail || error?.message || '申诉失败，请稍后重试'
+      ElMessage.error(msg)
+      return false
     }
   }
 
@@ -240,6 +257,7 @@ export function useVideoManagement() {
     handleStatusChange,
     viewVideo,
     deleteVideoItem,
+    appealVideoItem,
     updateVideoInfo,
     generateOutline,
     refresh

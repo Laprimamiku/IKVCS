@@ -66,6 +66,7 @@
           :comment="item"
           :uploader-id="uploaderId"
           @reply="handleReplyComment"
+          @deleted="handleDeleteComment"
         />
       </transition-group>
 
@@ -77,13 +78,12 @@
         </p>
       </div>
 
-      <!-- Load More -->
-      <div class="load-more-wrap" v-if="hasMore && !loading">
-        <button class="load-more-btn" @click="loadMore">
-          <span>查看更多评论</span>
-          <i class="arrow-icon">↓</i>
-        </button>
-      </div>
+      <!-- Infinite Scroll Trigger -->
+      <div
+        v-if="hasMore"
+        ref="loadMoreTrigger"
+        class="infinite-scroll-trigger"
+      ></div>
 
       <!-- Loading More Indicator -->
       <div v-if="loadingMore" class="loading-more">
@@ -95,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from "vue";
+import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { ElMessage } from "element-plus";
 import { MagicStick, Sugar, TrendCharts, Clock, ChatDotRound } from "@element-plus/icons-vue";
 import type { Comment } from "@/shared/types/entity";
@@ -121,6 +121,8 @@ const sortBy = ref<"new" | "hot">("hot");
 const page = ref(1);
 const pageSize = 20;
 const hasMore = ref(false);
+const loadMoreTrigger = ref<HTMLElement | null>(null);
+let observer: IntersectionObserver | null = null;
 
 // AI Purification
 const isPurified = ref(false);
@@ -189,6 +191,11 @@ const fetchComments = async (reset = false) => {
   } finally {
     loading.value = false;
     loadingMore.value = false;
+    if (hasMore.value) {
+      nextTick(() => {
+        observeLoadMoreTrigger();
+      });
+    }
   }
 };
 
@@ -230,8 +237,6 @@ const handleReplyComment = async (content: string, parentId: number, replyToUser
       ElMessage.success("回复成功");
       const parent = commentList.value.find((c) => c.id === parentId);
       if (parent) {
-        if (!parent.replies) parent.replies = [];
-        parent.replies.push(res.data);
         parent.reply_count = (parent.reply_count || 0) + 1;
       }
     }
@@ -240,8 +245,58 @@ const handleReplyComment = async (content: string, parentId: number, replyToUser
   }
 };
 
+const removeCommentById = (list: Comment[], commentId: number): boolean => {
+  const index = list.findIndex((item) => item.id === commentId);
+  if (index >= 0) {
+    list.splice(index, 1);
+    return true;
+  }
+
+  for (const item of list) {
+    if (!item.replies || item.replies.length === 0) continue;
+    const replyIndex = item.replies.findIndex((reply) => reply.id === commentId);
+    if (replyIndex >= 0) {
+      item.replies.splice(replyIndex, 1);
+      item.reply_count = Math.max(0, (item.reply_count || 0) - 1);
+      return true;
+    }
+  }
+
+  return false;
+};
+
+const handleDeleteComment = (commentId: number) => {
+  const removed = removeCommentById(commentList.value, commentId);
+  if (removed) {
+    total.value = Math.max(0, total.value - 1);
+  }
+};
+
 const loadMore = () => {
+  if (!hasMore.value || loading.value || loadingMore.value) return;
   fetchComments(false);
+};
+
+const observeLoadMoreTrigger = () => {
+  if (!observer || !loadMoreTrigger.value) return;
+  observer.disconnect();
+  observer.observe(loadMoreTrigger.value);
+};
+
+const initInfiniteObserver = () => {
+  observer = new IntersectionObserver(
+    (entries) => {
+      const [entry] = entries;
+      if (!entry?.isIntersecting) return;
+      loadMore();
+    },
+    {
+      root: null,
+      rootMargin: "220px 0px",
+      threshold: 0.01,
+    }
+  );
+  observeLoadMoreTrigger();
 };
 
 // Watch videoId changes
@@ -252,6 +307,26 @@ watch(
   },
   { immediate: true }
 );
+
+watch(
+  () => hasMore.value,
+  (value) => {
+    if (value) {
+      nextTick(() => {
+        observeLoadMoreTrigger();
+      });
+    }
+  }
+);
+
+onMounted(() => {
+  initInfiniteObserver();
+});
+
+onBeforeUnmount(() => {
+  observer?.disconnect();
+  observer = null;
+});
 </script>
 
 <style scoped lang="scss">
@@ -401,39 +476,9 @@ watch(
   }
 }
 
-/* Load More */
-.load-more-wrap {
-  display: flex;
-  justify-content: center;
-  padding: var(--space-6) 0;
-}
-
-.load-more-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-6);
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  background: var(--bg-gray-1);
-  border: none;
-  border-radius: var(--radius-round);
-  cursor: pointer;
-  transition: all var(--transition-base);
-
-  .arrow-icon {
-    font-style: normal;
-    transition: transform var(--transition-base);
-  }
-
-  &:hover {
-    color: var(--primary-color);
-    background: var(--primary-light);
-
-    .arrow-icon {
-      transform: translateY(2px);
-    }
-  }
+.infinite-scroll-trigger {
+  width: 100%;
+  height: 1px;
 }
 
 /* Loading More */
